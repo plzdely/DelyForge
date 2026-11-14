@@ -1,0 +1,104 @@
+import { DEFAULT_PLANS, hasFeature, lowestPlanWithFeature } from '@delyforge/shared';
+import { Lock } from 'lucide-react';
+import { NavLink } from 'react-router';
+import { Tooltip } from '@/components/ui/tooltip';
+import { cn } from '@/lib/cn';
+import { useEntitlements } from '@/lib/entitlements';
+import { useSettings } from '@/lib/queries';
+import { type NavItem, visibleSections } from '@/navigation';
+
+function SidebarLink({ item }: { item: NavItem }) {
+  const entitlements = useEntitlements();
+  const locked = item.feature ? !hasFeature(entitlements, item.feature) : false;
+  const unlockPlan = item.feature ? lowestPlanWithFeature(item.feature) : null;
+  const Icon = item.icon;
+
+  const link = (
+    <NavLink
+      to={item.path}
+      end={item.path === '/'}
+      className={({ isActive }) =>
+        cn(
+          'group relative flex h-8 items-center gap-2.5 rounded-md px-2.5 text-sm transition-colors duration-100',
+          isActive
+            ? 'bg-surface-hover text-fg before:absolute before:top-1.5 before:bottom-1.5 before:-left-3 before:w-0.5 before:rounded-full before:bg-primary'
+            : 'text-fg-muted hover:bg-surface-hover/60 hover:text-fg',
+          !item.available && 'text-fg-subtle',
+        )
+      }
+    >
+      {({ isActive }) => (
+        <>
+          <Icon
+            strokeWidth={1.75}
+            className={cn('size-4 shrink-0', isActive ? 'text-primary' : 'text-fg-subtle group-hover:text-fg-muted')}
+          />
+          <span className="truncate">{item.label}</span>
+          {locked && unlockPlan ? (
+            <span className="ml-auto inline-flex items-center gap-1 text-2xs font-medium text-fg-subtle">
+              <Lock className="size-3" />
+              {unlockPlan.name}
+            </span>
+          ) : !item.available ? (
+            <span className="ml-auto rounded border border-border px-1 text-2xs text-fg-subtle">Soon</span>
+          ) : null}
+        </>
+      )}
+    </NavLink>
+  );
+
+  if (!item.available) {
+    return (
+      <Tooltip side="right" content={`Planned for Phase ${item.phase}`}>
+        {link}
+      </Tooltip>
+    );
+  }
+  return link;
+}
+
+export function Sidebar() {
+  const { data: settings } = useSettings();
+  const sections = visibleSections(settings?.showRoadmapPreview ?? false);
+  const entitlements = useEntitlements();
+  const plan = DEFAULT_PLANS[entitlements.effectivePlanId];
+
+  return (
+    <aside className="flex w-60 shrink-0 flex-col border-r border-border bg-bg-subtle">
+      <nav aria-label="Main" className="flex-1 overflow-y-auto px-3 pt-3 pb-4">
+        {sections.map((section) => (
+          <div key={section.id} className="mb-4">
+            <div className="px-2.5 pb-1.5 text-2xs font-medium tracking-[0.06em] text-fg-subtle uppercase">
+              {section.label}
+            </div>
+            <div className="flex flex-col gap-px">
+              {section.items.map((item) => (
+                <SidebarLink key={item.id} item={item} />
+              ))}
+            </div>
+          </div>
+        ))}
+      </nav>
+
+      <div className="border-t border-border p-3">
+        <NavLink
+          to="/subscription"
+          className="block rounded-lg border border-border bg-surface p-3 transition-colors hover:border-border-strong"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-fg">{plan.name} plan</span>
+            <span className="rounded border border-border px-1 text-2xs text-fg-subtle">Local</span>
+          </div>
+          <div className="mt-1 flex items-center justify-between text-2xs">
+            <span className="text-fg-subtle">
+              {plan.limits.maxBotProjects === null
+                ? 'Unlimited bots'
+                : `${plan.limits.maxBotProjects} bot project${plan.limits.maxBotProjects === 1 ? '' : 's'}`}
+            </span>
+            <span className="font-medium text-primary">View plans</span>
+          </div>
+        </NavLink>
+      </div>
+    </aside>
+  );
+}

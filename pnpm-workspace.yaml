@@ -1,0 +1,17 @@
+packages:
+  - apps/*
+  - packages/*
+
+# pnpm blocks dependency install scripts by default (a supply-chain safety feature).
+# Only these packages are allowed to run their install scripts:
+#  - electron: downloads the Electron binary
+#  - esbuild: downloads its platform binary (used by Vite/electron-vite)
+#  - prisma / @prisma/engines: Prisma CLI tooling for the cloud API
+allowBuilds:
+  electron: true
+  esbuild: true
+  prisma: true
+  '@prisma/engines': true
+  '@nestjs/core': false
+  electron-winstaller: false # Squirrel installer — unused, we build NSIS installers
+  better-sqlite3: false # only used by Prisma's optional `prisma dev` local server; the desktop app uses node:sqlite

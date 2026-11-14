@@ -1,0 +1,49 @@
+{
+  "name": "@delyforge/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "DelyForge Desktop — Build. Automate. Control.",
+  "author": "plzdely",
+  "type": "module",
+  "main": "./out/main/index.js",
+  "scripts": {
+    "dev": "pnpm --filter @delyforge/shared build && electron-vite dev",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
+    "typecheck": "tsc -b tsconfig.json --noEmit false",
+    "test": "vitest run",
+    "test:smoke": "node scripts/smoke.mjs"
+  },
+  "dependencies": {
+    "@delyforge/shared": "workspace:*",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@fontsource-variable/geist": "^5.3.0",
+    "@fontsource-variable/geist-mono": "^5.3.0",
+    "@tailwindcss/vite": "^4.3.5",
+    "@tanstack/react-query": "^5.107.1",
+    "@types/node": "^26.6.6",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.3.0",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "electron": "^45.3.2",
+    "electron-builder": "^26.18.0",
+    "electron-vite": "^6.0.0",
+    "lucide-react": "^1.72.0",
+    "radix-ui": "^1.8.1",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "react-router": "^8.5.1",
+    "sonner": "^2.0.8",
+    "tailwind-merge": "^3.7.0",
+    "tailwindcss": "^4.3.5",
+    "typescript": "~6.0.3",
+    "vite": "^8.3.8",
+    "vitest": "^5.1.0",
+    "zustand": "^5.1.0"
+  },
+  "productName": "DelyForge"
+}

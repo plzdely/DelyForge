@@ -1,0 +1,25 @@
+{
+  "name": "delyforge",
+  "private": true,
+  "description": "DelyForge — Build. Automate. Control. Discord bot creation, management, automation and hosting platform by plzdely.",
+  "license": "UNLICENSED",
+  "packageManager": "pnpm@11.9.0",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "dev:desktop": "pnpm --filter @delyforge/desktop dev",
+    "dev:api": "pnpm --filter @delyforge/shared build && pnpm --filter @delyforge/api dev",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm --filter @delyforge/shared build && pnpm -r typecheck",
+    "test": "pnpm --filter @delyforge/shared build && pnpm -r test",
+    "test:smoke": "pnpm --filter @delyforge/desktop build && pnpm --filter @delyforge/desktop test:smoke",
+    "db:up": "docker compose up -d --wait postgres",
+    "db:down": "docker compose stop postgres",
+    "db:migrate": "pnpm --filter @delyforge/api prisma:migrate",
+    "db:seed": "pnpm --filter @delyforge/api prisma:seed"
+  },
+  "devDependencies": {
+    "typescript": "~6.0.3"
+  }
+}
