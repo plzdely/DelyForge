@@ -31,6 +31,16 @@ It is the source of truth for "how the system fits together". When a decision ch
 * **Cloud** owns everything that must be trusted: accounts, money, entitlements, AI keys, marketplace.
 * **Web** is a future client of the same API. Business logic lives in the API and in `packages/shared`, never only in a UI.
 
+### What runs where
+
+| | Customer's PC | DelyForge servers (run by plzdely) | Developer's PC |
+|---|---|---|---|
+| Install | One signed `DelyForge Setup.exe`, double-click | — | Node.js, pnpm, Git |
+| Database | Built-in SQLite file (nothing to install) | Managed PostgreSQL (e.g. Neon, Supabase, AWS RDS) | `pnpm db:up` — Prisma's bundled local Postgres (Docker optional) |
+| Runs | Desktop app + their bots | Cloud API | Everything, for development |
+
+Customers never install a database, Docker, Node.js or anything else.
+
 ---
 
 ## 2. Technology decisions

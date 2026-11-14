@@ -10,3 +10,4 @@ versions follow [Semantic Versioning](https://semver.org/).
 - `@delyforge/shared`: plan catalogue (Free/Pro/Business/Enterprise), entitlement resolution, typed IPC contract, secret redaction.
 - `@delyforge/desktop`: secure Electron shell, local SQLite database with migrations, design system, sidebar navigation with feature gating, Dashboard, Settings (theme), Subscription plans view.
 - `@delyforge/api`: NestJS API with validated configuration, health check, rate limiting, global error handling, Prisma schema and plans endpoint.
+- Local development database without Docker (`pnpm db:up` uses Prisma's bundled Postgres; Docker remains optional).

@@ -14,10 +14,12 @@
     "typecheck": "pnpm --filter @delyforge/shared build && pnpm -r typecheck",
     "test": "pnpm --filter @delyforge/shared build && pnpm -r test",
     "test:smoke": "pnpm --filter @delyforge/desktop build && pnpm --filter @delyforge/desktop test:smoke",
-    "db:up": "docker compose up -d --wait postgres",
-    "db:down": "docker compose stop postgres",
+    "db:up": "pnpm --filter @delyforge/api db:start",
+    "db:down": "pnpm --filter @delyforge/api db:stop",
     "db:migrate": "pnpm --filter @delyforge/api prisma:migrate",
-    "db:seed": "pnpm --filter @delyforge/api prisma:seed"
+    "db:seed": "pnpm --filter @delyforge/api prisma:seed",
+    "db:up:docker": "docker compose up -d --wait postgres",
+    "db:down:docker": "docker compose stop postgres"
   },
   "devDependencies": {
     "typescript": "~6.0.3"

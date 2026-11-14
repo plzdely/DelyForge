@@ -24,8 +24,13 @@ Read [ARCHITECTURE.md](ARCHITECTURE.md) for how it fits together and [SECURITY.m
 |---|---|---|
 | [Node.js](https://nodejs.org) | 22.12 or newer (24 LTS recommended) | Runs all tooling |
 | [pnpm](https://pnpm.io) | 11.x | Package manager (`npm install -g pnpm`) |
-| [Docker Desktop](https://www.docker.com/products/docker-desktop/) | any recent | Runs the local PostgreSQL database for the API |
 | Git | any recent | Version control |
+
+No database installation is needed — `pnpm db:up` starts a local PostgreSQL that ships with the project's tooling.
+(Docker is supported as an optional alternative: `pnpm db:up:docker`.)
+
+> **Customers never install any of this.** They download one `DelyForge Setup.exe` and double-click it. The desktop
+> app keeps its data in a built-in SQLite file, and the cloud database runs on DelyForge's own servers.
 
 ## Getting started
 
@@ -45,12 +50,12 @@ A DelyForge window opens. Code changes to the UI reload instantly.
 
 ### Run the cloud API (optional for now)
 
-1. Start Docker Desktop and wait until it says "Engine running".
-2. Create your local config file (only once):
+1. Create your local config file (only once):
    ```bash
    cp apps/api/.env.example apps/api/.env
    ```
-3. Start the database, create the tables, and load the plan catalogue:
+2. Start the database, create the tables, and load the plan catalogue (the database keeps running in the background
+   until you run `pnpm db:down`; if `db:up` ever fails, run `pnpm db:down` and then `pnpm db:up` again):
    ```bash
    pnpm db:up
    ```
@@ -60,7 +65,7 @@ A DelyForge window opens. Code changes to the UI reload instantly.
    ```bash
    pnpm db:seed
    ```
-4. Start the API:
+3. Start the API:
    ```bash
    pnpm dev:api
    ```
