@@ -3,7 +3,7 @@
 Each phase ends with working, tested features — not UI mock-ups. A feature is "done" only when it works end to end
 and has tests. Progress is tracked in [DEVELOPMENT_STATUS.md](DEVELOPMENT_STATUS.md).
 
-## Phase 1 — Foundation ← current
+## Phase 1 — Foundation ✅
 - Monorepo (pnpm workspaces), TypeScript, docs
 - `packages/shared`: plan catalogue, entitlement logic, IPC contract, secret redaction, Zod schemas
 - Desktop: secure Electron shell (sandbox, CSP, typed preload bridge), local SQLite with migrations
@@ -12,12 +12,13 @@ and has tests. Progress is tracked in [DEVELOPMENT_STATUS.md](DEVELOPMENT_STATUS
 - Cloud API: NestJS skeleton, validated config, health check, rate limiting, error handling, Prisma schema + migration, plans endpoint
 - Tests for shared logic, desktop DB and API
 
-## Phase 2 — Desktop interface
+## Phase 2 — Desktop interface ✅
 - Bot projects CRUD (create, rename, duplicate, delete with confirm, favorite, group, search/filter)
 - Import/export project configuration (JSON, schema-validated, tokens excluded)
-- Notifications inbox, activity feed, full dashboard widgets, settings sections
+- Activity feed for every bot change, dashboard "Your bots"
 
-## Phase 3 — Discord integration
+## Phase 3 — Discord integration ← next
+- Notifications inbox (moved from Phase 2 — ships with the first real notification sources)
 - Guided bot creation wizard with Developer Portal walkthrough
 - Token validation (`GET /users/@me`), encrypted token storage
 - Intents & permission calculator, OAuth2 invite link generator

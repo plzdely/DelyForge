@@ -6,6 +6,10 @@ versions follow [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Phase 2: bot projects — My Bots page (search, favorites, sort, groups), Create Bot page, bot detail page with editable
+  settings, duplicate, delete with confirmation, export/import (`.delyforge.json`, tokens never included), plan limits
+  enforced by the main process, dashboard "Your bots" section.
+- Development-only plan simulation via `DELYFORGE_DEV_PLAN`.
 - Phase 1 foundation: pnpm monorepo, architecture/security/roadmap documentation.
 - `@delyforge/shared`: plan catalogue (Free/Pro/Business/Enterprise), entitlement resolution, typed IPC contract, secret redaction.
 - `@delyforge/desktop`: secure Electron shell, local SQLite database with migrations, design system, sidebar navigation with feature gating, Dashboard, Settings (theme), Subscription plans view.

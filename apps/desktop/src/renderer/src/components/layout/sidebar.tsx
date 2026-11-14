@@ -1,33 +1,33 @@
 import { DEFAULT_PLANS, hasFeature, lowestPlanWithFeature } from '@delyforge/shared';
 import { Lock } from 'lucide-react';
-import { NavLink } from 'react-router';
+import { Link, NavLink, useLocation } from 'react-router';
 import { Tooltip } from '@/components/ui/tooltip';
 import { cn } from '@/lib/cn';
 import { useEntitlements } from '@/lib/entitlements';
 import { useSettings } from '@/lib/queries';
-import { type NavItem, visibleSections } from '@/navigation';
+import { type NavItem, navItemForPath, visibleSections } from '@/navigation';
 
 function SidebarLink({ item }: { item: NavItem }) {
   const entitlements = useEntitlements();
   const locked = item.feature ? !hasFeature(entitlements, item.feature) : false;
   const unlockPlan = item.feature ? lowestPlanWithFeature(item.feature) : null;
   const Icon = item.icon;
+  const { pathname } = useLocation();
+  // Detail pages (e.g. /bots/<id>) highlight their section; /bots/new highlights "Create Bot", not "My Bots".
+  const isActive = navItemForPath(pathname)?.id === item.id;
 
   const link = (
-    <NavLink
+    <Link
       to={item.path}
-      end={item.path === '/'}
-      className={({ isActive }) =>
-        cn(
+      aria-current={isActive ? 'page' : undefined}
+      className={cn(
           'group relative flex h-8 items-center gap-2.5 rounded-md px-2.5 text-sm transition-colors duration-100',
           isActive
             ? 'bg-surface-hover text-fg before:absolute before:top-1.5 before:bottom-1.5 before:-left-3 before:w-0.5 before:rounded-full before:bg-primary'
             : 'text-fg-muted hover:bg-surface-hover/60 hover:text-fg',
           !item.available && 'text-fg-subtle',
-        )
-      }
+        )}
     >
-      {({ isActive }) => (
         <>
           <Icon
             strokeWidth={1.75}
@@ -43,8 +43,7 @@ function SidebarLink({ item }: { item: NavItem }) {
             <span className="ml-auto rounded border border-border px-1 text-2xs text-fg-subtle">Soon</span>
           ) : null}
         </>
-      )}
-    </NavLink>
+    </Link>
   );
 
   if (!item.available) {

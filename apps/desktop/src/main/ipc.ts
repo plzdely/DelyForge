@@ -1,22 +1,8 @@
 import { type IpcMainInvokeEvent, ipcMain } from 'electron';
-import {
-  type IpcChannel,
-  type IpcErrorCode,
-  type IpcResult,
-  ipcInputSchemas,
-} from '@delyforge/shared';
+import { type IpcChannel, type IpcResult, ipcInputSchemas } from '@delyforge/shared';
 import type { z } from 'zod';
+import { AppError } from './errors';
 import type { Logger } from './logger';
-
-/** Throw from a handler to return a specific, user-safe error to the renderer. */
-export class AppError extends Error {
-  constructor(
-    readonly code: IpcErrorCode,
-    message: string,
-  ) {
-    super(message);
-  }
-}
 
 type Input<C extends IpcChannel> = z.output<(typeof ipcInputSchemas)[C]>;
 

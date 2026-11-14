@@ -21,6 +21,19 @@ const bridge: DelyForgeBridge = {
   shell: {
     openExternal: (url) => invoke(IPC_CHANNELS.shellOpenExternal, url),
   },
+  account: {
+    getEntitlements: () => invoke(IPC_CHANNELS.accountGetEntitlements),
+  },
+  bots: {
+    list: () => invoke(IPC_CHANNELS.botsList),
+    get: (id) => invoke(IPC_CHANNELS.botsGet, { id }),
+    create: (input) => invoke(IPC_CHANNELS.botsCreate, input),
+    update: (input) => invoke(IPC_CHANNELS.botsUpdate, input),
+    duplicate: (id) => invoke(IPC_CHANNELS.botsDuplicate, { id }),
+    remove: (id) => invoke(IPC_CHANNELS.botsDelete, { id }),
+    exportToFile: (id) => invoke(IPC_CHANNELS.botsExport, { id }),
+    importFromFile: () => invoke(IPC_CHANNELS.botsImport),
+  },
 };
 
 contextBridge.exposeInMainWorld('delyforge', Object.freeze(bridge));

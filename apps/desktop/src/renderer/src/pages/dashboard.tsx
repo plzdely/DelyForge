@@ -1,7 +1,13 @@
 import { type ActivityItem, DEFAULT_PLANS } from '@delyforge/shared';
+import { Link } from 'react-router';
+import { BotAvatar } from '@/components/bots/bot-avatar';
+import { BotStatus } from '@/components/bots/bot-card';
 import {
   Activity,
+  ArrowRight,
   Bot,
+  Plus,
+  Star,
   Check,
   CircleAlert,
   CreditCard,
@@ -21,7 +27,7 @@ import { EmptyState, IconTile, Skeleton } from '@/components/ui/misc';
 import { cn } from '@/lib/cn';
 import { useEntitlements } from '@/lib/entitlements';
 import { greeting, timeAgo } from '@/lib/format';
-import { useDashboardSummary, useSettings, useUpdateSettings } from '@/lib/queries';
+import { useBots, useDashboardSummary, useSettings, useUpdateSettings } from '@/lib/queries';
 
 function StatCard({
   label,
@@ -155,6 +161,48 @@ function RecentActivity({ items, loading }: { items: ActivityItem[]; loading: bo
   );
 }
 
+function YourBots() {
+  const bots = useBots();
+  const list = [...(bots.data ?? [])]
+    .sort((a, b) => Number(b.isFavorite) - Number(a.isFavorite) || b.updatedAt.localeCompare(a.updatedAt))
+    .slice(0, 6);
+  return (
+    <Card className="mt-3">
+      <CardHeader
+        title="Your bots"
+        description="Favorites first, then most recently updated."
+        action={
+          <Button size="sm" variant="ghost" asChild>
+            <Link to="/bots">
+              View all <ArrowRight />
+            </Link>
+          </Button>
+        }
+      />
+      <CardBody>
+        <div className="grid grid-cols-3 gap-2">
+          {list.map((bot) => (
+            <Link
+              key={bot.id}
+              to={`/bots/${bot.id}`}
+              className="flex items-center gap-3 rounded-lg border border-border px-3 py-2.5 transition-colors hover:border-border-strong hover:bg-surface-hover/50"
+            >
+              <BotAvatar id={bot.id} name={bot.name} size="sm" />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1.5">
+                  <span className="truncate text-sm font-medium text-fg">{bot.name}</span>
+                  {bot.isFavorite ? <Star className="size-3 shrink-0 fill-warning text-warning" /> : null}
+                </div>
+                <BotStatus bot={bot} />
+              </div>
+            </Link>
+          ))}
+        </div>
+      </CardBody>
+    </Card>
+  );
+}
+
 export function DashboardPage() {
   const summary = useDashboardSummary();
   const { data: settings } = useSettings();
@@ -180,9 +228,15 @@ export function DashboardPage() {
     },
     {
       title: 'Create your first bot project',
-      description: 'Name your bot and pick a template or start from scratch.',
+      description: 'Give your bot a name — everything else can be set up step by step.',
       done: !isNewUser,
-      phase: 2,
+      action: isNewUser ? (
+        <Button size="sm" variant="primary" asChild>
+          <Link to="/bots/new">
+            <Plus /> Create bot
+          </Link>
+        </Button>
+      ) : undefined,
     },
     { title: 'Connect your Discord application', description: 'Securely link your bot token and invite the bot.', done: false, phase: 3 },
     { title: 'Enable modules', description: 'Moderation, welcome messages, tickets, leveling and more.', done: false, phase: 4 },
@@ -229,6 +283,8 @@ export function DashboardPage() {
         </div>
         <RecentActivity items={data?.recentActivity ?? []} loading={loading} />
       </div>
+
+      {!isNewUser ? <YourBots /> : null}
     </Page>
   );
 }

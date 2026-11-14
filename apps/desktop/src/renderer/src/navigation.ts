@@ -91,25 +91,18 @@ export const NAV_SECTIONS: NavSection[] = [
         label: 'My Bots',
         path: '/bots',
         icon: Bot,
-        available: false,
+        available: true,
         phase: 2,
         summary: 'Every bot project in one place — search, group, favorite and control them.',
-        planned: ['Project list with live status', 'Groups, favorites, search & filters', 'Duplicate, import & export', 'Start / stop all'],
       },
       {
         id: 'create-bot',
         label: 'Create Bot',
         path: '/bots/new',
         icon: CirclePlus,
-        available: false,
-        phase: 3,
-        summary: 'A guided wizard that connects your Discord application and gets your bot online in minutes.',
-        planned: [
-          'Step-by-step Discord Developer Portal guide',
-          'Secure token validation & encrypted storage',
-          'Intents & permission calculator',
-          'Invite link generator',
-        ],
+        available: true,
+        phase: 2,
+        summary: 'Create a bot project. The guided Discord connection wizard is added in Phase 3.',
       },
       {
         id: 'templates',
@@ -235,6 +228,15 @@ export const NAV_SECTIONS: NavSection[] = [
 ];
 
 export const ALL_NAV_ITEMS: NavItem[] = NAV_SECTIONS.flatMap((s) => s.items);
+
+/** The nav item a path belongs to — e.g. `/bots/<id>` belongs to "My Bots", `/bots/new` to "Create Bot". */
+export function navItemForPath(pathname: string): NavItem | undefined {
+  const exact = ALL_NAV_ITEMS.find((i) => i.path === pathname);
+  if (exact) return exact;
+  return ALL_NAV_ITEMS.filter((i) => i.path !== '/' && pathname.startsWith(`${i.path}/`)).sort(
+    (a, b) => b.path.length - a.path.length,
+  )[0];
+}
 
 export function visibleSections(showRoadmap: boolean): NavSection[] {
   return NAV_SECTIONS.map((s) => ({ ...s, items: s.items.filter((i) => i.available || showRoadmap) })).filter(

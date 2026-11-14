@@ -1,6 +1,6 @@
 # Development Status
 
-_Last updated: 2026-11-14 — end of Phase 1._
+_Last updated: 2026-11-14 — end of Phase 2._
 
 Legend: ✅ done & verified · 🟡 done, not yet verified end-to-end · ⏳ pending · ⛔ blocked on an external action
 
@@ -26,6 +26,26 @@ Legend: ✅ done & verified · 🟡 done, not yet verified end-to-end · ⏳ pen
 | Local dev database without Docker (`pnpm db:up` → Prisma's built-in Postgres; Docker optional) | ✅ | data survives stop/start |
 | DB integration tests | ✅ | 2 tests against real Postgres (`DELYFORGE_DB_TESTS=1`) |
 
+## Phase 2 — Desktop interface: bot projects
+
+| Item | Status | Verification |
+|---|---|---|
+| Shared bot schemas (create/update/export, strict, length limits matching Discord) | ✅ | 9 unit tests |
+| Bot project repository: create, edit, favorite, group, duplicate (unique names, never copies token/app), delete (token cascades) | ✅ | 14 unit tests |
+| Plan limits enforced in the main process for create / duplicate / import; over-limit projects kept after downgrade | ✅ | unit tests + smoke test (2nd bot refused on Free) |
+| Export to `.delyforge.json` (no token ever) and import with strict validation, 1 MB cap, clear error messages | ✅ | unit tests incl. tampered/oversized files. Native file dialogs checked by type/build only — try it manually once |
+| Entitlements now come from the main process (`account:get-entitlements`); dev-only `DELYFORGE_DEV_PLAN` override | ✅ | unit tests (ignored in packaged builds) |
+| My Bots page: cards, search, All/Favorites, sort, group chips, actions menu, limit banner, empty & no-results states | ✅ | smoke screenshots |
+| Create Bot page (step 1 of the future wizard) with inline validation | ✅ | smoke test fills and submits the real form |
+| Bot detail page: header, favorite, actions, General settings form (dirty tracking, save/discard), project info | ✅ | smoke test renames via the form |
+| Delete confirmation dialog, toasts for every action | ✅ | manual review |
+| Dashboard: "Create bot" onboarding action, "Your bots" section, activity for every bot change | ✅ | smoke screenshots |
+
+### Moved out of Phase 2
+- **Notifications inbox → Phase 3.** Every notification type (bot crashed/disconnected, workflow failed, billing,
+  updates) is produced by systems that don't exist yet. An inbox with nothing able to fill it would be a non-working
+  page, so it ships together with the bot supervisor that produces the first real notifications.
+
 ## Known limitations / honest notes
 - No accounts yet — the desktop app runs on the local Free plan (accounts & Stripe are Phase 7).
 - The bot supervisor does not exist yet, so "Online" is always 0 (Phase 3).
@@ -34,6 +54,12 @@ Legend: ✅ done & verified · 🟡 done, not yet verified end-to-end · ⏳ pen
 - Project lives inside a OneDrive-synced folder. OneDrive can lock files inside `node_modules` during installs;
   moving the project to e.g. `C:\dev\DelyForge` is recommended.
 
-## Next up — Phase 2
-Bot projects CRUD (create, rename, duplicate, delete, favorite, group, search), import/export, notifications inbox,
-activity feed.
+## Testing with a paid plan during development
+The Free plan allows 1 bot. To test with more, start the app with a simulated plan (development builds only —
+customer builds ignore it). In Git Bash: `DELYFORGE_DEV_PLAN=pro pnpm dev:desktop`. In PowerShell:
+`$env:DELYFORGE_DEV_PLAN='pro'; pnpm dev:desktop`.
+
+## Next up — Phase 3 (Discord integration)
+Guided connection wizard with Developer Portal walkthrough, token validation + encrypted storage, intents & permission
+calculator, invite link generator, bot runtime + supervisor (start/stop/restart/auto-restart), live console, monitoring,
+notifications inbox.

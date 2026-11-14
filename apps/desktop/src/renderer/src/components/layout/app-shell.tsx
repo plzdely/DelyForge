@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { Outlet, useLocation } from 'react-router';
 import { Wordmark } from '@/components/brand/logo';
 import { useSettings } from '@/lib/queries';
-import { ALL_NAV_ITEMS } from '@/navigation';
+import { navItemForPath } from '@/navigation';
 import { Sidebar } from './sidebar';
 
 /** Keeps <html data-theme> and reduce-motion in sync with settings (and with the OS when theme = system). */
@@ -28,7 +28,7 @@ function useThemeSync() {
 
 function TitleBar() {
   const { pathname } = useLocation();
-  const current = ALL_NAV_ITEMS.find((i) => i.path === pathname);
+  const current = navItemForPath(pathname);
   return (
     <header className="drag-region flex h-10 shrink-0 items-center border-b border-border bg-bg-subtle pr-[140px]">
       <div className="flex w-60 items-center gap-2 px-4">

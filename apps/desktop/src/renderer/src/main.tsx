@@ -7,6 +7,9 @@ import { Toaster } from 'sonner';
 import { AppShell } from '@/components/layout/app-shell';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { isBridgeAvailable } from '@/lib/bridge';
+import { BotDetailPage } from '@/pages/bots/detail';
+import { BotsPage } from '@/pages/bots/list';
+import { CreateBotPage } from '@/pages/bots/new';
 import { DashboardPage } from '@/pages/dashboard';
 import { RoadmapPage } from '@/pages/roadmap';
 import { SettingsPage } from '@/pages/settings';
@@ -27,6 +30,9 @@ const router = createHashRouter([
       { index: true, element: <DashboardPage /> },
       { path: 'settings', element: <SettingsPage /> },
       { path: 'subscription', element: <SubscriptionPage /> },
+      { path: 'bots', element: <BotsPage /> },
+      { path: 'bots/new', element: <CreateBotPage /> },
+      { path: 'bots/:id', element: <BotDetailPage /> },
       { path: '*', element: <RoadmapPage /> },
     ],
   },

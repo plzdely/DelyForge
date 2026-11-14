@@ -5,6 +5,7 @@ import {
   type AppSettingsPatch,
   DEFAULT_APP_SETTINGS,
   type DashboardSummary,
+  type PlanId,
   appSettingsSchema,
 } from '@delyforge/shared';
 import type { LocalDatabase } from './database';
@@ -82,6 +83,7 @@ export class DashboardRepository {
     private readonly activity: ActivityRepository,
     /** Number of bots currently running — supplied by the bot supervisor (Phase 3). */
     private readonly runningBotCount: () => number,
+    private readonly planId: () => PlanId = () => 'free',
   ) {}
 
   summary(): DashboardSummary {
@@ -92,7 +94,7 @@ export class DashboardRepository {
       onlineBots: online,
       offlineBots: total - online,
       recentActivity: this.activity.recent(8),
-      localPlanId: 'free',
+      localPlanId: this.planId(),
       accountConnected: false,
     };
   }

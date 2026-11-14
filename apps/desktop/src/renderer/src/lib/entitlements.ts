@@ -1,12 +1,22 @@
-import { type Entitlements, resolveEntitlements } from '@delyforge/shared';
-import { useMemo } from 'react';
+import { type AccountEntitlements, resolveEntitlements } from '@delyforge/shared';
+import { useQuery } from '@tanstack/react-query';
+import { call } from './bridge';
+
+const FREE_FALLBACK: AccountEntitlements = {
+  ...resolveEntitlements({ planId: 'free', status: 'none' }),
+  graceEndsAt: null,
+  source: 'local',
+};
 
 /**
- * Entitlements as seen by the desktop UI.
- *
- * Until accounts ship (Phase 7) the app runs locally on the Free plan. After that this hook will read the
- * server-signed entitlement token instead (ARCHITECTURE.md §8) — the UI using it does not need to change.
+ * What this installation may use, as decided by the main process (never by the UI itself).
+ * While loading, the Free plan is assumed — the most restrictive option, so nothing is shown that isn't allowed.
  */
-export function useEntitlements(): Entitlements {
-  return useMemo(() => resolveEntitlements({ planId: 'free', status: 'none' }), []);
+export function useEntitlements(): AccountEntitlements {
+  const { data } = useQuery({
+    queryKey: ['entitlements'],
+    queryFn: () => call((b) => b.account.getEntitlements()),
+    staleTime: Infinity,
+  });
+  return data ?? FREE_FALLBACK;
 }

@@ -1,9 +1,13 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
+import { readFile, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { BrowserWindow, type IpcMainInvokeEvent, app, nativeTheme, session, shell } from 'electron';
-import { BRAND, IPC_CHANNELS, type AppSettings } from '@delyforge/shared';
+import { BrowserWindow, type IpcMainInvokeEvent, app, dialog, nativeTheme, session, shell } from 'electron';
+import { BOT_LIMITS, BRAND, IPC_CHANNELS, type AppSettings, slugify } from '@delyforge/shared';
+import { BotRepository } from './db/bots';
 import { openDatabase } from './db/database';
 import { ActivityRepository, DashboardRepository, SettingsRepository } from './db/repositories';
+import { createEntitlementsProvider } from './entitlements';
+import { AppError } from './errors';
 import { createIpcRegistrar } from './ipc';
 import { Logger } from './logger';
 import {
@@ -58,8 +62,16 @@ async function main(): Promise<void> {
   const db = openDatabase(join(dataDir, 'delyforge.db'));
   const settings = new SettingsRepository(db);
   const activity = new ActivityRepository(db);
-  // Phase 3 replaces this with the bot supervisor's live count.
-  const dashboard = new DashboardRepository(db, activity, () => 0);
+  const entitlements = createEntitlementsProvider({
+    isPackaged: app.isPackaged,
+    devPlan: process.env['DELYFORGE_DEV_PLAN'],
+  });
+  if (entitlements().source === 'dev-override') {
+    logger.warn(`Development plan override active: ${entitlements().effectivePlanId}`);
+  }
+  const bots = new BotRepository(db, activity, entitlements);
+  // Phase 3 replaces `() => 0` with the bot supervisor's live count.
+  const dashboard = new DashboardRepository(db, activity, () => 0, () => entitlements().effectivePlanId);
 
   if (activity.count() === 0) activity.record('app', 'Welcome to DelyForge — your workspace is ready.');
 
@@ -100,6 +112,47 @@ async function main(): Promise<void> {
   handle(IPC_CHANNELS.shellOpenExternal, async (url) => {
     await shell.openExternal(url);
     return null;
+  });
+  handle(IPC_CHANNELS.accountGetEntitlements, () => entitlements());
+
+  // Bot projects
+  handle(IPC_CHANNELS.botsList, () => bots.list());
+  handle(IPC_CHANNELS.botsGet, ({ id }) => bots.get(id));
+  handle(IPC_CHANNELS.botsCreate, (input) => bots.create(input));
+  handle(IPC_CHANNELS.botsUpdate, (input) => bots.update(input));
+  handle(IPC_CHANNELS.botsDuplicate, ({ id }) => bots.duplicate(id));
+  handle(IPC_CHANNELS.botsDelete, ({ id }) => {
+    bots.remove(id);
+    return null;
+  });
+  handle(IPC_CHANNELS.botsExport, async ({ id }, event) => {
+    const project = bots.get(id);
+    const win = BrowserWindow.fromWebContents(event.sender);
+    const options = {
+      title: `Export “${project.name}”`,
+      defaultPath: join(app.getPath('documents'), `${slugify(project.name)}.delyforge.json`),
+      filters: [{ name: 'DelyForge bot project', extensions: ['json'] }],
+    };
+    const result = win ? await dialog.showSaveDialog(win, options) : await dialog.showSaveDialog(options);
+    if (result.canceled || !result.filePath) return { saved: false, fileName: null };
+    const data = bots.exportProject(id, app.getVersion());
+    await writeFile(result.filePath, JSON.stringify(data, null, 2), 'utf8');
+    return { saved: true, fileName: result.filePath.split(/[\\/]/).pop() ?? null };
+  });
+  handle(IPC_CHANNELS.botsImport, async (_input, event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    const options = {
+      title: 'Import a bot project',
+      properties: ['openFile' as const],
+      filters: [{ name: 'DelyForge bot project', extensions: ['json'] }],
+    };
+    const result = win ? await dialog.showOpenDialog(win, options) : await dialog.showOpenDialog(options);
+    const file = result.filePaths[0];
+    if (result.canceled || !file) return { project: null };
+    if ((await stat(file)).size > BOT_LIMITS.importMaxBytes) {
+      throw new AppError('VALIDATION_FAILED', 'This file is too large to be a DelyForge bot export.');
+    }
+    return { project: bots.importProject(await readFile(file, 'utf8')) };
   });
 
   const win = createMainWindow();
@@ -163,7 +216,7 @@ function createMainWindow(): BrowserWindow {
  * saves a screenshot of each, then exits with code 0 (pass) or 1 (fail). Used by `pnpm test:smoke`.
  */
 async function runSmokeTest(win: BrowserWindow, outDir: string, logger: Logger): Promise<void> {
-  const routes = ['/', '/settings', '/subscription'];
+  const routes = ['/', '/settings', '/subscription', '/bots'];
   mkdirSync(outDir, { recursive: true });
   const failures: string[] = [];
   win.webContents.on('console-message', (details) => {
@@ -200,7 +253,68 @@ async function runSmokeTest(win: BrowserWindow, outDir: string, logger: Logger):
       await win.webContents.executeJavaScript(`window.location.hash = '#${route}'`);
       if (!(await waitForReady(route))) failures.push(`route ${route} did not render`);
       await settle();
-      await capture(route === '/' ? 'dashboard' : route.slice(1));
+      await capture(route === '/' ? 'dashboard' : route === '/bots' ? 'bots-empty' : route.slice(1));
+    }
+
+    // Create a bot through the real form, exactly as a user would.
+    await win.webContents.executeJavaScript(`window.location.hash = '#/bots/new'`);
+    if (!(await waitForReady('/bots/new'))) failures.push('create bot page did not render');
+    await settle();
+    await capture('bots-new');
+    await win.webContents.executeJavaScript(`(() => {
+      const setValue = (sel, value, proto) => {
+        const el = document.querySelector(sel);
+        Object.getOwnPropertyDescriptor(proto.prototype, 'value').set.call(el, value);
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+      };
+      setValue('#bot-name', 'Aurora', HTMLInputElement);
+      setValue('#bot-description', 'Moderation, welcome messages and leveling for the Aurora gaming community.', HTMLTextAreaElement);
+      setValue('#bot-group', 'Gaming', HTMLInputElement);
+      document.querySelector('[data-testid="create-bot-submit"]').click();
+    })()`);
+    let botRoute = '';
+    for (let i = 0; i < 50 && !botRoute; i++) {
+      await new Promise((r) => setTimeout(r, 100));
+      const hash = (await win.webContents.executeJavaScript('window.location.hash')) as string;
+      if (/^#\/bots\/[0-9a-f-]{36}$/.test(hash)) botRoute = hash.slice(1);
+    }
+    if (!botRoute) failures.push('creating a bot through the form did not open its page');
+    else {
+      if (!(await waitForReady(botRoute))) failures.push('bot detail page did not render');
+      await settle();
+      await capture('bot-detail');
+
+      // Rename through the settings form and confirm it was saved.
+      await win.webContents.executeJavaScript(`(() => {
+        const el = document.querySelector('#bot-name');
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, 'Aurora Prime');
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+      })()`);
+      await new Promise((r) => setTimeout(r, 100));
+      await win.webContents.executeJavaScript(
+        `[...document.querySelectorAll('button[type="submit"]')].find((b) => b.textContent.includes('Save changes')).click()`,
+      );
+      await new Promise((r) => setTimeout(r, 600));
+      const renamed = (await win.webContents.executeJavaScript(
+        `window.delyforge.bots.get('${botRoute.split('/').pop()}').then((r) => r.ok && r.data.name)`,
+      )) as string | false;
+      if (renamed !== 'Aurora Prime') failures.push(`renaming via the form failed (got ${String(renamed)})`);
+    }
+
+    // Free plan allows one bot: a second must be refused by the main process.
+    const limit = (await win.webContents.executeJavaScript(
+      `window.delyforge.bots.create({ name: 'Second' }).then((r) => !r.ok && r.error.code)`,
+    )) as string | false;
+    if (limit !== 'LIMIT_REACHED') failures.push(`plan limit not enforced (got ${String(limit)})`);
+
+    for (const [route, name] of [
+      ['/bots', 'bots-list'],
+      ['/', 'dashboard-with-bot'],
+    ] as const) {
+      await win.webContents.executeJavaScript(`window.location.hash = '#${route}'`);
+      if (!(await waitForReady(route))) failures.push(`route ${route} did not render`);
+      await settle();
+      await capture(name);
     }
 
     // End-to-end settings check: UI bridge → IPC validation → SQLite → survives a reload.
