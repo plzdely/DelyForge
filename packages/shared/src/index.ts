@@ -5,3 +5,5 @@ export * from './redact.js';
 export * from './settings.js';
 export * from './ipc.js';
 export * from './bots.js';
+export * from './discord.js';
+export * from './runtime.js';

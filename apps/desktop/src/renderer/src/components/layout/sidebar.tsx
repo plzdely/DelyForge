@@ -4,10 +4,10 @@ import { Link, NavLink, useLocation } from 'react-router';
 import { Tooltip } from '@/components/ui/tooltip';
 import { cn } from '@/lib/cn';
 import { useEntitlements } from '@/lib/entitlements';
-import { useSettings } from '@/lib/queries';
+import { useDashboardSummary, useSettings } from '@/lib/queries';
 import { type NavItem, navItemForPath, visibleSections } from '@/navigation';
 
-function SidebarLink({ item }: { item: NavItem }) {
+function SidebarLink({ item, badge }: { item: NavItem; badge?: number }) {
   const entitlements = useEntitlements();
   const locked = item.feature ? !hasFeature(entitlements, item.feature) : false;
   const unlockPlan = item.feature ? lowestPlanWithFeature(item.feature) : null;
@@ -34,7 +34,11 @@ function SidebarLink({ item }: { item: NavItem }) {
             className={cn('size-4 shrink-0', isActive ? 'text-primary' : 'text-fg-subtle group-hover:text-fg-muted')}
           />
           <span className="truncate">{item.label}</span>
-          {locked && unlockPlan ? (
+          {badge ? (
+            <span className="ml-auto min-w-5 rounded-full bg-primary px-1.5 text-center text-2xs font-semibold text-primary-fg tabular-nums">
+              {badge > 99 ? '99+' : badge}
+            </span>
+          ) : locked && unlockPlan ? (
             <span className="ml-auto inline-flex items-center gap-1 text-2xs font-medium text-fg-subtle">
               <Lock className="size-3" />
               {unlockPlan.name}
@@ -61,6 +65,7 @@ export function Sidebar() {
   const sections = visibleSections(settings?.showRoadmapPreview ?? false);
   const entitlements = useEntitlements();
   const plan = DEFAULT_PLANS[entitlements.effectivePlanId];
+  const unread = useDashboardSummary().data?.unreadNotifications ?? 0;
 
   return (
     <aside className="flex w-60 shrink-0 flex-col border-r border-border bg-bg-subtle">
@@ -72,7 +77,7 @@ export function Sidebar() {
             </div>
             <div className="flex flex-col gap-px">
               {section.items.map((item) => (
-                <SidebarLink key={item.id} item={item} />
+                <SidebarLink key={item.id} item={item} badge={item.id === 'notifications' ? unread : undefined} />
               ))}
             </div>
           </div>

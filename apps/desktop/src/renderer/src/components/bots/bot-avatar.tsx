@@ -1,3 +1,4 @@
+import type { BotProject } from '@delyforge/shared';
 import { cn } from '@/lib/cn';
 
 // Hues chosen to sit within the brand (violet → indigo → blue) with a few accents for variety.
@@ -32,4 +33,13 @@ export function BotAvatar({ id, name, size = 'md' }: { id: string; name: string;
       {initials}
     </span>
   );
+}
+
+/** Shows the bot's Discord avatar once connected, otherwise the generated placeholder. */
+export function BotIdentityAvatar({ bot, size = 'md' }: { bot: BotProject; size?: 'sm' | 'md' | 'lg' }) {
+  if (bot.botAvatarUrl) {
+    const px = { sm: 'size-7 rounded-md', md: 'size-9 rounded-lg', lg: 'size-12 rounded-xl' }[size];
+    return <img src={bot.botAvatarUrl} alt="" className={cn('shrink-0 object-cover', px)} />;
+  }
+  return <BotAvatar id={bot.id} name={bot.name} size={size} />;
 }

@@ -1,15 +1,40 @@
-import { mkdirSync, writeFileSync } from 'node:fs';
 import { readFile, stat, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
-import { BrowserWindow, type IpcMainInvokeEvent, app, dialog, nativeTheme, session, shell } from 'electron';
-import { BOT_LIMITS, BRAND, IPC_CHANNELS, type AppSettings, slugify } from '@delyforge/shared';
+import { basename, join } from 'node:path';
+import {
+  BrowserWindow,
+  type IpcMainInvokeEvent,
+  Notification,
+  app,
+  clipboard,
+  dialog,
+  nativeTheme,
+  safeStorage,
+  session,
+  shell,
+} from 'electron';
+import {
+  BOT_EVENT_CHANNEL,
+  BOT_LIMITS,
+  BRAND,
+  type BotEvent,
+  IPC_CHANNELS,
+  type AppSettings,
+  slugify,
+} from '@delyforge/shared';
 import { BotRepository } from './db/bots';
 import { openDatabase } from './db/database';
+import { LogRepository, NotificationRepository } from './db/logs';
+import { SecretRepository } from './db/secrets';
+import { DiscordApi } from './discord-api';
+import { BotConnections } from './runtime/connections';
+import { createElectronLauncher, resolveRuntimeEntry } from './runtime/electron-launcher';
+import { BotSupervisor } from './runtime/supervisor';
 import { ActivityRepository, DashboardRepository, SettingsRepository } from './db/repositories';
 import { createEntitlementsProvider } from './entitlements';
 import { AppError } from './errors';
 import { createIpcRegistrar } from './ipc';
 import { Logger } from './logger';
+import { runSmokeTest } from './smoke';
 import {
   APP_ORIGIN,
   applyDevCsp,
@@ -70,10 +95,66 @@ async function main(): Promise<void> {
     logger.warn(`Development plan override active: ${entitlements().effectivePlanId}`);
   }
   const bots = new BotRepository(db, activity, entitlements);
-  // Phase 3 replaces `() => 0` with the bot supervisor's live count.
-  const dashboard = new DashboardRepository(db, activity, () => 0, () => entitlements().effectivePlanId);
+  const secrets = new SecretRepository(db, {
+    isAvailable: () => safeStorage.isEncryptionAvailable(),
+    encrypt: (plain) => safeStorage.encryptString(plain),
+    decrypt: (data) => safeStorage.decryptString(data),
+  });
+  const logs = new LogRepository(db);
+  const notifications = new NotificationRepository(db);
+  const connections = new BotConnections(bots, secrets, new DiscordApi(app.getVersion()), activity);
 
   if (activity.count() === 0) activity.record('app', 'Welcome to DelyForge — your workspace is ready.');
+  const pruneLogs = () => {
+    try {
+      logs.pruneOlderThan(entitlements().limits.logRetentionDays);
+    } catch (err) {
+      logger.warn('Log pruning failed', err);
+    }
+  };
+  pruneLogs();
+  setInterval(pruneLogs, 60 * 60_000).unref();
+
+  // Live events → every open window
+  const emit = (event: BotEvent) => {
+    for (const w of BrowserWindow.getAllWindows()) {
+      if (!w.isDestroyed()) w.webContents.send(BOT_EVENT_CHANNEL, event);
+    }
+  };
+
+  const supervisor = new BotSupervisor({
+    launcher: createElectronLauncher(resolveRuntimeEntry()),
+    bots,
+    secrets,
+    logs,
+    notifications,
+    settings: () => settings.get(),
+    entitlements,
+    emit,
+    desktopNotify: (title, body) => {
+      if (!Notification.isSupported()) return;
+      const n = new Notification({ title, body });
+      n.on('click', () => {
+        const w = BrowserWindow.getAllWindows()[0];
+        if (w) {
+          if (w.isMinimized()) w.restore();
+          w.focus();
+        }
+      });
+      n.show();
+    },
+  });
+
+  const dashboard = new DashboardRepository(
+    db,
+    activity,
+    () => supervisor.onlineCount(),
+    () => entitlements().effectivePlanId,
+    () => {
+      const t = bots.totals();
+      return { totalServers: t.servers, totalCommands: t.commands, unreadNotifications: notifications.unreadCount() };
+    },
+  );
 
   // Security
   const ses = session.defaultSession;
@@ -113,31 +194,38 @@ async function main(): Promise<void> {
     await shell.openExternal(url);
     return null;
   });
+  handle(IPC_CHANNELS.clipboardWrite, (text) => {
+    clipboard.writeText(text);
+    return null;
+  });
   handle(IPC_CHANNELS.accountGetEntitlements, () => entitlements());
 
   // Bot projects
   handle(IPC_CHANNELS.botsList, () => bots.list());
   handle(IPC_CHANNELS.botsGet, ({ id }) => bots.get(id));
   handle(IPC_CHANNELS.botsCreate, (input) => bots.create(input));
-  handle(IPC_CHANNELS.botsUpdate, (input) => bots.update(input));
+  handle(IPC_CHANNELS.botsUpdate, (input) => {
+    const updated = bots.update(input);
+    if (input.patch.presence) supervisor.setPresence(input.id);
+    return updated;
+  });
   handle(IPC_CHANNELS.botsDuplicate, ({ id }) => bots.duplicate(id));
-  handle(IPC_CHANNELS.botsDelete, ({ id }) => {
+  handle(IPC_CHANNELS.botsDelete, async ({ id }) => {
+    await supervisor.forget(id);
     bots.remove(id);
     return null;
   });
   handle(IPC_CHANNELS.botsExport, async ({ id }, event) => {
     const project = bots.get(id);
-    const win = BrowserWindow.fromWebContents(event.sender);
-    const options = {
+    const result = await saveDialog(event, {
       title: `Export “${project.name}”`,
       defaultPath: join(app.getPath('documents'), `${slugify(project.name)}.delyforge.json`),
       filters: [{ name: 'DelyForge bot project', extensions: ['json'] }],
-    };
-    const result = win ? await dialog.showSaveDialog(win, options) : await dialog.showSaveDialog(options);
+    });
     if (result.canceled || !result.filePath) return { saved: false, fileName: null };
     const data = bots.exportProject(id, app.getVersion());
     await writeFile(result.filePath, JSON.stringify(data, null, 2), 'utf8');
-    return { saved: true, fileName: result.filePath.split(/[\\/]/).pop() ?? null };
+    return { saved: true, fileName: basename(result.filePath) };
   });
   handle(IPC_CHANNELS.botsImport, async (_input, event) => {
     const win = BrowserWindow.fromWebContents(event.sender);
@@ -154,6 +242,55 @@ async function main(): Promise<void> {
     }
     return { project: bots.importProject(await readFile(file, 'utf8')) };
   });
+  handle(IPC_CHANNELS.botsConnect, async ({ id, token }) => {
+    if (supervisor.state(id).status !== 'offline') await supervisor.stop(id);
+    return connections.connect(id, token);
+  });
+  handle(IPC_CHANNELS.botsDisconnect, async ({ id }) => {
+    await supervisor.forget(id);
+    return connections.disconnect(id);
+  });
+
+  // Runtime control
+  handle(IPC_CHANNELS.runtimeStates, () => supervisor.states());
+  handle(IPC_CHANNELS.runtimeStart, ({ id }) => supervisor.start(id));
+  handle(IPC_CHANNELS.runtimeStop, ({ id }) => supervisor.stop(id));
+  handle(IPC_CHANNELS.runtimeRestart, ({ id }) => supervisor.restart(id));
+  handle(IPC_CHANNELS.runtimeStartAll, () => supervisor.startAll());
+  handle(IPC_CHANNELS.runtimeStopAll, () => supervisor.stopAll());
+
+  // Logs
+  handle(IPC_CHANNELS.logsList, ({ id, limit }) => {
+    bots.get(id); // NOT_FOUND for unknown bots
+    return logs.list(id, limit);
+  });
+  handle(IPC_CHANNELS.logsClear, ({ id }) => {
+    logs.clear(id);
+    return null;
+  });
+  handle(IPC_CHANNELS.logsExport, async ({ id }, event) => {
+    const project = bots.get(id);
+    const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+    const result = await saveDialog(event, {
+      title: `Download logs for “${project.name}”`,
+      defaultPath: join(app.getPath('documents'), `${slugify(project.name)}-logs-${stamp}.log`),
+      filters: [{ name: 'Log file', extensions: ['log', 'txt'] }],
+    });
+    if (result.canceled || !result.filePath) return { saved: false, fileName: null };
+    await writeFile(result.filePath, logs.toText(id), 'utf8');
+    return { saved: true, fileName: basename(result.filePath) };
+  });
+
+  // Notifications
+  handle(IPC_CHANNELS.notificationsList, () => notifications.list());
+  handle(IPC_CHANNELS.notificationsMarkRead, ({ ids }) => {
+    notifications.markRead(ids);
+    return null;
+  });
+  handle(IPC_CHANNELS.notificationsClear, () => {
+    notifications.clear();
+    return null;
+  });
 
   const win = createMainWindow();
   nativeTheme.on('updated', () => {
@@ -168,15 +305,52 @@ async function main(): Promise<void> {
   app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') app.quit();
   });
-  app.on('will-quit', () => {
-    try {
-      db.close();
-    } catch {
-      // already closed
-    }
+
+  // Stop every bot cleanly before quitting, so each disconnects from Discord properly.
+  let shuttingDown = false;
+  app.on('before-quit', (event) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    event.preventDefault();
+    const timeout = new Promise((r) => setTimeout(r, 8_000));
+    void Promise.race([supervisor.shutdown(), timeout]).finally(() => {
+      try {
+        db.close();
+      } catch {
+        // already closed
+      }
+      app.quit();
+    });
   });
 
-  if (process.env['DELYFORGE_SMOKE_DIR']) void runSmokeTest(win, process.env['DELYFORGE_SMOKE_DIR'], logger);
+  if (!process.env['DELYFORGE_SMOKE_DIR']) supervisor.startOnLaunch();
+
+  if (process.env['DELYFORGE_SMOKE_DIR']) {
+    void runSmokeTest(win, process.env['DELYFORGE_SMOKE_DIR'], logger, {
+      runtimeProbe: async (botId) => {
+        // Clearly fake, correctly shaped token: Discord answers 401, or login fails if offline.
+        const fake = 'MTAxMjM0NTY3ODkwMTIzNDU2Nw.GaBcDe.' + 'smoke-test-not-a-real-token-0000000';
+        secrets.save(botId, fake, '000000000000000000');
+        let launched = false;
+        supervisor.start(botId);
+        for (let i = 0; i < 200; i++) {
+          const st = supervisor.state(botId);
+          if (st.pid !== null) launched = true;
+          if (st.status === 'error' || st.status === 'crashed') break;
+          await new Promise((r) => setTimeout(r, 100));
+        }
+        const errorCode = supervisor.state(botId).lastError?.code ?? null;
+        await supervisor.stop(botId);
+        secrets.remove(botId);
+        return { launched, errorCode };
+      },
+    });
+  }
+}
+
+function saveDialog(event: IpcMainInvokeEvent, options: Electron.SaveDialogOptions) {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  return win ? dialog.showSaveDialog(win, options) : dialog.showSaveDialog(options);
 }
 
 function createMainWindow(): BrowserWindow {
@@ -209,139 +383,4 @@ function createMainWindow(): BrowserWindow {
   else void win.loadURL(`${APP_ORIGIN}/index.html`);
 
   return win;
-}
-
-/**
- * Automated desktop smoke test: loads each main screen in a hidden window, checks the UI rendered without errors,
- * saves a screenshot of each, then exits with code 0 (pass) or 1 (fail). Used by `pnpm test:smoke`.
- */
-async function runSmokeTest(win: BrowserWindow, outDir: string, logger: Logger): Promise<void> {
-  const routes = ['/', '/settings', '/subscription', '/bots'];
-  mkdirSync(outDir, { recursive: true });
-  const failures: string[] = [];
-  win.webContents.on('console-message', (details) => {
-    if (details.level === 'error') failures.push(`console error: ${details.message}`);
-  });
-
-  const waitForReady = async (route: string) => {
-    for (let i = 0; i < 50; i++) {
-      const ready = (await win.webContents.executeJavaScript(
-        `document.querySelector('[data-route-ready="${route}"]') !== null`,
-      )) as boolean;
-      if (ready) return true;
-      await new Promise((r) => setTimeout(r, 200));
-    }
-    return false;
-  };
-
-  const settle = () => new Promise((r) => setTimeout(r, 500)); // let animations & paint settle
-  const capture = async (name: string) => {
-    const image = await win.webContents.capturePage();
-    writeFileSync(join(outDir, `${name}.png`), image.toPNG());
-  };
-  const loaded = () =>
-    new Promise<void>((resolve) => {
-      if (!win.webContents.isLoading()) resolve();
-      else win.webContents.once('did-finish-load', () => resolve());
-    });
-
-  try {
-    // Hidden windows are not repainted by Chromium, so show it (without stealing focus) to get real screenshots.
-    win.showInactive();
-    await loaded();
-    for (const route of routes) {
-      await win.webContents.executeJavaScript(`window.location.hash = '#${route}'`);
-      if (!(await waitForReady(route))) failures.push(`route ${route} did not render`);
-      await settle();
-      await capture(route === '/' ? 'dashboard' : route === '/bots' ? 'bots-empty' : route.slice(1));
-    }
-
-    // Create a bot through the real form, exactly as a user would.
-    await win.webContents.executeJavaScript(`window.location.hash = '#/bots/new'`);
-    if (!(await waitForReady('/bots/new'))) failures.push('create bot page did not render');
-    await settle();
-    await capture('bots-new');
-    await win.webContents.executeJavaScript(`(() => {
-      const setValue = (sel, value, proto) => {
-        const el = document.querySelector(sel);
-        Object.getOwnPropertyDescriptor(proto.prototype, 'value').set.call(el, value);
-        el.dispatchEvent(new Event('input', { bubbles: true }));
-      };
-      setValue('#bot-name', 'Aurora', HTMLInputElement);
-      setValue('#bot-description', 'Moderation, welcome messages and leveling for the Aurora gaming community.', HTMLTextAreaElement);
-      setValue('#bot-group', 'Gaming', HTMLInputElement);
-      document.querySelector('[data-testid="create-bot-submit"]').click();
-    })()`);
-    let botRoute = '';
-    for (let i = 0; i < 50 && !botRoute; i++) {
-      await new Promise((r) => setTimeout(r, 100));
-      const hash = (await win.webContents.executeJavaScript('window.location.hash')) as string;
-      if (/^#\/bots\/[0-9a-f-]{36}$/.test(hash)) botRoute = hash.slice(1);
-    }
-    if (!botRoute) failures.push('creating a bot through the form did not open its page');
-    else {
-      if (!(await waitForReady(botRoute))) failures.push('bot detail page did not render');
-      await settle();
-      await capture('bot-detail');
-
-      // Rename through the settings form and confirm it was saved.
-      await win.webContents.executeJavaScript(`(() => {
-        const el = document.querySelector('#bot-name');
-        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, 'Aurora Prime');
-        el.dispatchEvent(new Event('input', { bubbles: true }));
-      })()`);
-      await new Promise((r) => setTimeout(r, 100));
-      await win.webContents.executeJavaScript(
-        `[...document.querySelectorAll('button[type="submit"]')].find((b) => b.textContent.includes('Save changes')).click()`,
-      );
-      await new Promise((r) => setTimeout(r, 600));
-      const renamed = (await win.webContents.executeJavaScript(
-        `window.delyforge.bots.get('${botRoute.split('/').pop()}').then((r) => r.ok && r.data.name)`,
-      )) as string | false;
-      if (renamed !== 'Aurora Prime') failures.push(`renaming via the form failed (got ${String(renamed)})`);
-    }
-
-    // Free plan allows one bot: a second must be refused by the main process.
-    const limit = (await win.webContents.executeJavaScript(
-      `window.delyforge.bots.create({ name: 'Second' }).then((r) => !r.ok && r.error.code)`,
-    )) as string | false;
-    if (limit !== 'LIMIT_REACHED') failures.push(`plan limit not enforced (got ${String(limit)})`);
-
-    for (const [route, name] of [
-      ['/bots', 'bots-list'],
-      ['/', 'dashboard-with-bot'],
-    ] as const) {
-      await win.webContents.executeJavaScript(`window.location.hash = '#${route}'`);
-      if (!(await waitForReady(route))) failures.push(`route ${route} did not render`);
-      await settle();
-      await capture(name);
-    }
-
-    // End-to-end settings check: UI bridge → IPC validation → SQLite → survives a reload.
-    const saved = (await win.webContents.executeJavaScript(
-      `window.delyforge.settings.update({ theme: 'light' }).then((r) => r.ok && r.data.theme)`,
-    )) as string | false;
-    if (saved !== 'light') failures.push('settings update via IPC failed');
-    const rejected = (await win.webContents.executeJavaScript(
-      `window.delyforge.settings.update({ theme: 'neon' }).then((r) => !r.ok && r.error.code)`,
-    )) as string | false;
-    if (rejected !== 'VALIDATION_FAILED') failures.push('invalid settings payload was not rejected');
-
-    await win.webContents.executeJavaScript(`window.location.hash = '#/'`);
-    win.webContents.reload();
-    await new Promise((r) => setTimeout(r, 300));
-    await loaded();
-    if (!(await waitForReady('/'))) failures.push('dashboard did not render after reload');
-    const theme = (await win.webContents.executeJavaScript('document.documentElement.dataset.theme')) as string;
-    if (theme !== 'light') failures.push(`theme did not persist across reload (got ${theme})`);
-    await settle();
-    await capture('dashboard-light');
-  } catch (err) {
-    failures.push(`smoke test crashed: ${(err as Error).message}`);
-  }
-
-  if (failures.length) logger.error('Smoke test failed', failures);
-  else logger.info('Smoke test passed');
-  writeFileSync(join(outDir, 'result.json'), JSON.stringify({ ok: failures.length === 0, failures }, null, 2));
-  app.exit(failures.length === 0 ? 0 : 1);
 }

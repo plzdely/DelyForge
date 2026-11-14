@@ -84,6 +84,11 @@ export class DashboardRepository {
     /** Number of bots currently running — supplied by the bot supervisor (Phase 3). */
     private readonly runningBotCount: () => number,
     private readonly planId: () => PlanId = () => 'free',
+    private readonly extras: () => { totalServers: number; totalCommands: number; unreadNotifications: number } = () => ({
+      totalServers: 0,
+      totalCommands: 0,
+      unreadNotifications: 0,
+    }),
   ) {}
 
   summary(): DashboardSummary {
@@ -94,6 +99,7 @@ export class DashboardRepository {
       onlineBots: online,
       offlineBots: total - online,
       recentActivity: this.activity.recent(8),
+      ...this.extras(),
       localPlanId: this.planId(),
       accountConnected: false,
     };

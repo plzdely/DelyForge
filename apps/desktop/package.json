@@ -7,7 +7,7 @@
   "type": "module",
   "main": "./out/main/index.js",
   "scripts": {
-    "dev": "pnpm --filter @delyforge/shared build && electron-vite dev",
+    "dev": "pnpm --filter @delyforge/shared build && pnpm --filter @delyforge/bot-runtime build && electron-vite dev",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
     "typecheck": "tsc -b tsconfig.json --noEmit false",
@@ -15,6 +15,7 @@
     "test:smoke": "node scripts/smoke.mjs"
   },
   "dependencies": {
+    "@delyforge/bot-runtime": "workspace:*",
     "@delyforge/shared": "workspace:*",
     "zod": "^4.6.7"
   },

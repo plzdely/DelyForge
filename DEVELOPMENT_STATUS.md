@@ -1,6 +1,6 @@
 # Development Status
 
-_Last updated: 2026-11-14 — end of Phase 2._
+_Last updated: 2026-11-14 — end of Phase 3._
 
 Legend: ✅ done & verified · 🟡 done, not yet verified end-to-end · ⏳ pending · ⛔ blocked on an external action
 
@@ -46,9 +46,33 @@ Legend: ✅ done & verified · 🟡 done, not yet verified end-to-end · ⏳ pen
   updates) is produced by systems that don't exist yet. An inbox with nothing able to fill it would be a non-working
   page, so it ships together with the bot supervisor that produces the first real notifications.
 
+## Phase 3 — Discord integration
+
+| Item | Status | Verification |
+|---|---|---|
+| Shared Discord definitions: intents (privileged detection), permissions + presets, invite builder, presence, token checks | ✅ | 10 unit tests |
+| Token checker that recognises Application ID / Public Key / Client Secret pasted by mistake | ✅ | unit tests + smoke test (wizard shows the right message) |
+| Token verification with Discord (`/users/@me`, `/applications/@me`), duplicate-bot check, encrypted storage (`safeStorage` / DPAPI) | ✅ | 7 tests against a local fake Discord API; token never stored in plain text |
+| `@delyforge/bot-runtime`: one process per bot (discord.js), validated protocol, heartbeats (ping/CPU/memory), `/ping`, presence | ✅ | 8 tests incl. a real forked process |
+| Bot supervisor: start / stop (graceful → force) / restart / start all / stop all / start on launch / clean shutdown on quit | ✅ | 16 tests with a fake process |
+| Crash handling: auto-restart with backoff, crash-loop pause, no restart after login failure, hang watchdog, plan limit on running bots | ✅ | unit tests |
+| Real bot process inside Electron (utility process → discord.js → Discord) | ✅ | smoke test launches it with a fake token; Discord rejects it and the app reports INVALID_TOKEN |
+| Connect wizard (application → token → invite & permissions → presence & go live) | 🟡 | steps 1–2 smoke-tested; steps 3–4 need a real token |
+| Bot page tabs: Overview (live metrics, sparklines, error guidance, invite link), Console (live, search, filter, auto-scroll, download, clear), Settings | ✅ / 🟡 | render in smoke test; live metrics need a real running bot |
+| Bot Monitoring page (all bots, live metrics, start/stop all) | ✅ | smoke screenshot |
+| Notifications: inbox, unread badge, mark read, clear, per-type preferences, Windows notifications | ✅ | unit tests + smoke test (real login failure produced a notification) |
+| Logs: redacted, 5,000 lines per bot, pruned by plan retention (3/14/30/90 days) | ✅ | unit tests |
+| Dashboard: live online count, total servers, total commands, start/stop all, real onboarding steps | ✅ | smoke screenshot |
+
+### Needs you (to verify the last 🟡 items end to end)
+Create a free Discord application with a bot and connect it in the wizard. Then invite it, press Start, type `/ping`
+in your server, stop it, and restart DelyForge. **Never paste your token into chat** — only into DelyForge.
+
 ## Known limitations / honest notes
 - No accounts yet — the desktop app runs on the local Free plan (accounts & Stripe are Phase 7).
-- The bot supervisor does not exist yet, so "Online" is always 0 (Phase 3).
+- Bots run only while DelyForge is open on this computer (24/7 cloud hosting is Phase 9).
+- Turning off `/ping` stops answering it, but Discord keeps listing it until the Phase 5 command builder manages commands.
+- Packaging note for Phase 10: the bot runtime loads from `node_modules`; the installer must unpack it from the asar archive.
 - Windows installer and auto-update are not configured yet (Phase 10).
 - The renderer bundle (~1.5 MB) is not yet code-split; fine for a desktop app, to be optimized in Phase 10.
 - Project lives inside a OneDrive-synced folder. OneDrive can lock files inside `node_modules` during installs;
@@ -59,7 +83,6 @@ The Free plan allows 1 bot. To test with more, start the app with a simulated pl
 customer builds ignore it). In Git Bash: `DELYFORGE_DEV_PLAN=pro pnpm dev:desktop`. In PowerShell:
 `$env:DELYFORGE_DEV_PLAN='pro'; pnpm dev:desktop`.
 
-## Next up — Phase 3 (Discord integration)
-Guided connection wizard with Developer Portal walkthrough, token validation + encrypted storage, intents & permission
-calculator, invite link generator, bot runtime + supervisor (start/stop/restart/auto-restart), live console, monitoring,
-notifications inbox.
+## Next up — Phase 4 (bot modules)
+Moderation, Welcome, Tickets, Leveling, Logging, Verification, Utility, Reaction Roles, Suggestions, Giveaways — each
+with its own configuration page, runtime implementation and declared intents/permissions.

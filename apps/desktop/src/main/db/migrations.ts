@@ -45,4 +45,39 @@ export const MIGRATIONS: readonly string[] = [
   );
   CREATE INDEX activity_created_idx ON activity (created_at DESC);
   `,
+
+  // 2 — Phase 3: Discord connection, runtime settings, logs, notifications
+  `
+  ALTER TABLE bot_projects ADD COLUMN bot_username TEXT;
+  ALTER TABLE bot_projects ADD COLUMN bot_avatar_url TEXT;
+  ALTER TABLE bot_projects ADD COLUMN application_flags INTEGER;
+  ALTER TABLE bot_projects ADD COLUMN presence TEXT NOT NULL DEFAULT '{"status":"online","activity":null}';
+  -- 274878286912 = PERMISSION_PRESETS.basic (view, send, threads, embeds, files, history, reactions, external emoji)
+  ALTER TABLE bot_projects ADD COLUMN permissions TEXT NOT NULL DEFAULT '274878286912';
+  ALTER TABLE bot_projects ADD COLUMN intents INTEGER NOT NULL DEFAULT 1;
+  ALTER TABLE bot_projects ADD COLUMN builtin_ping INTEGER NOT NULL DEFAULT 1;
+  ALTER TABLE bot_projects ADD COLUMN guild_count INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE bot_projects ADD COLUMN commands_executed INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE bot_secrets ADD COLUMN application_id TEXT;
+
+  CREATE TABLE bot_logs (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    bot_id     TEXT NOT NULL REFERENCES bot_projects(id) ON DELETE CASCADE,
+    level      TEXT NOT NULL,
+    message    TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+  );
+  CREATE INDEX bot_logs_bot_idx ON bot_logs (bot_id, id DESC);
+
+  CREATE TABLE notifications (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    type       TEXT NOT NULL,
+    title      TEXT NOT NULL,
+    body       TEXT NOT NULL,
+    bot_id     TEXT REFERENCES bot_projects(id) ON DELETE SET NULL,
+    read_at    TEXT,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+  );
+  CREATE INDEX notifications_created_idx ON notifications (created_at DESC);
+  `,
 ];

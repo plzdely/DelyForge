@@ -22,7 +22,7 @@ describe('local database', () => {
   it('rolls back a failing migration and reports it', () => {
     const db = openDatabase(':memory:');
     const broken = [...MIGRATIONS, 'CREATE TABLE ok_table (id INTEGER); THIS IS NOT SQL;'];
-    expect(() => migrate(db, broken)).toThrow(/migration 2 failed/);
+    expect(() => migrate(db, broken)).toThrow(new RegExp(`migration ${MIGRATIONS.length + 1} failed`));
     expect(getSchemaVersion(db)).toBe(MIGRATIONS.length);
     const exists = db.prepare("SELECT name FROM sqlite_master WHERE name='ok_table'").get();
     expect(exists).toBeUndefined();

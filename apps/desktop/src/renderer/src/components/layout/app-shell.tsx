@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { Outlet, useLocation } from 'react-router';
 import { Wordmark } from '@/components/brand/logo';
 import { useSettings } from '@/lib/queries';
+import { useBotEventStream } from '@/lib/runtime';
 import { navItemForPath } from '@/navigation';
 import { Sidebar } from './sidebar';
 
@@ -46,6 +47,7 @@ function TitleBar() {
 
 export function AppShell() {
   useThemeSync();
+  useBotEventStream();
   const { pathname } = useLocation();
   return (
     <div className="flex h-full flex-col bg-bg">

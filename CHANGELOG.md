@@ -6,6 +6,12 @@ versions follow [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Phase 3: connect bots to Discord — guided 4-step wizard, token verification with Discord, encrypted token storage,
+  permission presets and invite links, presence editor. Bot runtime (`@delyforge/bot-runtime`, one process per bot,
+  built-in `/ping`). Supervisor with start/stop/restart, start all/stop all, start on launch, automatic restart with
+  backoff, crash-loop protection and hang watchdog. Live console (search, filter, download, clear), live metrics
+  (latency, CPU, memory, uptime, servers, commands), Bot Monitoring page, Notifications inbox with preferences and
+  Windows notifications.
 - Phase 2: bot projects — My Bots page (search, favorites, sort, groups), Create Bot page, bot detail page with editable
   settings, duplicate, delete with confirmation, export/import (`.delyforge.json`, tokens never included), plan limits
   enforced by the main process, dashboard "Your bots" section.

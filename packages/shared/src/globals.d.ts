@@ -5,4 +5,11 @@ declare class URL {
   readonly protocol: string;
   readonly hostname: string;
   readonly href: string;
+  readonly origin: string;
+  readonly searchParams: URLSearchParams;
+}
+declare class URLSearchParams {
+  constructor(init?: Record<string, string>);
+  get(name: string): string | null;
+  toString(): string;
 }

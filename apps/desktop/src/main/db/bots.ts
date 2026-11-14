@@ -3,13 +3,18 @@ import {
   BOT_EXPORT_FORMAT,
   BOT_EXPORT_VERSION,
   BOT_LIMITS,
+  type BotPresence,
   type BotProject,
   type BotProjectExport,
   DEFAULT_PLANS,
+  DEFAULT_PRESENCE,
   type Entitlements,
+  type RuntimeOptions,
   botProjectExportSchema,
   type createBotProjectSchema,
   isWithinLimit,
+  presenceSchema,
+  privilegedIntentsFromFlags,
   type updateBotProjectSchema,
 } from '@delyforge/shared';
 import type { z } from 'zod';
@@ -29,14 +34,35 @@ interface BotRow {
   config: string;
   is_favorite: number;
   is_enabled: number;
+  auto_start: number;
+  auto_restart: number;
+  bot_username: string | null;
+  bot_avatar_url: string | null;
+  application_flags: number | null;
+  presence: string;
+  permissions: string;
+  intents: number;
+  builtin_ping: number;
+  guild_count: number;
+  commands_executed: number;
+  token_hint: string | null;
   has_token: number;
   created_at: string;
   updated_at: string;
 }
 
 const SELECT = `
-  SELECT p.*, EXISTS (SELECT 1 FROM bot_secrets s WHERE s.bot_id = p.id) AS has_token
-  FROM bot_projects p`;
+  SELECT p.*, s.token_hint AS token_hint, (s.bot_id IS NOT NULL) AS has_token
+  FROM bot_projects p LEFT JOIN bot_secrets s ON s.bot_id = p.id`;
+
+function parsePresence(raw: string): BotPresence {
+  try {
+    const parsed = presenceSchema.safeParse(JSON.parse(raw));
+    return parsed.success ? parsed.data : DEFAULT_PRESENCE;
+  } catch {
+    return DEFAULT_PRESENCE;
+  }
+}
 
 function toProject(r: BotRow): BotProject {
   return {
@@ -48,10 +74,23 @@ function toProject(r: BotRow): BotProject {
     isFavorite: r.is_favorite === 1,
     isEnabled: r.is_enabled === 1,
     hasToken: r.has_token === 1,
+    tokenHint: r.token_hint,
+    botUsername: r.bot_username,
+    botAvatarUrl: r.bot_avatar_url,
+    privilegedIntents: r.application_flags === null ? null : privilegedIntentsFromFlags(r.application_flags),
+    presence: parsePresence(r.presence),
+    permissions: r.permissions,
+    autoStart: r.auto_start === 1,
+    autoRestart: r.auto_restart === 1,
+    builtinPing: r.builtin_ping === 1,
+    guildCount: r.guild_count,
+    commandsExecuted: r.commands_executed,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
 }
+
+const TOUCH = `updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')`;
 
 /**
  * Bot projects in the local database. Enforces plan limits on every path that adds a project
@@ -89,29 +128,39 @@ export class BotRepository {
 
   update({ id, patch }: UpdateInput): BotProject {
     const before = this.getRow(id);
+    // Column names are fixed strings from this map — only values are bound from input.
+    const columns: Record<string, (v: never) => string | number | null> = {
+      name: (v: string) => v,
+      description: (v: string) => v,
+      groupName: (v: string | null) => v,
+      isFavorite: (v: boolean) => (v ? 1 : 0),
+      presence: (v: BotPresence) => JSON.stringify(v),
+      permissions: (v: string) => v,
+      autoStart: (v: boolean) => (v ? 1 : 0),
+      autoRestart: (v: boolean) => (v ? 1 : 0),
+      builtinPing: (v: boolean) => (v ? 1 : 0),
+    };
+    const names: Record<string, string> = {
+      name: 'name',
+      description: 'description',
+      groupName: 'group_name',
+      isFavorite: 'is_favorite',
+      presence: 'presence',
+      permissions: 'permissions',
+      autoStart: 'auto_start',
+      autoRestart: 'auto_restart',
+      builtinPing: 'builtin_ping',
+    };
     const sets: string[] = [];
     const values: (string | number | null)[] = [];
-    if (patch.name !== undefined) {
-      sets.push('name = ?');
-      values.push(patch.name);
+    for (const [key, value] of Object.entries(patch)) {
+      if (value === undefined || !(key in names)) continue;
+      sets.push(`${names[key]} = ?`);
+      values.push(columns[key]!(value as never));
     }
-    if (patch.description !== undefined) {
-      sets.push('description = ?');
-      values.push(patch.description);
+    if (sets.length > 0) {
+      this.db.prepare(`UPDATE bot_projects SET ${sets.join(', ')}, ${TOUCH} WHERE id = ?`).run(...values, id);
     }
-    if (patch.groupName !== undefined) {
-      sets.push('group_name = ?');
-      values.push(patch.groupName);
-    }
-    if (patch.isFavorite !== undefined) {
-      sets.push('is_favorite = ?');
-      values.push(patch.isFavorite ? 1 : 0);
-    }
-    // Column names above are fixed strings from this function — only values are bound from input.
-    this.db
-      .prepare(`UPDATE bot_projects SET ${sets.join(', ')}, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?`)
-      .run(...values, id);
-
     if (patch.name !== undefined && patch.name !== before.name) {
       this.activity.record('bot', `Renamed “${before.name}” to “${patch.name}”`, id);
     }
@@ -125,16 +174,77 @@ export class BotRepository {
     const newId = randomUUID();
     const name = this.uniqueName(source.name, 'copy');
     this.db
-      .prepare('INSERT INTO bot_projects (id, name, description, group_name, config) VALUES (?, ?, ?, ?, ?)')
-      .run(newId, name, source.description, source.group_name, source.config);
+      .prepare(
+        `INSERT INTO bot_projects (id, name, description, group_name, config, presence, permissions, intents, builtin_ping)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(newId, name, source.description, source.group_name, source.config, source.presence, source.permissions, source.intents, source.builtin_ping);
     this.activity.record('bot', `Duplicated “${source.name}” as “${name}”`, newId);
     return this.get(newId);
   }
 
   remove(id: string): void {
     const row = this.getRow(id);
-    this.db.prepare('DELETE FROM bot_projects WHERE id = ?').run(id); // bot_secrets cascade
+    this.db.prepare('DELETE FROM bot_projects WHERE id = ?').run(id); // secrets & logs cascade
     this.activity.record('bot', `Deleted bot project “${row.name}”`);
+  }
+
+  // ─── Discord connection ──────────────────────────────────────────────────────────────────────────────────────────
+
+  /** Another project already using this Discord application (running both would fight over one bot account). */
+  findByApplicationId(applicationId: string, excludeId: string): BotProject | null {
+    const row = this.db
+      .prepare(`${SELECT} WHERE p.discord_application_id = ? AND p.id <> ?`)
+      .get(applicationId, excludeId) as BotRow | undefined;
+    return row ? toProject(row) : null;
+  }
+
+  setConnection(
+    id: string,
+    info: { applicationId: string; username: string; avatarUrl: string | null; applicationFlags: number },
+  ): BotProject {
+    this.db
+      .prepare(
+        `UPDATE bot_projects SET discord_application_id = ?, bot_username = ?, bot_avatar_url = ?, application_flags = ?, ${TOUCH} WHERE id = ?`,
+      )
+      .run(info.applicationId, info.username, info.avatarUrl, info.applicationFlags, id);
+    return this.get(id);
+  }
+
+  clearConnection(id: string): BotProject {
+    this.db
+      .prepare(
+        `UPDATE bot_projects SET discord_application_id = NULL, bot_username = NULL, bot_avatar_url = NULL, application_flags = NULL, guild_count = 0, ${TOUCH} WHERE id = ?`,
+      )
+      .run(id);
+    return this.get(id);
+  }
+
+  runtimeOptions(id: string): RuntimeOptions {
+    const row = this.getRow(id);
+    return { intents: row.intents, presence: parsePresence(row.presence), builtinPing: row.builtin_ping === 1 };
+  }
+
+  /** Called when the running bot reports in — keeps the stored identity and server count fresh. */
+  recordReady(id: string, username: string, avatarUrl: string | null, guildCount: number): void {
+    this.db
+      .prepare('UPDATE bot_projects SET bot_username = ?, bot_avatar_url = COALESCE(?, bot_avatar_url), guild_count = ? WHERE id = ?')
+      .run(username, avatarUrl, guildCount, id);
+  }
+
+  recordGuildCount(id: string, guildCount: number): void {
+    this.db.prepare('UPDATE bot_projects SET guild_count = ? WHERE id = ? AND guild_count <> ?').run(guildCount, id, guildCount);
+  }
+
+  incrementCommands(id: string): void {
+    this.db.prepare('UPDATE bot_projects SET commands_executed = commands_executed + 1 WHERE id = ?').run(id);
+  }
+
+  totals(): { servers: number; commands: number } {
+    const r = this.db
+      .prepare('SELECT COALESCE(SUM(guild_count), 0) AS servers, COALESCE(SUM(commands_executed), 0) AS commands FROM bot_projects')
+      .get() as { servers: number; commands: number };
+    return r;
   }
 
   // ─── Export / import ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -151,6 +261,9 @@ export class BotRepository {
         description: row.description,
         groupName: row.group_name,
         config: parseConfig(row.config),
+        presence: parsePresence(row.presence),
+        permissions: row.permissions,
+        builtinPing: row.builtin_ping === 1,
       },
     };
     this.activity.record('bot', `Exported “${row.name}”`, id);
@@ -181,6 +294,9 @@ export class BotRepository {
     this.db
       .prepare('INSERT INTO bot_projects (id, name, description, group_name, config) VALUES (?, ?, ?, ?, ?)')
       .run(id, name, p.description, p.groupName, JSON.stringify(p.config));
+    if (p.presence) this.db.prepare('UPDATE bot_projects SET presence = ? WHERE id = ?').run(JSON.stringify(p.presence), id);
+    if (p.permissions) this.db.prepare('UPDATE bot_projects SET permissions = ? WHERE id = ?').run(p.permissions, id);
+    if (p.builtinPing !== undefined) this.db.prepare('UPDATE bot_projects SET builtin_ping = ? WHERE id = ?').run(p.builtinPing ? 1 : 0, id);
     this.activity.record('bot', `Imported bot project “${name}”`, id);
     return this.get(id);
   }

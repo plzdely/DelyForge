@@ -6,7 +6,11 @@ import {
   Activity,
   ArrowRight,
   Bot,
+  Play,
   Plus,
+  Server,
+  Square,
+  SquareSlash,
   Star,
   Check,
   CircleAlert,
@@ -14,7 +18,6 @@ import {
   type LucideIcon,
   Map as MapIcon,
   Power,
-  PowerOff,
   Settings2,
   Sparkles,
   Workflow,
@@ -28,6 +31,7 @@ import { cn } from '@/lib/cn';
 import { useEntitlements } from '@/lib/entitlements';
 import { greeting, timeAgo } from '@/lib/format';
 import { useBots, useDashboardSummary, useSettings, useUpdateSettings } from '@/lib/queries';
+import { useRuntimeControls } from '@/lib/runtime';
 
 function StatCard({
   label,
@@ -213,6 +217,12 @@ export function DashboardPage() {
   const loading = summary.isLoading;
   const isNewUser = (data?.totalProjects ?? 0) === 0;
   const limit = entitlements.limits.maxBotProjects;
+  const bots = useBots().data ?? [];
+  const firstBot = bots[0];
+  const connected = bots.some((b) => b.hasToken);
+  const firstUnconnected = bots.find((b) => !b.hasToken);
+  const everStarted = (data?.onlineBots ?? 0) > 0 || bots.some((b) => b.botUsername !== null && b.guildCount > 0);
+  const { startAll, stopAll } = useRuntimeControls();
 
   const steps: Step[] = [
     { title: 'Install DelyForge', description: 'Your local workspace and database are set up.', done: true },
@@ -238,9 +248,29 @@ export function DashboardPage() {
         </Button>
       ) : undefined,
     },
-    { title: 'Connect your Discord application', description: 'Securely link your bot token and invite the bot.', done: false, phase: 3 },
+    {
+      title: 'Connect your Discord application',
+      description: 'Securely link your bot token and invite the bot to your server.',
+      done: connected,
+      action:
+        !connected && (firstUnconnected ?? firstBot) ? (
+          <Button size="sm" variant="primary" asChild>
+            <Link to={`/bots/${(firstUnconnected ?? firstBot)!.id}/connect`}>Connect</Link>
+          </Button>
+        ) : undefined,
+    },
+    {
+      title: 'Start your bot',
+      description: 'Go live, then type /ping in your server to see it answer.',
+      done: everStarted,
+      action:
+        connected && !everStarted ? (
+          <Button size="sm" variant="primary" asChild>
+            <Link to={`/bots/${bots.find((b) => b.hasToken)!.id}`}>Open bot</Link>
+          </Button>
+        ) : undefined,
+    },
     { title: 'Enable modules', description: 'Moderation, welcome messages, tickets, leveling and more.', done: false, phase: 4 },
-    { title: 'Start your bot', description: 'Go live and monitor it in real time.', done: false, phase: 3 },
   ];
 
   return (
@@ -249,6 +279,18 @@ export function DashboardPage() {
         eyebrow={greeting()}
         title={isNewUser ? 'Welcome to DelyForge' : 'Overview'}
         description="What would you like to build today?"
+        actions={
+          connected ? (
+            <>
+              <Button onClick={() => stopAll.mutate()} disabled={stopAll.isPending || (data?.onlineBots ?? 0) === 0}>
+                <Square className="fill-current" /> Stop all
+              </Button>
+              <Button variant="primary" onClick={() => startAll.mutate()} disabled={startAll.isPending}>
+                <Play className="fill-current" /> Start all
+              </Button>
+            </>
+          ) : undefined
+        }
       />
 
       {summary.isError ? (
@@ -266,13 +308,20 @@ export function DashboardPage() {
           tone="primary"
           loading={loading}
         />
-        <StatCard label="Online" value={data?.onlineBots ?? 0} hint="Running right now" icon={Power} tone="success" loading={loading} />
-        <StatCard label="Offline" value={data?.offlineBots ?? 0} hint="Stopped or disabled" icon={PowerOff} loading={loading} />
         <StatCard
-          label="Plan"
-          value={plan.name}
-          hint={data?.accountConnected ? 'Synced with your account' : 'Local — no account connected'}
-          icon={CreditCard}
+          label="Online"
+          value={data?.onlineBots ?? 0}
+          hint={`${data?.offlineBots ?? 0} offline`}
+          icon={Power}
+          tone="success"
+          loading={loading}
+        />
+        <StatCard label="Servers" value={data?.totalServers ?? 0} hint="Across all your bots" icon={Server} loading={loading} />
+        <StatCard
+          label="Commands run"
+          value={data?.totalCommands ?? 0}
+          hint="All time, all bots"
+          icon={SquareSlash}
           loading={loading}
         />
       </div>

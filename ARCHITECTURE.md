@@ -79,7 +79,7 @@ DelyForge/
 │  └─ api/                NestJS cloud API + Prisma schema/migrations
 ├─ packages/
 │  ├─ shared/             Types, Zod schemas, plan catalogue, entitlement logic, IPC contract
-│  └─ (future) bot-runtime/  The process each bot runs in (Phase 3)
+│  ├─ bot-runtime/      The process each bot runs in (discord.js): `src/process.ts` entry, `src/runtime.ts` logic
 │  └─ (future) ui/           Design system extracted for the Web dashboard (Phase 9)
 └─ docs (root *.md files)
 ```
@@ -158,8 +158,14 @@ Main process
 * The runtime receives a **validated config snapshot** (modules, commands, workflows) and is purely data-driven: it does
   not execute user code. Modules are built-in TypeScript implementations parameterized by config.
 * Runtime → supervisor messages: `ready`, `log`, `metric`, `heartbeat`, `error`, `command-executed`, `workflow-run`.
-* Supervisor handles: start / stop (graceful `client.destroy()` then hard-kill timeout) / restart / auto-restart with
-  exponential backoff and a crash-loop circuit breaker, start-on-launch, start-all / stop-all.
+* Supervisor (`apps/desktop/src/main/runtime/supervisor.ts`) handles: start / stop (graceful `client.destroy()`, then
+  force-kill after 5 s) / restart / auto-restart with backoff (2 s → 60 s) and a crash-loop breaker (5 crashes in
+  10 min), no auto-restart after login failures (`fatal` message), a heartbeat watchdog (45 s), start-on-launch,
+  start-all / stop-all, a running-bots plan limit, and clean shutdown of every bot before the app quits.
+* The process launcher is an interface (`Launcher`), so tests use a fake process and cloud hosting can supply its own.
+* Live updates reach the UI through a one-way push channel (`bots:event`): state changes, log lines, notifications.
+* The optional built-in `/ping` is registered with `commands.create`, which adds/updates only that command and never
+  removes an application's other commands.
 * Logs pass through a **redactor** (Discord token regex, known secrets) before being stored or displayed.
 * **Hosting abstraction:** the UI talks to a `BotHost` interface (`start`, `stop`, `restart`, `status`, `logs`,
   `metrics`). `LocalBotHost` is v1; `CloudBotHost` (Phase 9) implements the same interface over the API so cloud hosting

@@ -123,6 +123,35 @@ export function SettingsPage() {
         </Card>
 
         <Card>
+          <CardHeader title="Notifications" description="Choose what DelyForge tells you about. Everything is also kept in the Notifications inbox." />
+          {(
+            [
+              ['crashes', 'Crashes & login problems', 'A bot stopped unexpectedly, keeps crashing, or Discord rejected its token.'],
+              ['disconnects', 'Lasting disconnects', 'A bot lost its connection to Discord for more than a minute.'],
+              ['restarts', 'Automatic restarts', 'A crashed bot was restarted and is back online.'],
+              ['highMemory', 'High memory use', 'A bot is using more than 512 MB of memory.'],
+              ['desktop', 'Windows notifications', 'Also show a pop-up in the corner of your screen.'],
+            ] as const
+          ).map(([key, title, description]) => (
+            <div key={key}>
+              <Separator />
+              <Row
+                title={title}
+                description={description}
+                control={
+                  <Switch
+                    aria-label={title}
+                    checked={s?.notifications[key] ?? true}
+                    disabled={!s}
+                    onCheckedChange={(v) => s && update.mutate({ notifications: { ...s.notifications, [key]: v } })}
+                  />
+                }
+              />
+            </div>
+          ))}
+        </Card>
+
+        <Card>
           <CardHeader title="About" description={`${BRAND.productName} — ${BRAND.byline}. ${BRAND.tagline}`} />
           <Separator />
           <dl className="grid grid-cols-[160px_1fr] gap-y-2.5 px-5 py-4 text-sm">

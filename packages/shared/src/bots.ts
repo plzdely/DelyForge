@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import { type BotPresence, type PrivilegedIntentStatus, permissionsSchema, presenceSchema } from './discord.js';
+import type { LogLevel, RuntimeMetrics } from './runtime.js';
 
 /** Limits chosen to match what Discord itself allows for application names/descriptions. */
 export const BOT_LIMITS = {
@@ -40,6 +42,22 @@ export interface BotProject {
   isFavorite: boolean;
   isEnabled: boolean;
   hasToken: boolean;
+  /** e.g. "…x9Qa" — lets users recognise the stored token without revealing it. */
+  tokenHint: string | null;
+  /** Bot account details, captured when the token is verified. */
+  botUsername: string | null;
+  botAvatarUrl: string | null;
+  /** Privileged intents enabled in the Developer Portal at last verification. */
+  privilegedIntents: PrivilegedIntentStatus | null;
+  presence: BotPresence;
+  /** Invite permissions (64-bit, decimal string). */
+  permissions: string;
+  autoStart: boolean;
+  autoRestart: boolean;
+  builtinPing: boolean;
+  /** Last known number of servers the bot is in. */
+  guildCount: number;
+  commandsExecuted: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -62,6 +80,11 @@ export const updateBotProjectSchema = z
         description: descriptionSchema,
         groupName: groupSchema,
         isFavorite: z.boolean(),
+        presence: presenceSchema,
+        permissions: permissionsSchema,
+        autoStart: z.boolean(),
+        autoRestart: z.boolean(),
+        builtinPing: z.boolean(),
       })
       .partial()
       .strict()
@@ -71,6 +94,74 @@ export const updateBotProjectSchema = z
 export type UpdateBotProjectInput = z.input<typeof updateBotProjectSchema>;
 
 export const botIdInputSchema = z.object({ id: botIdSchema }).strict();
+
+/** The raw token is sent once, from the wizard to the main process, and never returned. */
+export const connectBotSchema = z.object({ id: botIdSchema, token: z.string().min(1).max(200) }).strict();
+
+// ─── Runtime state, logs, notifications ──────────────────────────────────────────────────────────────────────────
+
+export type BotRuntimeStatus = 'offline' | 'starting' | 'online' | 'reconnecting' | 'stopping' | 'crashed' | 'error';
+
+export interface BotRuntimeState {
+  botId: string;
+  status: BotRuntimeStatus;
+  /** When the current process was started. */
+  startedAt: string | null;
+  /** When the bot last became ready (used for uptime). */
+  readyAt: string | null;
+  pid: number | null;
+  lastError: { code: string; message: string } | null;
+  metrics: RuntimeMetrics | null;
+  /** Recent metric samples for sparklines (oldest first, ~5 s apart, max 60). */
+  history: { t: number; pingMs: number | null; rssMb: number; cpuPercent: number }[];
+  commandsThisSession: number;
+  restartCount: number;
+  /** Seconds until an automatic restart, when one is scheduled. */
+  restartInSeconds: number | null;
+}
+
+export interface BotLogEntry {
+  id: number;
+  botId: string;
+  level: LogLevel;
+  message: string;
+  createdAt: string;
+}
+
+export const logsListSchema = z
+  .object({ id: botIdSchema, limit: z.number().int().min(1).max(2000).default(500) })
+  .strict();
+
+export const NOTIFICATION_TYPES = [
+  'bot.crashed',
+  'bot.crash_loop',
+  'bot.restarted',
+  'bot.disconnected',
+  'bot.login_failed',
+  'bot.high_memory',
+] as const;
+export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
+
+export interface AppNotification {
+  id: number;
+  type: NotificationType;
+  title: string;
+  body: string;
+  botId: string | null;
+  readAt: string | null;
+  createdAt: string;
+}
+
+export const markNotificationsSchema = z
+  .object({ ids: z.array(z.number().int().positive()).max(1000).optional() })
+  .strict();
+
+/** Pushed from main to the UI as things happen. */
+export type BotEvent =
+  | { type: 'state'; state: BotRuntimeState }
+  | { type: 'log'; entry: BotLogEntry }
+  | { type: 'project-updated'; botId: string }
+  | { type: 'notification'; notification: AppNotification };
 
 // ─── Export / import ─────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -94,6 +185,10 @@ export const botProjectExportSchema = z
         groupName: groupSchema,
         /** Module / command / workflow configuration (validated per-module from Phase 4). */
         config: z.record(z.string(), z.unknown()),
+        // Added in 0.3 — optional so files exported by 0.2 still import.
+        presence: presenceSchema.optional(),
+        permissions: permissionsSchema.optional(),
+        builtinPing: z.boolean().optional(),
       })
       .strict(),
   })

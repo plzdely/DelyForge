@@ -1,10 +1,17 @@
 import { z } from 'zod';
 import {
+  type AppNotification,
+  type BotEvent,
+  type BotLogEntry,
   type BotProject,
+  type BotRuntimeState,
   type ExportResult,
   type ImportResult,
   botIdInputSchema,
+  connectBotSchema,
   createBotProjectSchema,
+  logsListSchema,
+  markNotificationsSchema,
   updateBotProjectSchema,
 } from './bots.js';
 import type { Entitlements } from './entitlements.js';
@@ -33,8 +40,26 @@ export const IPC_CHANNELS = {
   botsDelete: 'bots:delete',
   botsExport: 'bots:export',
   botsImport: 'bots:import',
+  botsConnect: 'bots:connect',
+  botsDisconnect: 'bots:disconnect',
+  runtimeStates: 'runtime:states',
+  runtimeStart: 'runtime:start',
+  runtimeStop: 'runtime:stop',
+  runtimeRestart: 'runtime:restart',
+  runtimeStartAll: 'runtime:start-all',
+  runtimeStopAll: 'runtime:stop-all',
+  logsList: 'logs:list',
+  logsClear: 'logs:clear',
+  logsExport: 'logs:export',
+  notificationsList: 'notifications:list',
+  notificationsMarkRead: 'notifications:mark-read',
+  notificationsClear: 'notifications:clear',
+  clipboardWrite: 'clipboard:write',
 } as const;
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];
+
+/** Main → renderer push channel (not invokable). */
+export const BOT_EVENT_CHANNEL = 'bots:event';
 
 /** Hosts the app may open in the user's browser. Keeps a compromised UI from opening arbitrary URLs. */
 export const EXTERNAL_URL_ALLOWLIST = [
@@ -74,13 +99,36 @@ export const ipcInputSchemas = {
   [IPC_CHANNELS.botsDelete]: botIdInputSchema,
   [IPC_CHANNELS.botsExport]: botIdInputSchema,
   [IPC_CHANNELS.botsImport]: noInput,
+  [IPC_CHANNELS.botsConnect]: connectBotSchema,
+  [IPC_CHANNELS.botsDisconnect]: botIdInputSchema,
+  [IPC_CHANNELS.runtimeStates]: noInput,
+  [IPC_CHANNELS.runtimeStart]: botIdInputSchema,
+  [IPC_CHANNELS.runtimeStop]: botIdInputSchema,
+  [IPC_CHANNELS.runtimeRestart]: botIdInputSchema,
+  [IPC_CHANNELS.runtimeStartAll]: noInput,
+  [IPC_CHANNELS.runtimeStopAll]: noInput,
+  [IPC_CHANNELS.logsList]: logsListSchema,
+  [IPC_CHANNELS.logsClear]: botIdInputSchema,
+  [IPC_CHANNELS.logsExport]: botIdInputSchema,
+  [IPC_CHANNELS.notificationsList]: noInput,
+  [IPC_CHANNELS.notificationsMarkRead]: markNotificationsSchema,
+  [IPC_CHANNELS.notificationsClear]: noInput,
+  [IPC_CHANNELS.clipboardWrite]: z.string().min(1).max(4000),
 } as const satisfies Record<IpcChannel, z.ZodType>;
 
 // ---------------------------------------------------------------------------------------------------------------------
 // Result envelope
 // ---------------------------------------------------------------------------------------------------------------------
 
-export type IpcErrorCode = 'VALIDATION_FAILED' | 'NOT_FOUND' | 'FORBIDDEN' | 'LIMIT_REACHED' | 'INTERNAL';
+export type IpcErrorCode =
+  | 'VALIDATION_FAILED'
+  | 'NOT_FOUND'
+  | 'FORBIDDEN'
+  | 'LIMIT_REACHED'
+  | 'CONFLICT'
+  | 'DISCORD_REJECTED'
+  | 'NETWORK'
+  | 'INTERNAL';
 
 export interface IpcError {
   code: IpcErrorCode;
@@ -117,6 +165,11 @@ export interface DashboardSummary {
   totalProjects: number;
   onlineBots: number;
   offlineBots: number;
+  /** Sum of the last known server counts of every bot. */
+  totalServers: number;
+  /** Slash commands handled by all bots, all time. */
+  totalCommands: number;
+  unreadNotifications: number;
   recentActivity: ActivityItem[];
   /** Plan applied locally. Until accounts ship (Phase 7) this is always the Free plan. */
   localPlanId: PlanId;
@@ -151,6 +204,34 @@ export interface DelyForgeBridge {
     remove(id: string): Promise<IpcResult<null>>;
     exportToFile(id: string): Promise<IpcResult<ExportResult>>;
     importFromFile(): Promise<IpcResult<ImportResult>>;
+    /** Verifies the token with Discord, then stores it encrypted. The token is never returned. */
+    connect(id: string, token: string): Promise<IpcResult<BotProject>>;
+    disconnect(id: string): Promise<IpcResult<BotProject>>;
+  };
+  runtime: {
+    states(): Promise<IpcResult<BotRuntimeState[]>>;
+    start(id: string): Promise<IpcResult<BotRuntimeState>>;
+    stop(id: string): Promise<IpcResult<BotRuntimeState>>;
+    restart(id: string): Promise<IpcResult<BotRuntimeState>>;
+    startAll(): Promise<IpcResult<{ started: number; skipped: number }>>;
+    stopAll(): Promise<IpcResult<{ stopped: number }>>;
+  };
+  logs: {
+    list(id: string, limit?: number): Promise<IpcResult<BotLogEntry[]>>;
+    clear(id: string): Promise<IpcResult<null>>;
+    exportToFile(id: string): Promise<IpcResult<ExportResult>>;
+  };
+  notifications: {
+    list(): Promise<IpcResult<AppNotification[]>>;
+    markRead(ids?: number[]): Promise<IpcResult<null>>;
+    clear(): Promise<IpcResult<null>>;
+  };
+  clipboard: {
+    writeText(text: string): Promise<IpcResult<null>>;
+  };
+  events: {
+    /** Subscribe to live bot events. Returns an unsubscribe function. */
+    onBotEvent(listener: (event: BotEvent) => void): () => void;
   };
 }
 

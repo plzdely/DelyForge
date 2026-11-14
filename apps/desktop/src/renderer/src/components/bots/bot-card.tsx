@@ -1,12 +1,12 @@
 import type { BotProject } from '@delyforge/shared';
 import { Copy, Download, ExternalLink, MoreHorizontal, Star, Trash2 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router';
-import { Badge, StatusDot } from '@/components/ui/badge';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from '@/components/ui/menu';
 import { cn } from '@/lib/cn';
-import { timeAgo } from '@/lib/format';
-import { BotAvatar } from './bot-avatar';
+import { BotIdentityAvatar } from './bot-avatar';
+import { BotControls, BotStatusLine } from './runtime-ui';
 import type { useBotActions } from './use-bot-actions';
 
 type Actions = ReturnType<typeof useBotActions>['actions'];
@@ -42,14 +42,9 @@ export function BotActionsMenu({ bot, actions, canAdd }: { bot: BotProject; acti
   );
 }
 
-/** Honest connection status until the bot runtime exists (Phase 3). */
+/** Live status line (kept as BotStatus for existing callers). */
 export function BotStatus({ bot }: { bot: BotProject }) {
-  return (
-    <span className="inline-flex items-center gap-1.5 text-xs text-fg-subtle">
-      <StatusDot status="offline" />
-      {bot.hasToken ? 'Offline' : 'Not connected to Discord'}
-    </span>
-  );
+  return <BotStatusLine bot={bot} />;
 }
 
 export function BotCard({ bot, actions, canAdd }: { bot: BotProject; actions: Actions; canAdd: boolean }) {
@@ -58,7 +53,7 @@ export function BotCard({ bot, actions, canAdd }: { bot: BotProject; actions: Ac
       {/* Whole card is a link; the buttons sit above it. */}
       <Link to={`/bots/${bot.id}`} className="absolute inset-0 rounded-xl" aria-label={`Open ${bot.name}`} />
       <div className="flex items-start gap-3">
-        <BotAvatar id={bot.id} name={bot.name} />
+        <BotIdentityAvatar bot={bot} />
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-semibold text-fg">{bot.name}</div>
           <div className="mt-0.5">
@@ -84,7 +79,9 @@ export function BotCard({ bot, actions, canAdd }: { bot: BotProject; actions: Ac
       </p>
       <div className="mt-3 flex items-center justify-between border-t border-border pt-3">
         {bot.groupName ? <Badge>{bot.groupName}</Badge> : <span className="text-2xs text-fg-subtle">No group</span>}
-        <span className="text-2xs text-fg-subtle">Updated {timeAgo(bot.updatedAt)}</span>
+        <div className="relative z-10">
+          <BotControls bot={bot} size="sm" />
+        </div>
       </div>
     </div>
   );

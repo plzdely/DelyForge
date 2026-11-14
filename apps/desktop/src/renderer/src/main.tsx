@@ -7,7 +7,13 @@ import { Toaster } from 'sonner';
 import { AppShell } from '@/components/layout/app-shell';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { isBridgeAvailable } from '@/lib/bridge';
-import { BotDetailPage } from '@/pages/bots/detail';
+import { BotConsole } from '@/pages/bots/console';
+import { ConnectWizard } from '@/pages/bots/connect';
+import { BotLayout } from '@/pages/bots/layout';
+import { BotOverview } from '@/pages/bots/overview';
+import { BotSettings } from '@/pages/bots/settings';
+import { MonitoringPage } from '@/pages/monitoring';
+import { NotificationsPage } from '@/pages/notifications';
 import { BotsPage } from '@/pages/bots/list';
 import { CreateBotPage } from '@/pages/bots/new';
 import { DashboardPage } from '@/pages/dashboard';
@@ -32,7 +38,18 @@ const router = createHashRouter([
       { path: 'subscription', element: <SubscriptionPage /> },
       { path: 'bots', element: <BotsPage /> },
       { path: 'bots/new', element: <CreateBotPage /> },
-      { path: 'bots/:id', element: <BotDetailPage /> },
+      {
+        path: 'bots/:id',
+        element: <BotLayout />,
+        children: [
+          { index: true, element: <BotOverview /> },
+          { path: 'console', element: <BotConsole /> },
+          { path: 'settings', element: <BotSettings /> },
+          { path: 'connect', element: <ConnectWizard /> },
+        ],
+      },
+      { path: 'monitoring', element: <MonitoringPage /> },
+      { path: 'notifications', element: <NotificationsPage /> },
       { path: '*', element: <RoadmapPage /> },
     ],
   },

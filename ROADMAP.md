@@ -17,7 +17,7 @@ and has tests. Progress is tracked in [DEVELOPMENT_STATUS.md](DEVELOPMENT_STATUS
 - Import/export project configuration (JSON, schema-validated, tokens excluded)
 - Activity feed for every bot change, dashboard "Your bots"
 
-## Phase 3 — Discord integration ← next
+## Phase 3 — Discord integration ✅
 - Notifications inbox (moved from Phase 2 — ships with the first real notification sources)
 - Guided bot creation wizard with Developer Portal walkthrough
 - Token validation (`GET /users/@me`), encrypted token storage
@@ -25,7 +25,7 @@ and has tests. Progress is tracked in [DEVELOPMENT_STATUS.md](DEVELOPMENT_STATUS
 - `packages/bot-runtime`, BotSupervisor (start/stop/restart/auto-restart/start-on-launch/start-all)
 - Live console (stream, search, filter, download, clear, retention), monitoring (latency, CPU, memory, uptime)
 
-## Phase 4 — Bot modules
+## Phase 4 — Bot modules ← next
 Moderation, Welcome, Tickets, Leveling, Logging, Utility, Verification, Reaction Roles, Suggestions, Giveaways — each with
 config schema, config page, runtime implementation, required intents/permissions declaration and tests.
 

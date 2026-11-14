@@ -8,6 +8,16 @@ export const appSettingsSchema = z.object({
   reduceMotion: z.boolean(),
   /** Shows sidebar entries for features that are planned but not yet built, each with an honest roadmap page. */
   showRoadmapPreview: z.boolean(),
+  notifications: z
+    .object({
+      crashes: z.boolean(),
+      disconnects: z.boolean(),
+      restarts: z.boolean(),
+      highMemory: z.boolean(),
+      /** Also show a Windows notification (in addition to the in-app inbox). */
+      desktop: z.boolean(),
+    })
+    .strict(),
 });
 export type AppSettings = z.infer<typeof appSettingsSchema>;
 
@@ -15,6 +25,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   theme: 'dark',
   reduceMotion: false,
   showRoadmapPreview: false,
+  notifications: { crashes: true, disconnects: true, restarts: true, highMemory: true, desktop: true },
 };
 
 /** Partial update — at least one known key, unknown keys rejected. */
