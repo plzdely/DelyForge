@@ -57,16 +57,17 @@ Legend: ✅ done & verified · 🟡 done, not yet verified end-to-end · ⏳ pen
 | Bot supervisor: start / stop (graceful → force) / restart / start all / stop all / start on launch / clean shutdown on quit | ✅ | 16 tests with a fake process |
 | Crash handling: auto-restart with backoff, crash-loop pause, no restart after login failure, hang watchdog, plan limit on running bots | ✅ | unit tests |
 | Real bot process inside Electron (utility process → discord.js → Discord) | ✅ | smoke test launches it with a fake token; Discord rejects it and the app reports INVALID_TOKEN |
-| Connect wizard (application → token → invite & permissions → presence & go live) | 🟡 | steps 1–2 smoke-tested; steps 3–4 need a real token |
-| Bot page tabs: Overview (live metrics, sparklines, error guidance, invite link), Console (live, search, filter, auto-scroll, download, clear), Settings | ✅ / 🟡 | render in smoke test; live metrics need a real running bot |
+| Connect wizard (application → token → invite & permissions → presence & go live) | ✅ | **Verified with a real Discord bot (2026-11-14)**: connected, invited, started, `/ping` answered ("Gateway latency: 60 ms") |
+| Bot page tabs: Overview (live metrics, sparklines, error guidance, invite link), Console (live, search, filter, auto-scroll, download, clear), Settings | ✅ | smoke test + real bot run |
 | Bot Monitoring page (all bots, live metrics, start/stop all) | ✅ | smoke screenshot |
 | Notifications: inbox, unread badge, mark read, clear, per-type preferences, Windows notifications | ✅ | unit tests + smoke test (real login failure produced a notification) |
 | Logs: redacted, 5,000 lines per bot, pruned by plan retention (3/14/30/90 days) | ✅ | unit tests |
 | Dashboard: live online count, total servers, total commands, start/stop all, real onboarding steps | ✅ | smoke screenshot |
 
-### Needs you (to verify the last 🟡 items end to end)
-Create a free Discord application with a bot and connect it in the wizard. Then invite it, press Start, type `/ping`
-in your server, stop it, and restart DelyForge. **Never paste your token into chat** — only into DelyForge.
+### Real-world check (2026-11-14)
+The owner connected a real Discord bot through the wizard, started it and received a `/ping` reply in Discord.
+Not yet confirmed by hand: Stop → bot goes offline in Discord, and the connection surviving a DelyForge restart
+(both are covered by automated tests).
 
 ## Known limitations / honest notes
 - No accounts yet — the desktop app runs on the local Free plan (accounts & Stripe are Phase 7).
