@@ -6,6 +6,7 @@ versions follow [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Members tab on each bot: see and remove warnings, see levels, reset XP — names shown once members are active.
 - Giveaways can require a role to enter; staff can give a reason when approving or rejecting a suggestion.
 - Bots keep running when the window is closed (DelyForge moves to the tray), and DelyForge can start with Windows.
 - UI refresh: readable contrast everywhere, more depth, a single Modules page, a new dashboard, bot cards and bot

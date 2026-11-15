@@ -11,6 +11,10 @@
     },
     "./process": {
       "default": "./dist/process.js"
+    },
+    "./store": {
+      "types": "./dist/store.d.ts",
+      "default": "./dist/store.js"
     }
   },
   "files": [

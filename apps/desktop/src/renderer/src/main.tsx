@@ -11,6 +11,7 @@ import { AutomationsTab, CommandsTab, EmbedsTab } from '@/pages/bots/builders';
 import { AccountPage } from '@/pages/account';
 import { BotConsole } from '@/pages/bots/console';
 import { AiBuilderPage } from '@/pages/ai-builder';
+import { BotMembers } from '@/pages/bots/members';
 import { MarketplacePage } from '@/pages/marketplace';
 import { AnalyticsPage } from '@/pages/analytics';
 import { TeamPage } from '@/pages/team';
@@ -56,6 +57,7 @@ const router = createHashRouter([
         children: [
           { index: true, element: <BotOverview /> },
           { path: 'modules', element: <BotModules /> },
+          { path: 'members', element: <BotMembers /> },
           { path: 'modules/:moduleId', element: <ModuleSettings /> },
           { path: 'commands', element: <CommandsTab /> },
           { path: 'embeds', element: <EmbedsTab /> },

@@ -2,6 +2,7 @@ import { z } from 'zod';
 import {
   type AnalyticsReport,
   type BackupInfo,
+  type MemberData,
   type UpdateStatus,
   type AppNotification,
   type BotEvent,
@@ -132,6 +133,10 @@ export const IPC_CHANNELS = {
   adminReviewHidden: 'admin:review-hidden',
   adminRole: 'admin:role',
   updatesStatus: 'updates:status',
+  membersData: 'members:data',
+  membersDeleteWarning: 'members:delete-warning',
+  membersClearWarnings: 'members:clear-warnings',
+  membersResetXp: 'members:reset-xp',
   updatesCheck: 'updates:check',
   updatesInstall: 'updates:install',
 } as const;
@@ -252,6 +257,10 @@ export const ipcInputSchemas = {
   [IPC_CHANNELS.analyticsReport]: z.object({ id: z.uuid().nullable(), days: z.number().int().min(1).max(90) }).strict(),
   [IPC_CHANNELS.analyticsExport]: noInput,
   [IPC_CHANNELS.updatesStatus]: noInput,
+  [IPC_CHANNELS.membersData]: z.object({ id: z.uuid(), guildId: z.string().regex(/^\d{17,20}$/) }).strict(),
+  [IPC_CHANNELS.membersDeleteWarning]: z.object({ id: z.uuid(), guildId: z.string().regex(/^\d{17,20}$/), warningId: z.number().int().positive() }).strict(),
+  [IPC_CHANNELS.membersClearWarnings]: z.object({ id: z.uuid(), guildId: z.string().regex(/^\d{17,20}$/), userId: z.string().regex(/^\d{17,20}$/) }).strict(),
+  [IPC_CHANNELS.membersResetXp]: z.object({ id: z.uuid(), guildId: z.string().regex(/^\d{17,20}$/), userId: z.string().regex(/^\d{17,20}$/).nullable() }).strict(),
   [IPC_CHANNELS.updatesCheck]: noInput,
   [IPC_CHANNELS.updatesInstall]: noInput,
   [IPC_CHANNELS.adminOverview]: noInput,
@@ -430,6 +439,13 @@ export interface DelyForgeBridge {
     apply(proposalId: string): Promise<IpcResult<AiApplyResult>>;
     reject(proposalId: string): Promise<IpcResult<null>>;
     troubleshoot(input: { id: string; question: string }): Promise<IpcResult<{ answer: AiTroubleshootAnswer; creditsUsed: number; usage: AiUsageInfo }>>;
+  };
+  members: {
+    data(input: { id: string; guildId: string }): Promise<IpcResult<MemberData>>;
+    deleteWarning(input: { id: string; guildId: string; warningId: number }): Promise<IpcResult<null>>;
+    clearWarnings(input: { id: string; guildId: string; userId: string }): Promise<IpcResult<number>>;
+    /** userId null = everyone in the server. */
+    resetXp(input: { id: string; guildId: string; userId: string | null }): Promise<IpcResult<number>>;
   };
   updates: {
     status(): Promise<IpcResult<UpdateStatus>>;

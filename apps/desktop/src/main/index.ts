@@ -35,6 +35,7 @@ import { AiAssistant } from './ai-assistant';
 import { waitForDiscordAnswer } from './discord-link';
 import { createUpdater } from './updater';
 import { setupTray } from './tray';
+import { MembersService } from './members-service';
 import { BackupService } from './backups';
 import { AnalyticsRepository } from './db/analytics';
 import { MarketplaceClient } from './marketplace';
@@ -414,6 +415,16 @@ async function main(): Promise<void> {
     logs.clear(id);
     return null;
   });
+  // Members tab: warnings and levels from each bot's own data file
+  const members = new MembersService(join(dataDir, 'bots'), bots);
+  handle(IPC_CHANNELS.membersData, ({ id, guildId }) => members.data(id, guildId));
+  handle(IPC_CHANNELS.membersDeleteWarning, ({ id, guildId, warningId }) => {
+    members.deleteWarning(id, guildId, warningId);
+    return null;
+  });
+  handle(IPC_CHANNELS.membersClearWarnings, ({ id, guildId, userId }) => members.clearWarnings(id, guildId, userId));
+  handle(IPC_CHANNELS.membersResetXp, ({ id, guildId, userId }) => members.resetXp(id, guildId, userId));
+
   // Automatic updates (installed copies with an update address only)
   const updateUrl = __DELYFORGE_UPDATE_URL__;
   const updater = createUpdater({ enabled: app.isPackaged && Boolean(updateUrl), url: updateUrl, logger, onReady: (version) => emit({ type: 'update-ready', version }) });

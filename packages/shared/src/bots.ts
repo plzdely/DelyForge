@@ -248,3 +248,11 @@ export interface BackupInfo {
   createdAt: string;
   bots: { id: string; name: string }[];
 }
+
+// ─── Members tab: warnings and levels ─────────────────────────────────────────────────────────────────────────────
+
+export interface MemberData {
+  warnings: { id: number; userId: string; userName: string | null; moderatorName: string | null; reason: string; createdAt: string }[];
+  /** Top 100 by XP. Names are remembered as members chat or get warned; older entries may only have an ID. */
+  levels: { userId: string; name: string | null; xp: number; level: number }[];
+}

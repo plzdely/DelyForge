@@ -33,6 +33,12 @@ const bridge: DelyForgeBridge = {
     updateProfile: (displayName) => invoke(IPC_CHANNELS.accountUpdateProfile, { displayName }),
     linkDiscord: () => invoke(IPC_CHANNELS.accountLinkDiscord),
   },
+  members: {
+    data: (input) => invoke(IPC_CHANNELS.membersData, input),
+    deleteWarning: (input) => invoke(IPC_CHANNELS.membersDeleteWarning, input),
+    clearWarnings: (input) => invoke(IPC_CHANNELS.membersClearWarnings, input),
+    resetXp: (input) => invoke(IPC_CHANNELS.membersResetXp, input),
+  },
   updates: {
     status: () => invoke(IPC_CHANNELS.updatesStatus),
     check: () => invoke(IPC_CHANNELS.updatesCheck),
