@@ -14,7 +14,9 @@ function SidebarLink({ item, badge }: { item: NavItem; badge?: number }) {
   const Icon = item.icon;
   const { pathname } = useLocation();
   // Detail pages (e.g. /bots/<id>) highlight their section; /bots/new highlights "Create Bot", not "My Bots".
-  const isActive = navItemForPath(pathname)?.id === item.id;
+  const current = navItemForPath(pathname);
+  // Individual module pages live under the single sidebar entry “Modules”.
+  const isActive = current?.id === item.id || (item.id === 'modules' && Boolean(current?.path.startsWith('/modules/')));
 
   const link = (
     <Link

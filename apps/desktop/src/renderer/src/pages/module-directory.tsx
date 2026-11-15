@@ -6,10 +6,11 @@ import { Page, PageHeader } from '@/components/layout/page';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { EmptyState } from '@/components/ui/misc';
+import { EmptyState, IconTile } from '@/components/ui/misc';
 import { useEntitlements } from '@/lib/entitlements';
 import { useBotModules } from '@/lib/modules';
 import { useBots } from '@/lib/queries';
+import { MODULE_NAV_ITEMS } from '@/navigation';
 import { RoadmapPage } from './roadmap';
 
 /** How many servers have this module switched on for one bot. */
@@ -18,6 +19,37 @@ function EnabledCount({ botId, moduleId }: { botId: string; moduleId: string }) 
   if (!isImplementedModule(moduleId) || !modules.data) return null;
   const n = Object.values(modules.data).filter((g) => resolveGuildModules(g)[moduleId].enabled).length;
   return n ? <Badge tone="success">On in {n} server{n === 1 ? '' : 's'}</Badge> : <Badge>Off</Badge>;
+}
+
+/** The sidebar's “Modules” page: every module as a card. */
+export function ModulesIndexPage() {
+  const entitlements = useEntitlements();
+  return (
+    <Page route="/modules">
+      <PageHeader title="Modules" description="Ready-made features you switch on per server. Pick one to set it up for a bot." />
+      <div className="grid grid-cols-3 gap-3">
+        {MODULE_NAV_ITEMS.map((m) => {
+          const locked = m.feature ? !hasFeature(entitlements, m.feature) : false;
+          return (
+            <Link key={m.id} to={m.path} className="card-interactive group flex flex-col rounded-xl border border-border bg-surface p-4 shadow-card">
+              <div className="flex items-center justify-between">
+                <IconTile icon={m.icon} size="lg" />
+                {locked ? (
+                  <Badge>
+                    <Lock /> {m.feature ? lowestPlanWithFeature(m.feature)?.name : ''}
+                  </Badge>
+                ) : (
+                  <ChevronRight className="size-4 text-fg-subtle transition-transform group-hover:translate-x-0.5" />
+                )}
+              </div>
+              <h3 className="mt-3 text-sm font-semibold text-fg">{m.label}</h3>
+              <p className="mt-1 text-xs text-fg-muted">{m.summary}</p>
+            </Link>
+          );
+        })}
+      </div>
+    </Page>
+  );
 }
 
 /** Sidebar entry for a module: pick which bot to configure it for. */

@@ -20,7 +20,7 @@ import { ConnectWizard } from '@/pages/bots/connect';
 import { BotLayout } from '@/pages/bots/layout';
 import { ModuleSettings } from '@/pages/bots/module-settings';
 import { BotModules } from '@/pages/bots/modules';
-import { ModuleDirectoryPage } from '@/pages/module-directory';
+import { ModuleDirectoryPage, ModulesIndexPage } from '@/pages/module-directory';
 import { BotOverview } from '@/pages/bots/overview';
 import { BotSettings } from '@/pages/bots/settings';
 import { MonitoringPage } from '@/pages/monitoring';
@@ -67,6 +67,7 @@ const router = createHashRouter([
       },
       { path: 'monitoring', element: <MonitoringPage /> },
       { path: 'notifications', element: <NotificationsPage /> },
+      { path: 'modules', element: <ModulesIndexPage /> },
       { path: 'modules/:moduleId', element: <ModuleDirectoryPage /> },
       { path: 'builders/ai', element: <AiBuilderPage /> },
       { path: 'builders/:section', element: <BuilderDirectoryPage /> },

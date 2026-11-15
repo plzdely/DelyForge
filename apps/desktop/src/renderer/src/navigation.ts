@@ -2,6 +2,7 @@ import { type FeatureKey, PERSONAL_EDITION } from '@delyforge/shared';
 import {
   Activity,
   BadgeCheck,
+  Blocks,
   Bell,
   Bot,
   ChartColumn,
@@ -127,8 +128,9 @@ export const NAV_SECTIONS: NavSection[] = [
   },
   {
     id: 'builders',
-    label: 'Builders',
+    label: 'Build',
     items: [
+      { id: 'modules', label: 'Modules', path: '/modules', icon: Blocks, available: true, phase: 4, summary: 'Ready-made features for your server: welcome, moderation, tickets, leveling and more.' },
       {
         id: 'commands',
         label: 'Command Builder',
@@ -171,22 +173,6 @@ export const NAV_SECTIONS: NavSection[] = [
         summary: 'Describe your bot in plain English and review the generated setup before applying it.',
         planned: ['Prompt → full bot configuration', 'Preview & approve every change', 'AI troubleshooting'],
       },
-    ],
-  },
-  {
-    id: 'modules',
-    label: 'Modules',
-    items: [
-      { id: 'moderation', label: 'Moderation', path: '/modules/moderation', icon: Shield, available: true, phase: 4, summary: 'Staff commands, warnings with automatic thresholds, and auto-moderation.' },
-      { id: 'welcome', label: 'Welcome', path: '/modules/welcome', icon: DoorOpen, available: true, phase: 4, summary: 'Welcome & goodbye messages, welcome DMs and automatic roles.' },
-      { id: 'tickets', label: 'Tickets', path: '/modules/tickets', icon: Ticket, available: true, phase: 4, feature: 'modules.standard', summary: 'Ticket panels, categories, transcripts and ratings.' },
-      { id: 'leveling', label: 'Leveling', path: '/modules/leveling', icon: TrendingUp, available: true, phase: 4, feature: 'modules.standard', summary: 'XP, levels, leaderboards and role rewards.' },
-      { id: 'logging', label: 'Logging', path: '/modules/logging', icon: ScrollText, available: true, phase: 4, feature: 'modules.standard', summary: 'Message, member, role, channel and moderation logs.' },
-      { id: 'verification', label: 'Verification', path: '/modules/verification', icon: BadgeCheck, available: true, phase: 4, feature: 'modules.standard', summary: 'Verification buttons, steps and staff review.' },
-      { id: 'utility', label: 'Utility', path: '/modules/utility', icon: Wrench, available: true, phase: 4, summary: 'Server & user info, avatars and native Discord polls.' },
-      { id: 'reaction-roles', label: 'Reaction Roles', path: '/modules/reactionRoles', icon: Smile, available: true, phase: 4, feature: 'modules.standard', summary: 'Button and select-menu role panels.' },
-      { id: 'suggestions', label: 'Suggestions', path: '/modules/suggestions', icon: Lightbulb, available: true, phase: 4, feature: 'modules.standard', summary: 'Submissions, voting and staff review.' },
-      { id: 'giveaways', label: 'Giveaways', path: '/modules/giveaways', icon: Gift, available: true, phase: 4, feature: 'modules.standard', summary: 'Timed giveaways with requirements and rerolls.' },
     ],
   },
   {
@@ -235,7 +221,21 @@ export const NAV_SECTIONS: NavSection[] = [
   },
 ];
 
-export const ALL_NAV_ITEMS: NavItem[] = NAV_SECTIONS.flatMap((s) => s.items);
+/** Every module, shown as cards on the Modules page (the sidebar has a single “Modules” entry). */
+export const MODULE_NAV_ITEMS: NavItem[] = [
+  { id: 'moderation', label: 'Moderation', path: '/modules/moderation', icon: Shield, available: true, phase: 4, summary: 'Staff commands, warnings with automatic thresholds, and auto-moderation.' },
+  { id: 'welcome', label: 'Welcome', path: '/modules/welcome', icon: DoorOpen, available: true, phase: 4, summary: 'Welcome & goodbye messages, welcome DMs and automatic roles.' },
+  { id: 'tickets', label: 'Tickets', path: '/modules/tickets', icon: Ticket, available: true, phase: 4, feature: 'modules.standard', summary: 'Ticket panels, categories, transcripts and ratings.' },
+  { id: 'leveling', label: 'Leveling', path: '/modules/leveling', icon: TrendingUp, available: true, phase: 4, feature: 'modules.standard', summary: 'XP, levels, leaderboards and role rewards.' },
+  { id: 'logging', label: 'Logging', path: '/modules/logging', icon: ScrollText, available: true, phase: 4, feature: 'modules.standard', summary: 'Message, member, role, channel and moderation logs.' },
+  { id: 'verification', label: 'Verification', path: '/modules/verification', icon: BadgeCheck, available: true, phase: 4, feature: 'modules.standard', summary: 'Verification buttons, steps and staff review.' },
+  { id: 'utility', label: 'Utility', path: '/modules/utility', icon: Wrench, available: true, phase: 4, summary: 'Server & user info, avatars and native Discord polls.' },
+  { id: 'reaction-roles', label: 'Reaction Roles', path: '/modules/reactionRoles', icon: Smile, available: true, phase: 4, feature: 'modules.standard', summary: 'Button and select-menu role panels.' },
+  { id: 'suggestions', label: 'Suggestions', path: '/modules/suggestions', icon: Lightbulb, available: true, phase: 4, feature: 'modules.standard', summary: 'Submissions, voting and staff review.' },
+  { id: 'giveaways', label: 'Giveaways', path: '/modules/giveaways', icon: Gift, available: true, phase: 4, feature: 'modules.standard', summary: 'Timed giveaways with requirements and rerolls.' },
+];
+
+export const ALL_NAV_ITEMS: NavItem[] = [...NAV_SECTIONS.flatMap((s) => s.items), ...MODULE_NAV_ITEMS];
 
 /** The nav item a path belongs to — e.g. `/bots/<id>` belongs to "My Bots", `/bots/new` to "Create Bot". */
 export function navItemForPath(pathname: string): NavItem | undefined {

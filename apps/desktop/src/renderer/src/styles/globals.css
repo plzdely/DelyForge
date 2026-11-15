@@ -13,16 +13,16 @@
 :root,
 [data-theme='dark'] {
   color-scheme: dark;
-  --df-bg: #09090d;
-  --df-bg-subtle: #0c0c12;
-  --df-surface: #121219;
-  --df-surface-raised: #17171f;
-  --df-surface-hover: #1c1c26;
-  --df-border: #21212b;
-  --df-border-strong: #2e2e3a;
-  --df-fg: #ededf3;
-  --df-fg-muted: #a1a1b5;
-  --df-fg-subtle: #6b6b80;
+  --df-bg: #07070b;
+  --df-bg-subtle: #0b0b11;
+  --df-surface: #111118;
+  --df-surface-raised: #16161f;
+  --df-surface-hover: #1c1c27;
+  --df-border: #23232f;
+  --df-border-strong: #33333f;
+  --df-fg: #f2f2f7;
+  --df-fg-muted: #b4b4c7;
+  --df-fg-subtle: #8a8aa0;
 
   --df-primary: #7c5cff;
   --df-primary-hover: #8b6dff;
@@ -39,9 +39,13 @@
   --df-danger: #f04d5e;
   --df-danger-soft: rgb(240 77 94 / 0.13);
 
-  --df-shadow-card: 0 1px 0 rgb(255 255 255 / 0.03) inset, 0 1px 2px rgb(0 0 0 / 0.4);
+  --df-shadow-card: 0 1px 0 rgb(255 255 255 / 0.045) inset, 0 1px 2px rgb(0 0 0 / 0.5), 0 10px 28px -14px rgb(0 0 0 / 0.7);
   --df-shadow-pop: 0 12px 32px -8px rgb(0 0 0 / 0.6), 0 0 0 1px var(--df-border-strong);
   --df-glow: radial-gradient(60% 120% at 0% 0%, rgb(124 92 255 / 0.16), transparent 70%);
+  --df-hero: radial-gradient(80% 140% at 0% 0%, rgb(124 92 255 / 0.30), transparent 60%),
+    radial-gradient(60% 120% at 100% 0%, rgb(99 102 241 / 0.18), transparent 65%);
+  --df-backdrop: radial-gradient(900px 420px at 15% -8%, rgb(124 92 255 / 0.09), transparent 70%),
+    radial-gradient(700px 360px at 95% -10%, rgb(76 141 255 / 0.05), transparent 70%);
 }
 
 [data-theme='light'] {
@@ -55,7 +59,7 @@
   --df-border-strong: #d6d6e1;
   --df-fg: #0f0f16;
   --df-fg-muted: #565669;
-  --df-fg-subtle: #8a8a9c;
+  --df-fg-subtle: #6c6c80;
 
   --df-primary: #6a45ff;
   --df-primary-hover: #5b36f0;
@@ -75,6 +79,9 @@
   --df-shadow-card: 0 1px 2px rgb(16 16 24 / 0.05);
   --df-shadow-pop: 0 12px 32px -8px rgb(16 16 24 / 0.18), 0 0 0 1px var(--df-border);
   --df-glow: radial-gradient(60% 120% at 0% 0%, rgb(106 69 255 / 0.08), transparent 70%);
+  --df-hero: radial-gradient(80% 140% at 0% 0%, rgb(106 69 255 / 0.14), transparent 60%),
+    radial-gradient(60% 120% at 100% 0%, rgb(79 70 229 / 0.08), transparent 65%);
+  --df-backdrop: radial-gradient(900px 420px at 15% -8%, rgb(106 69 255 / 0.05), transparent 70%);
 }
 
 @theme inline {
@@ -82,20 +89,20 @@
   --font-mono: 'Geist Mono Variable', ui-monospace, 'Cascadia Code', monospace;
 
   /* Compact desktop type scale — no oversized headings. */
-  --text-2xs: 10.5px;
-  --text-2xs--line-height: 14px;
-  --text-xs: 11.5px;
-  --text-xs--line-height: 16px;
-  --text-sm: 13px;
+  --text-2xs: 11px;
+  --text-2xs--line-height: 15px;
+  --text-xs: 12px;
+  --text-xs--line-height: 17px;
+  --text-sm: 13.5px;
   --text-sm--line-height: 20px;
-  --text-base: 14px;
+  --text-base: 14.5px;
   --text-base--line-height: 22px;
-  --text-lg: 16px;
+  --text-lg: 16.5px;
   --text-lg--line-height: 24px;
-  --text-xl: 19px;
-  --text-xl--line-height: 26px;
-  --text-2xl: 23px;
-  --text-2xl--line-height: 30px;
+  --text-xl: 20px;
+  --text-xl--line-height: 28px;
+  --text-2xl: 26px;
+  --text-2xl--line-height: 32px;
 
   --color-bg: var(--df-bg);
   --color-bg-subtle: var(--df-bg-subtle);
@@ -206,6 +213,27 @@
   ::-webkit-scrollbar-track {
     background: transparent;
   }
+}
+
+/* Faint brand glow behind every page. */
+.app-backdrop {
+  background-image: var(--df-backdrop);
+  background-repeat: no-repeat;
+}
+
+/* Clickable cards: lift a little and brighten the border on hover / keyboard focus. */
+.card-interactive {
+  transition:
+    transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    border-color 180ms ease,
+    background-color 180ms ease,
+    box-shadow 180ms ease;
+}
+.card-interactive:hover,
+.card-interactive:focus-visible {
+  transform: translateY(-2px);
+  border-color: var(--df-border-strong);
+  box-shadow: var(--df-shadow-card), 0 0 0 1px var(--df-primary-border);
 }
 
 /* Window title bar drag regions (custom frame). */

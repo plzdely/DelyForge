@@ -89,7 +89,7 @@ export function AppShell() {
       <TitleBar />
       <div className="flex min-h-0 flex-1">
         <Sidebar />
-        <main className="min-w-0 flex-1 overflow-y-auto">
+        <main className="app-backdrop min-w-0 flex-1 overflow-y-auto">
           {/* key → re-run the enter animation on navigation */}
           <div key={pathname} className="animate-enter">
             <Outlet />

@@ -92,6 +92,7 @@ export async function runSmokeTest(win: BrowserWindow, outDir: string, logger: L
 
     // ── Modules: tab and sidebar pages render (needs a real server to configure) ─────────────────────────────────
     await visit(`/bots/${botId}/modules`, 'bot-modules-unconnected');
+    await visit('/modules', 'modules-index');
     await visit('/modules/welcome', 'module-directory');
     await visit('/templates', 'templates');
     await visit('/account', 'account-signed-out');
