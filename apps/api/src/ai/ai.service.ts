@@ -25,7 +25,12 @@ import { BillingService } from '../billing/billing.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AI_PROVIDERS, type AiTextProvider } from './provider';
 
-/** Credits held while a request runs (settled to the real amount afterwards). */
+/**
+ * Credits held while a request runs (settled to the real amount afterwards). Typical cost, not worst case:
+ * shortcut: requests in flight together can overshoot the allowance by (real − reserved) each, a few cents given the
+ * per-minute rate limits; reserve creditsFor(input, maxTokens) instead if abuse shows up — at the cost of customers
+ * not being able to spend their last ~44 credits.
+ */
 const RESERVE: Record<AiFeature, number> = { builder: 10, troubleshoot: 3 };
 
 const schemaText = (s: z.ZodType) => JSON.stringify(z.toJSONSchema(s, { unrepresentable: 'any' }));

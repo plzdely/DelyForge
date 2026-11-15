@@ -507,7 +507,10 @@ model ListingVersion {
   manifest         Json
   /// Minimum DelyForge version this works with (semver).
   minAppVersion    String
-  packageUrl       String
+  /// Where a large package file is hosted (unused while packages are stored inline in `content`).
+  packageUrl       String?
+  /// The declarative package (validated by @delyforge/shared validatePackage).
+  content          Json?
   packageSha256    String
   /// Ed25519 signature by DelyForge after review. Desktop refuses unsigned packages.
   signature        String?

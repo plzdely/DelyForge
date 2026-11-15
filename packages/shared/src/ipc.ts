@@ -28,6 +28,7 @@ import {
 } from './account.js';
 import { appSettingsPatchSchema, type AppSettings } from './settings.js';
 import type { AiProposalResult, AiTroubleshootAnswer, AiUsageInfo } from './ai.js';
+import { LISTING_TYPES, type ListingDetail, type ListingSummary, type MyListing, type ReviewQueueItem, developerProfileSchema, reviewSchema } from './marketplace.js';
 import type { PlanId } from './plans.js';
 
 /**
@@ -90,6 +91,16 @@ export const IPC_CHANNELS = {
   aiApply: 'ai:apply',
   aiReject: 'ai:reject',
   aiTroubleshoot: 'ai:troubleshoot',
+  marketList: 'market:list',
+  marketDetail: 'market:detail',
+  marketInstall: 'market:install',
+  marketReview: 'market:review',
+  marketDeveloper: 'market:developer',
+  marketBecomeDeveloper: 'market:become-developer',
+  marketMine: 'market:mine',
+  marketSubmit: 'market:submit',
+  marketQueue: 'market:queue',
+  marketModerate: 'market:moderate',
 } as const;
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];
 
@@ -177,6 +188,34 @@ export const ipcInputSchemas = {
   [IPC_CHANNELS.aiApply]: z.object({ proposalId: z.string().min(1).max(40) }).strict(),
   [IPC_CHANNELS.aiReject]: z.object({ proposalId: z.string().min(1).max(40) }).strict(),
   [IPC_CHANNELS.aiTroubleshoot]: z.object({ id: z.uuid(), question: z.string().trim().max(1000) }).strict(),
+  [IPC_CHANNELS.marketList]: z.object({ type: z.enum(LISTING_TYPES).optional(), q: z.string().trim().max(60).optional(), sort: z.enum(['popular', 'rating', 'new']).optional() }).strict(),
+  [IPC_CHANNELS.marketDetail]: z.object({ slug: z.string().regex(/^[a-z0-9-]{3,48}$/) }).strict(),
+  [IPC_CHANNELS.marketInstall]: z.object({ slug: z.string().regex(/^[a-z0-9-]{3,48}$/), id: z.uuid(), guildId: z.string().regex(/^\d{17,20}$/) }).strict(),
+  [IPC_CHANNELS.marketReview]: reviewSchema.extend({ slug: z.string().regex(/^[a-z0-9-]{3,48}$/) }).strict(),
+  [IPC_CHANNELS.marketDeveloper]: noInput,
+  [IPC_CHANNELS.marketBecomeDeveloper]: developerProfileSchema,
+  [IPC_CHANNELS.marketMine]: noInput,
+  [IPC_CHANNELS.marketSubmit]: z
+    .object({
+      id: z.uuid(),
+      commandIds: z.array(z.string().max(16)).max(25),
+      embedIds: z.array(z.string().max(16)).max(25),
+      listing: z
+        .object({
+          slug: z.string().regex(/^[a-z0-9-]{3,48}$/),
+          title: z.string().trim().min(3).max(60),
+          summary: z.string().trim().min(10).max(160),
+          description: z.string().trim().max(4000),
+          category: z.string().trim().min(2).max(30),
+          tags: z.array(z.string().trim().min(1).max(20)).max(5),
+          version: z.string().regex(/^\d+\.\d+\.\d+$/),
+          changelog: z.string().trim().max(1000),
+        })
+        .strict(),
+    })
+    .strict(),
+  [IPC_CHANNELS.marketQueue]: noInput,
+  [IPC_CHANNELS.marketModerate]: z.object({ versionId: z.string().min(1).max(40), approve: z.boolean(), notes: z.string().trim().max(1000) }).strict(),
 } as const satisfies Record<IpcChannel, z.ZodType>;
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -331,6 +370,20 @@ export interface DelyForgeBridge {
     apply(proposalId: string): Promise<IpcResult<AiApplyResult>>;
     reject(proposalId: string): Promise<IpcResult<null>>;
     troubleshoot(input: { id: string; question: string }): Promise<IpcResult<{ answer: AiTroubleshootAnswer; creditsUsed: number; usage: AiUsageInfo }>>;
+  };
+  marketplace: {
+    list(filter: z.input<(typeof ipcInputSchemas)['market:list']>): Promise<IpcResult<ListingSummary[]>>;
+    detail(slug: string): Promise<IpcResult<ListingDetail>>;
+    /** Downloads the signed pack, verifies DelyForge's signature, then installs it into one server. */
+    install(input: { slug: string; id: string; guildId: string }): Promise<IpcResult<{ modules: BotModules; builders: Builders }>>;
+    review(input: { slug: string; rating: number; body: string }): Promise<IpcResult<null>>;
+    developer(): Promise<IpcResult<{ displayName: string; slug: string } | null>>;
+    becomeDeveloper(input: { displayName: string; slug: string }): Promise<IpcResult<{ displayName: string; slug: string }>>;
+    mine(): Promise<IpcResult<MyListing[]>>;
+    submit(input: z.input<(typeof ipcInputSchemas)['market:submit']>): Promise<IpcResult<MyListing>>;
+    /** Staff only (the server checks). */
+    queue(): Promise<IpcResult<ReviewQueueItem[]>>;
+    moderate(input: { versionId: string; approve: boolean; notes: string }): Promise<IpcResult<null>>;
   };
   events: {
     /** Subscribe to live bot events. Returns an unsubscribe function. */

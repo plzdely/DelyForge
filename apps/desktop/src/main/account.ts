@@ -268,6 +268,16 @@ export class AccountService {
     return (await this.http<{ url: string }>('POST', '/v1/billing/portal', undefined, true)).url;
   }
 
+  /** DelyForge's signing key (embedded in release builds); verifies plan certificates and marketplace packages. */
+  publicKey(): Promise<string> {
+    return this.ensurePublicKey();
+  }
+
+  /** A call that needs no account (public marketplace browsing). */
+  publicGet<T>(path: string): Promise<T> {
+    return this.http<T>('GET', path);
+  }
+
   /** A signed-in call to the DelyForge API (used by the AI assistant; AI answers can take a minute or two). */
   authed<T>(method: string, path: string, body?: unknown, timeoutMs?: number): Promise<T> {
     return this.http<T>(method, path, body, true, timeoutMs);

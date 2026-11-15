@@ -24,6 +24,7 @@ import {
 } from '@delyforge/shared';
 import { AccountService } from './account';
 import { AiAssistant } from './ai-assistant';
+import { MarketplaceClient } from './marketplace';
 import { BotRepository } from './db/bots';
 import { openDatabase } from './db/database';
 import { LogRepository, NotificationRepository } from './db/logs';
@@ -336,6 +337,19 @@ async function main(): Promise<void> {
   handle(IPC_CHANNELS.aiApply, ({ proposalId }) => ai.apply(proposalId));
   handle(IPC_CHANNELS.aiReject, ({ proposalId }) => ai.reject(proposalId));
   handle(IPC_CHANNELS.aiTroubleshoot, ({ id, question }) => ai.troubleshoot(id, question));
+
+  // Marketplace (signed, declarative packs only)
+  const market = new MarketplaceClient(account, buildersService);
+  handle(IPC_CHANNELS.marketList, (filter) => market.list(filter));
+  handle(IPC_CHANNELS.marketDetail, ({ slug }) => market.detail(slug));
+  handle(IPC_CHANNELS.marketInstall, ({ slug, id, guildId }) => market.install(slug, id, guildId));
+  handle(IPC_CHANNELS.marketReview, ({ slug, rating, body }) => market.review(slug, rating, body));
+  handle(IPC_CHANNELS.marketDeveloper, () => market.developer());
+  handle(IPC_CHANNELS.marketBecomeDeveloper, (input) => market.becomeDeveloper(input));
+  handle(IPC_CHANNELS.marketMine, () => market.mine());
+  handle(IPC_CHANNELS.marketSubmit, (input) => market.submit(input));
+  handle(IPC_CHANNELS.marketQueue, () => market.queue());
+  handle(IPC_CHANNELS.marketModerate, ({ versionId, approve, notes }) => market.moderate(versionId, approve, notes));
 
   // Logs
   handle(IPC_CHANNELS.logsList, ({ id, limit }) => {

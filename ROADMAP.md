@@ -42,7 +42,7 @@ AI command/embed/workflow generation, AI troubleshooting.
 Accounts (register, verify email, login, reset, sessions, profile), Stripe Checkout + Billing Portal + webhooks,
 subscriptions (monthly/annual, upgrade/downgrade/cancel, grace periods), signed entitlement tokens, billing history.
 
-## Phase 8 — Ecosystem
+## Phase 8 — Ecosystem ✅ (marketplace; paid listings and code plugins deferred)
 Marketplace (listings, search, reviews, purchases, developer onboarding, review queue, signing), plugin system (manifest,
 permissions, sandbox, updates, dependency/compatibility checks), integrations, developer docs.
 

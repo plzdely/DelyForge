@@ -114,10 +114,10 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
 }
 
 /** Every Discord-ID-looking string inside a value. */
-function idsIn(value: unknown, out: string[] = []): string[] {
+export function discordIdsIn(value: unknown, out: string[] = []): string[] {
   if (typeof value === 'string' && /^\d{17,20}$/.test(value)) out.push(value);
-  else if (Array.isArray(value)) value.forEach((v) => idsIn(v, out));
-  else if (isPlainObject(value)) Object.values(value).forEach((v) => idsIn(v, out));
+  else if (Array.isArray(value)) value.forEach((v) => discordIdsIn(v, out));
+  else if (isPlainObject(value)) Object.values(value).forEach((v) => discordIdsIn(v, out));
   return out;
 }
 
@@ -141,7 +141,7 @@ function parseJson(text: string): { ok: true; value: unknown } | { ok: false } {
 export function validateProposal(raw: AiBuilderOutput, guild: AiGuildContext): AiProposal {
   const known = new Set([guild.id, ...guild.channels.map((c) => c.id), ...guild.roles.map((r) => r.id)]);
   const dropped: string[] = [];
-  const unknownIds = (v: unknown) => idsIn(v).filter((id) => !known.has(id));
+  const unknownIds = (v: unknown) => discordIdsIn(v).filter((id) => !known.has(id));
 
   const modules: AiProposal['modules'] = [];
   const seenModules = new Set<string>();

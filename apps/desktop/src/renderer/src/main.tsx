@@ -11,6 +11,7 @@ import { AutomationsTab, CommandsTab, EmbedsTab } from '@/pages/bots/builders';
 import { AccountPage } from '@/pages/account';
 import { BotConsole } from '@/pages/bots/console';
 import { AiBuilderPage } from '@/pages/ai-builder';
+import { MarketplacePage } from '@/pages/marketplace';
 import { BuilderDirectoryPage, TemplatesPage } from '@/pages/templates';
 import { ConnectWizard } from '@/pages/bots/connect';
 import { BotLayout } from '@/pages/bots/layout';
@@ -67,6 +68,7 @@ const router = createHashRouter([
       { path: 'builders/ai', element: <AiBuilderPage /> },
       { path: 'builders/:section', element: <BuilderDirectoryPage /> },
       { path: 'templates', element: <TemplatesPage /> },
+      { path: 'marketplace', element: <MarketplacePage /> },
       { path: '*', element: <RoadmapPage /> },
     ],
   },

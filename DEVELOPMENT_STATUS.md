@@ -1,6 +1,6 @@
 # Development Status
 
-_Last updated: 2026-11-15 — Phase 6 (AI) complete._
+_Last updated: 2026-11-15 — Phase 8 (marketplace) complete._
 
 Legend: ✅ done & verified · 🟡 done, not yet verified end-to-end · ⏳ pending · ⛔ blocked on an external action
 
@@ -157,6 +157,29 @@ per command (use Discord's Integrations settings).
   already lists providers/models, but only Claude is wired up.
 - Picking individual items from a proposal: it is apply-all or discard.
 
+## Phase 8 — Marketplace
+
+| Item | Status | Verification |
+|---|---|---|
+| Browse, search, filter, sort; listing details with contents and reviews | ✅ | 4 integration tests (real PostgreSQL) |
+| Packs are declarative only (module settings, commands, embeds, workflows), checked by the same rules as the settings screens, and may not contain any server's channel/role IDs | ✅ | shared + API tests |
+| Developer profile, submitting listings and new versions, review status and staff notes | ✅ | integration test |
+| Staff review queue: approving signs the exact pack with the DelyForge key; the app refuses packs whose signature or content doesn't check out | ✅ | integration + desktop tests |
+| Install into one server (plan-checked, embeds re-linked, name clashes skipped), installs counted once | ✅ | integration test; templates use the same install path |
+| Ratings and reviews (only after installing) | ✅ | integration test |
+| Marketplace screen (Browse / Publish / Review queue for staff) | 🟡 | renders in the smoke test; not clicked through against a running API |
+
+### Not built (named, not hidden)
+- **Paid listings and developer payouts:** need Stripe Connect and your Stripe account. Every listing is free for now.
+- **Code plugins** (third-party code running in a sandbox): a separate, security-heavy project. The marketplace only
+  carries data, never code, so it can't run anything harmful.
+- Publishing modules or workflows from the app (the API accepts them; the app's publish form offers commands and embeds).
+- Hiding abusive reviews and suspending listings need staff tools — planned for the Phase 9 admin dashboard.
+
+### Making yourself staff (to review submissions)
+In `apps/api`, run `pnpm exec prisma studio`, open the **User** table, set your account's `role` to `ADMIN`, save, then
+sign out and in again in the app. A **Review queue** tab appears on the Marketplace page.
+
 ## Known limitations / honest notes
 - No accounts yet — the desktop app runs on the local Free plan (accounts & Stripe are Phase 7).
 - Bots run only while DelyForge is open on this computer (24/7 cloud hosting is Phase 9).
@@ -172,4 +195,4 @@ The Free plan allows 1 bot. To test with more, start the app with a simulated pl
 customer builds ignore it). In Git Bash: `DELYFORGE_DEV_PLAN=pro pnpm dev:desktop`. In PowerShell:
 `$env:DELYFORGE_DEV_PLAN='pro'; pnpm dev:desktop`.
 
-## Next up — Phase 8 (marketplace and plugins)
+## Next up — Phase 9 (teams, analytics, admin)

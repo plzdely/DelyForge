@@ -10,6 +10,7 @@ import {
   lowestPlanWithFeature,
   moduleInfo,
   newItemId,
+  type PackageContent,
 } from '@delyforge/shared';
 import type { BotRepository } from '../db/bots';
 import type { LocalDatabase } from '../db/database';
@@ -84,23 +85,49 @@ export class BuildersService {
     return rows.map((r) => ({ id: r.id, workflowId: r.workflow_id, ok: r.ok === 1, steps: r.steps, message: r.message, createdAt: r.created_at }));
   }
 
-  /**
-   * Applies a template to one server: its modules replace that server's settings for those modules, and its commands
-   * are added (skipping names already used). Modules the plan doesn't include are added switched off.
-   */
+  /** Applies a built-in template to one server (see `installContent`). */
   applyTemplate(botId: string, guildId: string, templateId: string): { modules: BotModules; builders: Builders } {
-    const project = this.bots.get(botId);
     const template = TEMPLATES.find((t) => t.id === templateId);
     if (!template) throw new AppError('NOT_FOUND', 'That template doesn’t exist.');
-    const ent = this.entitlements();
-    if (!ent.features.includes(template.feature)) {
+    if (!this.entitlements().features.includes(template.feature)) {
       throw new AppError('FORBIDDEN', `The “${template.name}” template is available on the ${lowestPlanWithFeature(template.feature)?.name ?? 'Pro'} plan.`);
     }
+    return this.installContent(botId, guildId, { modules: template.modules, commands: template.commands, embeds: [], workflows: [] }, `the “${template.name}” template`);
+  }
+
+  /**
+   * Installs a template or marketplace pack into one server: its modules replace that server's settings for those
+   * modules (switched off if the plan doesn't include them), and its commands, embeds and workflows are added with new
+   * IDs (commands whose name is already used are skipped). Everything goes through `save`, so validation and plan
+   * limits apply, and nothing is written if they fail.
+   */
+  installContent(botId: string, guildId: string, content: PackageContent, label: string): { modules: BotModules; builders: Builders } {
+    const project = this.bots.get(botId);
+    const ent = this.entitlements();
+
+    const builders = this.bots.builders(botId);
+    const next: Builders = { commands: [...builders.commands], embeds: [...builders.embeds], workflows: [...builders.workflows] };
+    const embedIds = new Map<string, string>();
+    for (const e of content.embeds) {
+      const id = newItemId(next.embeds);
+      embedIds.set(e.id, id);
+      next.embeds.push({ ...e, id });
+    }
+    const embed = (id: string) => (id ? (embedIds.get(id) ?? '') : '');
+    const taken = new Set(next.commands.map((c) => `${c.type}:${c.name}`));
+    for (const c of content.commands) {
+      if (taken.has(`${c.type}:${c.name}`)) continue;
+      next.commands.push({ ...c, id: newItemId(next.commands), response: { ...c.response, embedId: embed(c.response.embedId) } });
+    }
+    for (const w of content.workflows) {
+      next.workflows.push({ ...w, id: newItemId(next.workflows), guildId, steps: w.steps.map((s) => (s.type === 'sendMessage' ? { ...s, embedId: embed(s.embedId) } : s)) });
+    }
+    const saved = this.save(botId, next);
 
     const modules = this.bots.modules(botId);
     const guild: GuildModules = { ...(modules[guildId] ?? {}) };
     for (const id of IMPLEMENTED_MODULES) {
-      let cfg = template.modules[id] as { enabled: boolean; automod?: { enabled: boolean } } | undefined;
+      let cfg = content.modules[id] as { enabled: boolean; automod?: { enabled: boolean } } | undefined;
       if (!cfg) continue;
       if (cfg.automod?.enabled && !ent.features.includes('moderation.advanced')) cfg = { ...cfg, automod: { ...cfg.automod, enabled: false } };
       if (!ent.features.includes(moduleInfo(id).feature)) cfg = { ...cfg, enabled: false };
@@ -109,17 +136,8 @@ export class BuildersService {
     modules[guildId] = guild;
     this.bots.setModules(botId, modules);
 
-    const builders = this.bots.builders(botId);
-    const taken = new Set(builders.commands.map((c) => `${c.type}:${c.name}`));
-    for (const c of template.commands) {
-      if (taken.has(`${c.type}:${c.name}`)) continue;
-      builders.commands.push({ ...c, id: newItemId(builders.commands) });
-    }
-    this.bots.setBuilders(botId, builders);
-
-    this.activity.record('module', `Applied the “${template.name}” template to “${project.name}”`, botId);
+    this.activity.record('module', `Installed ${label} on “${project.name}”`, botId);
     this.apply.modules(botId);
-    this.apply.builders(botId);
-    return { modules, builders };
+    return { modules, builders: saved };
   }
 }

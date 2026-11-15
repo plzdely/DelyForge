@@ -32,6 +32,18 @@ const bridge: DelyForgeBridge = {
     resendVerification: () => invoke(IPC_CHANNELS.accountResendVerification),
     updateProfile: (displayName) => invoke(IPC_CHANNELS.accountUpdateProfile, { displayName }),
   },
+  marketplace: {
+    list: (filter) => invoke(IPC_CHANNELS.marketList, filter),
+    detail: (slug) => invoke(IPC_CHANNELS.marketDetail, { slug }),
+    install: (input) => invoke(IPC_CHANNELS.marketInstall, input),
+    review: (input) => invoke(IPC_CHANNELS.marketReview, input),
+    developer: () => invoke(IPC_CHANNELS.marketDeveloper),
+    becomeDeveloper: (input) => invoke(IPC_CHANNELS.marketBecomeDeveloper, input),
+    mine: () => invoke(IPC_CHANNELS.marketMine),
+    submit: (input) => invoke(IPC_CHANNELS.marketSubmit, input),
+    queue: () => invoke(IPC_CHANNELS.marketQueue),
+    moderate: (input) => invoke(IPC_CHANNELS.marketModerate, input),
+  },
   ai: {
     usage: () => invoke(IPC_CHANNELS.aiUsage),
     build: (input) => invoke(IPC_CHANNELS.aiBuild, input),

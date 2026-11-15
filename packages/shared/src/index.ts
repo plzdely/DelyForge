@@ -12,3 +12,4 @@ export * from './builders.js';
 export * from './templates.js';
 export * from './account.js';
 export * from './ai.js';
+export * from './marketplace.js';

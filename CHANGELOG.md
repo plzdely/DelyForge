@@ -6,6 +6,8 @@ versions follow [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Phase 8: Marketplace — browse, install signed community packs (commands, embeds, templates, workflows), reviews,
+  developer publishing and a staff review queue.
 - Phase 6: AI Bot Builder (describe a bot → reviewed proposal → apply) and AI troubleshooting in the console, running on
   the DelyForge API with monthly AI credits per plan.
 - Phase 7: DelyForge accounts (sign-up, sign-in, email verification, password reset, sessions), Stripe subscriptions

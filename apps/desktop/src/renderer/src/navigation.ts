@@ -193,7 +193,7 @@ export const NAV_SECTIONS: NavSection[] = [
     id: 'ecosystem',
     label: 'Ecosystem',
     items: [
-      { id: 'marketplace', label: 'Marketplace', path: '/marketplace', icon: Store, available: false, phase: 8, feature: 'marketplace.access', summary: 'Templates, workflow packs, plugins and themes from the community.' },
+      { id: 'marketplace', label: 'Marketplace', path: '/marketplace', icon: Store, available: true, phase: 8, feature: 'marketplace.access', summary: 'Templates, workflow packs, plugins and themes from the community.' },
       { id: 'plugins', label: 'Plugins', path: '/plugins', icon: Puzzle, available: false, phase: 8, summary: 'Install sandboxed, permission-controlled extensions.' },
       { id: 'integrations', label: 'Integrations', path: '/integrations', icon: Plug, available: false, phase: 8, summary: 'Connect DelyForge to the tools you already use.' },
     ],
