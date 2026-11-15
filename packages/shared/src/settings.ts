@@ -8,6 +8,10 @@ export const appSettingsSchema = z.object({
   reduceMotion: z.boolean(),
   /** Shows sidebar entries for features that are planned but not yet built, each with an honest roadmap page. */
   showRoadmapPreview: z.boolean(),
+  /** Closing the window hides DelyForge in the tray so bots keep running (Quit is in the tray menu). */
+  runInBackground: z.boolean(),
+  /** Start DelyForge (hidden in the tray) when Windows starts — installed app only. */
+  startWithWindows: z.boolean(),
   notifications: z
     .object({
       crashes: z.boolean(),
@@ -25,6 +29,8 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   theme: 'dark',
   reduceMotion: false,
   showRoadmapPreview: false,
+  runInBackground: true,
+  startWithWindows: false,
   notifications: { crashes: true, disconnects: true, restarts: true, highMemory: true, desktop: true },
 };
 

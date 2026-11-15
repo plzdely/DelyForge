@@ -34,6 +34,7 @@ import { AccountService } from './account';
 import { AiAssistant } from './ai-assistant';
 import { waitForDiscordAnswer } from './discord-link';
 import { createUpdater } from './updater';
+import { setupTray } from './tray';
 import { BackupService } from './backups';
 import { AnalyticsRepository } from './db/analytics';
 import { MarketplaceClient } from './marketplace';
@@ -250,6 +251,8 @@ async function main(): Promise<void> {
   handle(IPC_CHANNELS.settingsUpdate, (patch) => {
     const next = settings.update(patch);
     applyTheme(next);
+    // Only the installed app registers itself (a development build would register the bare Electron runtime).
+    if ('startWithWindows' in patch && app.isPackaged) app.setLoginItemSettings({ openAtLogin: next.startWithWindows, args: ['--hidden'] });
     return next;
   });
   handle(IPC_CHANNELS.dashboardGetSummary, () => dashboard.summary());
@@ -516,10 +519,14 @@ async function main(): Promise<void> {
     if (!win.isDestroyed() && process.platform !== 'darwin') win.setTitleBarOverlay({ ...palette, height: 40 });
   });
 
-  app.on('second-instance', () => {
-    if (win.isMinimized()) win.restore();
-    win.focus();
+  const tray = setupTray({
+    win,
+    runInBackground: () => settings.get().runInBackground,
+    startAll: () => void supervisor.startAll(),
+    stopAll: () => void supervisor.stopAll(),
+    onlineCount: () => supervisor.onlineCount(),
   });
+  app.on('second-instance', () => tray.show());
   app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') app.quit();
   });
@@ -597,7 +604,8 @@ function createMainWindow(): BrowserWindow {
   });
 
   win.once('ready-to-show', () => {
-    if (!process.env['DELYFORGE_SMOKE_DIR']) win.show();
+    // Started with Windows: stay in the tray until the person opens it.
+    if (!process.env['DELYFORGE_SMOKE_DIR'] && !process.argv.includes('--hidden')) win.show();
   });
 
   if (isDev && DEV_SERVER_URL) void win.loadURL(DEV_SERVER_URL);

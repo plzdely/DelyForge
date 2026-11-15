@@ -171,6 +171,11 @@ export async function runSmokeTest(win: BrowserWindow, outDir: string, logger: L
     if (theme !== 'light') failures.push(`theme did not persist across reload (got ${theme})`);
     await settle();
     await capture('dashboard-light');
+
+    // ── Closing the window keeps DelyForge (and its bots) running in the tray ───────────────────────────────────
+    win.close();
+    await sleep(300);
+    if (win.isDestroyed() || win.isVisible()) failures.push('closing the window did not keep DelyForge running in the tray');
   } catch (err) {
     failures.push(`smoke test crashed: ${(err as Error).message}`);
   }

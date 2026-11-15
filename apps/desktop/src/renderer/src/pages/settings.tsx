@@ -125,6 +125,36 @@ export function SettingsPage() {
         </Card>
 
         <Card>
+          <CardHeader title="Running in the background" description="Bots only run while DelyForge is running on this PC." />
+          <Separator />
+          <Row
+            title="Keep bots running when I close the window"
+            description="DelyForge moves to the tray by the clock instead of quitting. Right-click its icon there to quit."
+            control={
+              <Switch
+                aria-label="Keep bots running when I close the window"
+                checked={s?.runInBackground ?? true}
+                disabled={!s}
+                onCheckedChange={(v) => update.mutate({ runInBackground: v })}
+              />
+            }
+          />
+          <Separator />
+          <Row
+            title="Start DelyForge when Windows starts"
+            description="Opens quietly in the tray, so bots set to start automatically come online after a restart. Works in the installed app."
+            control={
+              <Switch
+                aria-label="Start DelyForge when Windows starts"
+                checked={s?.startWithWindows ?? false}
+                disabled={!s}
+                onCheckedChange={(v) => update.mutate({ startWithWindows: v })}
+              />
+            }
+          />
+        </Card>
+
+        <Card>
           <CardHeader title="Notifications" description="Choose what DelyForge tells you about. Everything is also kept in the Notifications inbox." />
           {(
             [

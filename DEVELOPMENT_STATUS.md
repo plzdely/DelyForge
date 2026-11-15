@@ -262,12 +262,11 @@ See "Making yourself staff" under Phase 8: set your `role` to `ADMIN` in Prisma 
   that server). Unlinking/changing the linked Discord account (staff can unban + the person relinks; ask if needed).
 
 ## Known limitations / honest notes
-- No accounts yet — the desktop app runs on the local Free plan (accounts & Stripe are Phase 7).
-- Bots run only while DelyForge is open on this computer (24/7 cloud hosting is Phase 9).
-- Turning off `/ping` stops answering it, but Discord keeps listing it until the Phase 5 command builder manages commands.
-- Packaging note for Phase 10: the bot runtime loads from `node_modules`; the installer must unpack it from the asar archive.
-- Windows installer and auto-update are not configured yet (Phase 10).
-- The renderer bundle (~1.5 MB) is not yet code-split; fine for a desktop app, to be optimized in Phase 10.
+- Bots run on this PC, so they're online while DelyForge is running. Closing the window keeps it running in the tray
+  (Settings → "Keep bots running when I close the window"), and "Start DelyForge when Windows starts" brings bots back
+  after a restart. Turning the PC off stops them — 24/7 hosting would need a server.
+- Most module behaviour is unit-tested but only `/ping` has been confirmed in a real Discord server so far.
+- The installer isn't code-signed (that costs money), so Windows shows a "protected your PC" warning on first install.
 - Project lives inside a OneDrive-synced folder. OneDrive can lock files inside `node_modules` during installs;
   moving the project to e.g. `C:\dev\DelyForge` is recommended.
 
