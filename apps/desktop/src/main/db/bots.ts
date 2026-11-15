@@ -9,7 +9,10 @@ import {
   DEFAULT_PLANS,
   DEFAULT_PRESENCE,
   type BotModules,
+  type Builders,
+  EMPTY_BUILDERS,
   type Entitlements,
+  buildersSchema,
   type RuntimeOptions,
   botModulesSchema,
   botProjectExportSchema,
@@ -233,6 +236,18 @@ export class BotRepository {
     const config = parseConfig(this.getRow(id).config);
     const parsed = botModulesSchema.safeParse(config['guilds'] ?? {});
     return parsed.success ? parsed.data : {};
+  }
+
+  /** Custom commands, saved embeds and workflows. Invalid stored data falls back to empty. */
+  builders(id: string): Builders {
+    const parsed = buildersSchema.safeParse(parseConfig(this.getRow(id).config)['builders'] ?? EMPTY_BUILDERS);
+    return parsed.success ? parsed.data : EMPTY_BUILDERS;
+  }
+
+  setBuilders(id: string, builders: Builders): void {
+    const config = parseConfig(this.getRow(id).config);
+    config['builders'] = buildersSchema.parse(builders);
+    this.db.prepare(`UPDATE bot_projects SET config = ?, ${TOUCH} WHERE id = ?`).run(JSON.stringify(config), id);
   }
 
   setModules(id: string, modules: BotModules): void {

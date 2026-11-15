@@ -92,6 +92,23 @@ export async function runSmokeTest(win: BrowserWindow, outDir: string, logger: L
     // ── Modules: tab and sidebar pages render (needs a real server to configure) ─────────────────────────────────
     await visit(`/bots/${botId}/modules`, 'bot-modules-unconnected');
     await visit('/modules/welcome', 'module-directory');
+    await visit('/templates', 'templates');
+    await visit('/builders/commands', 'builder-directory');
+    await visit(`/bots/${botId}/commands`, 'bot-commands-empty');
+    await visit(`/bots/${botId}/embeds`, 'bot-embeds-locked');
+    await visit(`/bots/${botId}/automations`, 'bot-automations-unconnected');
+
+    // Command builder: create a command through the UI and save it.
+    await visit(`/bots/${botId}/commands`);
+    await js(`[...document.querySelectorAll('button')].find((b) => b.textContent.includes('New command')).click()`);
+    await sleep(300);
+    await fill('#cmd-name', 'welcome-info');
+    await sleep(100);
+    await js(`document.querySelector('[data-testid="builders-save"]').click()`);
+    await sleep(800);
+    await capture('bot-commands-editor');
+    const savedCommands = await js<string | false>(`window.delyforge.builders.get('${botId}').then((r) => r.ok && r.data.commands.map((c) => c.name).join(','))`);
+    if (savedCommands !== 'welcome-info') failures.push(`command builder did not save (got ${String(savedCommands)})`);
 
     // ── Connect wizard: friendly error for a common paste mistake (no network needed) ───────────────────────────
     await visit(`/bots/${botId}/connect`, 'connect-step1');

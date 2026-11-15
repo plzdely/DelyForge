@@ -15,6 +15,7 @@ export interface ModuleContext {
   store: BotStore;
   log(level: LogLevel, message: string): void;
   command(name: string, ok: boolean, durationMs: number): void;
+  workflowRun(run: { workflowId: string; ok: boolean; steps: number; message: string }): void;
   /** Resolved settings (defaults filled in) for a server. */
   config(guildId: string): ModuleConfigs;
 }

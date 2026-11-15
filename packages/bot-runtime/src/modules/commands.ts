@@ -3,6 +3,7 @@ import type { ModuleConfigs } from '@delyforge/shared';
 import {
   ChannelType,
   PermissionFlagsBits,
+  type RESTPostAPIApplicationCommandsJSONBody,
   type RESTPostAPIChatInputApplicationCommandsJSONBody,
   SlashCommandBuilder,
 } from 'discord.js';
@@ -113,7 +114,7 @@ const UTILITY: Record<keyof ModuleConfigs['utility']['commands'], CommandJSON> =
     .toJSON(),
 };
 
-export function commandHash(c: CommandJSON): string {
+export function commandHash(c: RESTPostAPIApplicationCommandsJSONBody): string {
   return createHash('sha256').update(JSON.stringify(c)).digest('hex').slice(0, 16);
 }
 

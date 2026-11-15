@@ -7,7 +7,9 @@ import { Toaster } from 'sonner';
 import { AppShell } from '@/components/layout/app-shell';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { isBridgeAvailable } from '@/lib/bridge';
+import { AutomationsTab, CommandsTab, EmbedsTab } from '@/pages/bots/builders';
 import { BotConsole } from '@/pages/bots/console';
+import { BuilderDirectoryPage, TemplatesPage } from '@/pages/templates';
 import { ConnectWizard } from '@/pages/bots/connect';
 import { BotLayout } from '@/pages/bots/layout';
 import { ModuleSettings } from '@/pages/bots/module-settings';
@@ -48,6 +50,9 @@ const router = createHashRouter([
           { index: true, element: <BotOverview /> },
           { path: 'modules', element: <BotModules /> },
           { path: 'modules/:moduleId', element: <ModuleSettings /> },
+          { path: 'commands', element: <CommandsTab /> },
+          { path: 'embeds', element: <EmbedsTab /> },
+          { path: 'automations', element: <AutomationsTab /> },
           { path: 'console', element: <BotConsole /> },
           { path: 'settings', element: <BotSettings /> },
           { path: 'connect', element: <ConnectWizard /> },
@@ -56,6 +61,8 @@ const router = createHashRouter([
       { path: 'monitoring', element: <MonitoringPage /> },
       { path: 'notifications', element: <NotificationsPage /> },
       { path: 'modules/:moduleId', element: <ModuleDirectoryPage /> },
+      { path: 'builders/:section', element: <BuilderDirectoryPage /> },
+      { path: 'templates', element: <TemplatesPage /> },
       { path: '*', element: <RoadmapPage /> },
     ],
   },

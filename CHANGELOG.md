@@ -6,6 +6,8 @@ versions follow [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Phase 5: Command Builder (slash + right-click commands), Embed Builder with live preview, Automation Studio
+  (triggers, steps, conditions, waits, run history), 10 bot templates.
 - Phase 4 (batch 2): Leveling, Tickets, Verification, Reaction Roles, Suggestions and Giveaways modules; self-updating
   panel messages; security fixes to the link filter and moderation rank checks.
 - Phase 4 (batch 1): module system with per-server settings — Welcome (messages, cards, DMs, goodbye, auto-roles),

@@ -80,4 +80,18 @@ export const MIGRATIONS: readonly string[] = [
   );
   CREATE INDEX notifications_created_idx ON notifications (created_at DESC);
   `,
+
+  // 3 — Phase 5: automation run history
+  `
+  CREATE TABLE workflow_runs (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    bot_id      TEXT NOT NULL REFERENCES bot_projects(id) ON DELETE CASCADE,
+    workflow_id TEXT NOT NULL,
+    ok          INTEGER NOT NULL,
+    steps       INTEGER NOT NULL,
+    message     TEXT NOT NULL,
+    created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+  );
+  CREATE INDEX workflow_runs_bot_idx ON workflow_runs (bot_id, id DESC);
+  `,
 ];

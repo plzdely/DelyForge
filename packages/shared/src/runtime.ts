@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { presenceSchema } from './discord.js';
+import { buildersSchema } from './builders.js';
 import { botModulesSchema } from './modules.js';
 
 /**
@@ -18,6 +19,8 @@ export const runtimeOptionsSchema = z.object({
   modules: botModulesSchema,
   /** Folder where the runtime keeps this bot's own data (warnings, XP, managed commands…). */
   dataDir: z.string().min(1).max(1000),
+  /** Custom commands, saved embeds and workflows. */
+  builders: buildersSchema,
 });
 export type RuntimeOptions = z.infer<typeof runtimeOptionsSchema>;
 
@@ -28,6 +31,7 @@ export const toRuntimeSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('set-presence'), presence: presenceSchema }),
   /** Live settings change — applied without a restart (unless new intents are needed). */
   z.object({ type: z.literal('set-modules'), modules: botModulesSchema }),
+  z.object({ type: z.literal('set-builders'), builders: buildersSchema }),
 ]);
 export type ToRuntime = z.infer<typeof toRuntimeSchema>;
 
@@ -57,5 +61,12 @@ export const fromRuntimeSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('connection'), state: z.enum(['disconnected', 'reconnecting', 'resumed']) }),
   z.object({ type: z.literal('fatal'), code: z.enum(RUNTIME_FATAL_CODES), message: z.string().max(1000) }),
   z.object({ type: z.literal('stopped') }),
+  z.object({
+    type: z.literal('workflow-run'),
+    workflowId: z.string().max(16),
+    ok: z.boolean(),
+    steps: z.number().int().nonnegative(),
+    message: z.string().max(500),
+  }),
 ]);
 export type FromRuntime = z.infer<typeof fromRuntimeSchema>;

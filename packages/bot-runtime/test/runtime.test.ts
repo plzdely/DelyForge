@@ -11,6 +11,7 @@ const OPTIONS = {
   builtinPing: true,
   modules: {},
   dataDir: 'C:/delyforge-test',
+  builders: { commands: [], embeds: [], workflows: [] },
 };
 
 function harness(opts: { loginError?: unknown } = {}) {
@@ -34,6 +35,7 @@ function harness(opts: { loginError?: unknown } = {}) {
         },
         setPresence: (p) => presences.push(p),
         setModules: () => {},
+        setBuilders: () => {},
         ping: () => 42,
         guildCount: () => 3,
       };

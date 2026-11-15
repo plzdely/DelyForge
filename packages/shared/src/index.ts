@@ -8,3 +8,5 @@ export * from './bots.js';
 export * from './discord.js';
 export * from './runtime.js';
 export * from './modules.js';
+export * from './builders.js';
+export * from './templates.js';

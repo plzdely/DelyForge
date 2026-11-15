@@ -1,6 +1,6 @@
 # Development Status
 
-_Last updated: 2026-11-15 — Phase 4 complete._
+_Last updated: 2026-11-15 — Phase 5 complete._
 
 Legend: ✅ done & verified · 🟡 done, not yet verified end-to-end · ⏳ pending · ⛔ blocked on an external action
 
@@ -102,6 +102,22 @@ Not yet confirmed by hand: Stop → bot goes offline in Discord, and the connect
 
 **Not built (honest):** welcome images, moderation appeals, ticket ratings, suggestion reasons, giveaway role requirements, warnings/XP management screens in the app.
 
+## Phase 5 — Builders
+
+| Item | Status | Verification |
+|---|---|---|
+| Shared schemas: custom commands (Discord naming rules, reserved names, option order, https-only link buttons), embeds (all Discord limits incl. 6,000 total), workflows (20 steps, 1 h waits, trigger/step compatibility), templates | ✅ | 12 tests |
+| Command Builder: slash + right-click user/message commands, options, variables, text/embed reply, link buttons, access presets, per-member cooldown, live Discord-style preview | ✅ / 🟡 | smoke test builds and saves a command through the UI; running it needs Discord |
+| Embed Builder: every embed field, inline fields, character counter, live preview, duplicate/delete (Pro) | ✅ | typecheck + smoke screenshot |
+| Automation Studio: 4 triggers, 9 step types incl. conditions and waits, reorder, run history, rate limit (30/min), intent warnings | ✅ / 🟡 | engine tests with fakes; real events need Discord |
+| Plan limits: Free = 3 workflows, saved embeds = Pro; downgrade keeps data and runs only the allowed workflows | ✅ | service tests |
+| Live updates: saved builders reach a running bot without restart; commands synced per server (only DelyForge-created ones removed) | ✅ / 🟡 | tests; real sync needs Discord |
+| Template library: 10 templates (3 Free, 4 Pro, 3 Business), apply to a server, locked modules added switched off | ✅ | service tests + smoke screenshot |
+
+**Not built (honest):** a free-form drag-and-drop canvas (the editor is a clear vertical step list), workflow test mode
+against a fake member, template sharing/export, select menus and modals in custom commands, required-role checks
+per command (use Discord's Integrations settings).
+
 ## Known limitations / honest notes
 - No accounts yet — the desktop app runs on the local Free plan (accounts & Stripe are Phase 7).
 - Bots run only while DelyForge is open on this computer (24/7 cloud hosting is Phase 9).
@@ -117,5 +133,4 @@ The Free plan allows 1 bot. To test with more, start the app with a simulated pl
 customer builds ignore it). In Git Bash: `DELYFORGE_DEV_PLAN=pro pnpm dev:desktop`. In PowerShell:
 `$env:DELYFORGE_DEV_PLAN='pro'; pnpm dev:desktop`.
 
-## Next up — Phase 5 (builders)
-Command Builder, Embed Builder, Automation Studio, Template Library.
+## Next up — Phase 6 (AI)

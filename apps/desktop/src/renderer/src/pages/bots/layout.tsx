@@ -32,6 +32,9 @@ export function useBotContext(): BotContextValue {
 const TABS = [
   { to: '', label: 'Overview', end: true },
   { to: 'modules', label: 'Modules', end: false },
+  { to: 'commands', label: 'Commands', end: false },
+  { to: 'embeds', label: 'Embeds', end: false },
+  { to: 'automations', label: 'Automations', end: false },
   { to: 'console', label: 'Console', end: false },
   { to: 'settings', label: 'Settings', end: false },
 ];

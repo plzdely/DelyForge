@@ -1,5 +1,6 @@
 import {
   type BotModules,
+  type Builders,
   type BotPresence,
   type FromRuntime,
   type LogLevel,
@@ -15,6 +16,7 @@ export interface BotClientEvents {
   log(level: LogLevel, message: string): void;
   connection(state: 'disconnected' | 'reconnecting' | 'resumed'): void;
   command(name: string, ok: boolean, durationMs: number): void;
+  workflowRun(run: { workflowId: string; ok: boolean; steps: number; message: string }): void;
 }
 
 /** Minimal surface the runtime needs from a Discord client — lets tests use a fake instead of discord.js. */
@@ -23,6 +25,7 @@ export interface BotClient {
   destroy(): Promise<void>;
   setPresence(presence: BotPresence): void;
   setModules(modules: BotModules): void;
+  setBuilders(builders: Builders): void;
   ping(): number | null;
   guildCount(): number;
 }
@@ -131,6 +134,11 @@ export function createBotRuntime(deps: RuntimeDeps) {
       return;
     }
 
+    if (msg.type === 'set-builders') {
+      client?.setBuilders(msg.builders);
+      return;
+    }
+
     // start
     if (client) {
       log('warn', 'Already started.');
@@ -149,6 +157,7 @@ export function createBotRuntime(deps: RuntimeDeps) {
       log,
       connection: (state) => deps.send({ type: 'connection', state }),
       command: (name, ok, durationMs) => deps.send({ type: 'command', name, ok, durationMs }),
+      workflowRun: (run) => deps.send({ type: 'workflow-run', ...run, message: redact(run.message).slice(0, 500) }),
     });
 
     try {

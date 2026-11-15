@@ -29,12 +29,12 @@ and has tests. Progress is tracked in [DEVELOPMENT_STATUS.md](DEVELOPMENT_STATUS
 Moderation, Welcome, Tickets, Leveling, Logging, Utility, Verification, Reaction Roles, Suggestions, Giveaways — each with
 config schema, config page, runtime implementation, required intents/permissions declaration and tests.
 
-## Phase 5 — Builders ← next
+## Phase 5 — Builders ✅
 Command Builder (slash/user/message commands, components, modals, live preview, publish), Embed Builder (Discord-accurate
 preview, limit validation, reusable templates), Automation Studio (node editor + execution engine with limits, history,
 test mode, versioning), Template Library (built-in templates, import/export/share).
 
-## Phase 6 — AI
+## Phase 6 — AI ← next
 AI gateway on the API, provider adapters, usage metering, AI Bot Builder (prompt → validated proposal → preview → approve),
 AI command/embed/workflow generation, AI troubleshooting.
 

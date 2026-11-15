@@ -7,6 +7,7 @@ import {
   type Client,
   ComponentType,
   MessageFlags,
+  PermissionFlagsBits,
 } from 'discord.js';
 import type { Giveaway } from '../store.js';
 import { COLORS, type ModuleContext, hexToInt, sendableChannel, truncate } from './context.js';
@@ -168,6 +169,10 @@ export async function handleGiveaway(ctx: ModuleContext, i: ChatInputCommandInte
     const target = i.options.getChannel('channel') ?? i.channel;
     const channel = target ? await sendableChannel(ctx, i.guild, target.id, 'Giveaway') : null;
     if (!channel) return void (await ephemeral(i, 'I can’t post in that channel.'));
+    // The bot must not post somewhere the manager couldn't post themselves.
+    if (!channel.permissionsFor(i.member)?.has([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages])) {
+      return void (await ephemeral(i, 'You can only start giveaways in channels where you can post.'));
+    }
     const prize = truncate(i.options.getString('prize', true).trim(), 200);
     const winners = i.options.getInteger('winners') ?? 1;
     const id = ctx.store.addGiveaway({ guildId: i.guildId, channelId: channel.id, prize, winners, hostId: i.user.id, endsAt: Date.now() + duration });

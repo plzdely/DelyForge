@@ -75,9 +75,15 @@ export async function handleModerationCommand(ctx: ModuleContext, i: ChatInputCo
   }
   const actor = await guild.members.fetch(i.user.id);
   const reason = truncate(i.options.getString('reason') ?? 'No reason given', 400);
+  /** The member, or null only when Discord says they're not in the server (any other error fails closed). */
   const fetchTarget = async (name = 'member') => {
     const user = i.options.getUser(name, true);
-    return guild.members.fetch(user.id).catch(() => null);
+    try {
+      return await guild.members.fetch(user.id);
+    } catch (e) {
+      if ((e as { code?: number }).code === 10007) return null; // Unknown Member
+      throw e;
+    }
   };
 
   switch (i.commandName) {
@@ -108,7 +114,7 @@ export async function handleModerationCommand(ctx: ModuleContext, i: ChatInputCo
     case 'clearwarnings': {
       const user = i.options.getUser('member', true);
       if (user.id === actor.id) return void (await reply(i, 'You can’t clear your own warnings.'));
-      const member = await guild.members.fetch(user.id).catch(() => null);
+      const member = await fetchTarget();
       const problem = member ? hierarchyProblem(guild, actor, member) : null;
       if (problem) return void (await reply(i, problem));
       const removed = ctx.store.clearWarnings(guild.id, user.id);

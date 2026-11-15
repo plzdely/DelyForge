@@ -1,6 +1,7 @@
-import { type BotModules, type LogLevel, type ModuleConfigs, resolveGuildModules } from '@delyforge/shared';
-import { type ButtonInteraction, type ChatInputCommandInteraction, type Client, Events, type Guild, MessageFlags, type StringSelectMenuInteraction } from 'discord.js';
+import { type BotModules, type Builders, type LogLevel, type ModuleConfigs, resolveGuildModules } from '@delyforge/shared';
+import { type ButtonInteraction, type ChatInputCommandInteraction, type Client, type CommandInteraction, Events, type Guild, MessageFlags, type StringSelectMenuInteraction } from 'discord.js';
 import { BotStore, planCommandSync } from '../store.js';
+import { commandKey, customCommandJSON, matchingWorkflows, runCustomCommand, runWorkflow } from './builders.js';
 import { commandHash, desiredCommands } from './commands.js';
 import type { ModuleContext } from './context.js';
 import * as logging from './logging.js';
@@ -19,6 +20,7 @@ import * as welcome from './welcome.js';
  */
 export class ModuleHost {
   private modules: BotModules;
+  private builders: Builders;
   private store: BotStore | null = null;
   private syncing = new Set<string>();
   /** Servers whose settings changed during a sync — synced again as soon as it finishes. */
@@ -28,12 +30,14 @@ export class ModuleHost {
 
   constructor(
     private readonly client: Client,
-    initial: BotModules,
-    private readonly dataDir: string,
+    initial: { modules: BotModules; builders: Builders; dataDir: string },
     private readonly log: (level: LogLevel, message: string) => void,
     command: (name: string, ok: boolean, durationMs: number) => void,
+    workflowRun: ModuleContext['workflowRun'],
   ) {
-    this.modules = initial;
+    this.modules = initial.modules;
+    this.builders = initial.builders;
+    this.dataDir = initial.dataDir;
     // eslint-disable-next-line @typescript-eslint/no-this-alias
     const host = this;
     this.ctx = {
@@ -43,6 +47,7 @@ export class ModuleHost {
       },
       log,
       command,
+      workflowRun,
       config: (guildId) => this.config(guildId),
     };
     this.wire();
@@ -50,6 +55,14 @@ export class ModuleHost {
 
   config(guildId: string): ModuleConfigs {
     return resolveGuildModules(this.modules[guildId]);
+  }
+
+  private readonly dataDir: string;
+
+  setBuilders(builders: Builders): void {
+    this.builders = builders;
+    this.log('info', `Builders updated: ${builders.commands.filter((c) => c.enabled).length} custom command(s), ${builders.workflows.filter((w) => w.enabled).length} workflow(s).`);
+    void this.syncAllCommands();
   }
 
   setModules(modules: BotModules): void {
@@ -107,10 +120,14 @@ export class ModuleHost {
     }
     this.syncing.add(guild.id);
     try {
-      const desired = desiredCommands(this.config(guild.id));
-      const byName = new Map(desired.map((c) => [c.name, c]));
+      // Module commands are keyed by name; custom right-click commands by "type:name" (they may share a name).
+      const desired = [
+        ...desiredCommands(this.config(guild.id)).map((def) => ({ key: def.name, def: def as Parameters<typeof commandHash>[0] })),
+        ...this.builders.commands.filter((c) => c.enabled).map((c) => ({ key: commandKey(c), def: customCommandJSON(c) })),
+      ];
+      const byName = new Map(desired.map((c) => [c.key, c.def]));
       const plan = planCommandSync(
-        desired.map((c) => ({ name: c.name, hash: commandHash(c) })),
+        desired.map((c) => ({ name: c.key, hash: commandHash(c.def) })),
         this.store.managedCommands(guild.id),
       );
       for (const name of plan.create) {
@@ -174,6 +191,29 @@ export class ModuleHost {
       }),
     );
     c.on(Events.GuildMemberUpdate, safe('Member update', (a, b) => logging.onMemberUpdateLog(ctx, a, b)));
+
+    // Automation workflows
+    const startWorkflows = (guild: Guild, event: Parameters<typeof matchingWorkflows>[2], ev: Omit<Parameters<typeof runWorkflow>[3], 'guild'>) => {
+      for (const w of matchingWorkflows(this.builders.workflows, guild.id, event)) void runWorkflow(ctx, this.builders, w, { guild, ...ev });
+    };
+    c.on(Events.GuildMemberAdd, safe('Workflows', async (m) => startWorkflows(m.guild, { type: 'memberJoin' }, { user: m.user, member: m })));
+    c.on(Events.GuildMemberRemove, safe('Workflows', async (m) => startWorkflows(m.guild, { type: 'memberLeave' }, { user: m.user, member: null })));
+    c.on(
+      Events.GuildMemberUpdate,
+      safe('Workflows', async (before, after) => {
+        if (before.partial) return;
+        for (const role of after.roles.cache.values()) {
+          if (!before.roles.cache.has(role.id)) startWorkflows(after.guild, { type: 'roleAdded', roleId: role.id }, { user: after.user, member: after });
+        }
+      }),
+    );
+    c.on(
+      Events.MessageCreate,
+      safe('Workflows', async (m) => {
+        if (!m.inGuild() || m.author.bot) return;
+        startWorkflows(m.guild, { type: 'messageContains', text: m.content, channelId: m.channelId }, { user: m.author, member: m.member, message: m });
+      }),
+    );
     c.on(Events.MessageCreate, safe('Auto-moderation', (m) => automodCheck(ctx, m)));
     c.on(Events.MessageCreate, safe('Leveling', (m) => onMessageXp(ctx, m)));
     c.on(Events.MessageDelete, safe('Message delete log', (m) => logging.onMessageDelete(ctx, m)));
@@ -192,6 +232,7 @@ export class ModuleHost {
     c.on(Events.InteractionCreate, async (i) => {
       if (!this.store) return;
       if (i.isChatInputCommand()) return this.runCommand(i);
+      if (i.isUserContextMenuCommand() || i.isMessageContextMenuCommand()) return this.runCustom(i);
       if (i.isButton() || i.isStringSelectMenu()) return this.runComponent(i);
     });
   }
@@ -211,7 +252,7 @@ export class ModuleHost {
               : n === 'giveaway'
                 ? handleGiveaway
                 : null;
-    if (!handler) return; // e.g. /ping, handled elsewhere
+    if (!handler) return this.runCustom(i); // custom command, or e.g. /ping (handled elsewhere)
     const started = Date.now();
     try {
       await handler(this.ctx, i);
@@ -245,7 +286,18 @@ export class ModuleHost {
     }
   }
 
-  private async replyError(i: ChatInputCommandInteraction | ButtonInteraction | StringSelectMenuInteraction): Promise<void> {
+  private async runCustom(i: CommandInteraction): Promise<void> {
+    const started = Date.now();
+    try {
+      if (await runCustomCommand(this.ctx, this.builders, i)) this.ctx.command(i.commandName, true, Date.now() - started);
+    } catch (e) {
+      this.ctx.command(i.commandName, false, Date.now() - started);
+      this.log('error', `Custom command “${i.commandName}” failed: ${(e as Error).message}`);
+      await this.replyError(i);
+    }
+  }
+
+  private async replyError(i: CommandInteraction | ButtonInteraction | StringSelectMenuInteraction): Promise<void> {
     const content = 'Something went wrong. The error was written to the bot’s console in DelyForge.';
     if (i.deferred || i.replied) await i.editReply({ content }).catch(() => null);
     else await i.reply({ content, flags: MessageFlags.Ephemeral }).catch(() => null);

@@ -64,6 +64,14 @@ const bridge: DelyForgeBridge = {
     get: (id) => invoke(IPC_CHANNELS.modulesGet, { id }),
     update: (input) => invoke(IPC_CHANNELS.modulesUpdate, input),
   },
+  builders: {
+    get: (id) => invoke(IPC_CHANNELS.buildersGet, { id }),
+    save: (id, builders) => invoke(IPC_CHANNELS.buildersSave, { id, builders }),
+    workflowRuns: (id) => invoke(IPC_CHANNELS.workflowRuns, { id }),
+  },
+  templates: {
+    apply: (input) => invoke(IPC_CHANNELS.templatesApply, input),
+  },
   events: {
     onBotEvent: (listener) => {
       const wrapped = (_e: IpcRendererEvent, event: BotEvent) => listener(event);

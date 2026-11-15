@@ -8,7 +8,9 @@ import {
   type NotificationType,
   type RuntimeOptions,
   type ToRuntime,
+  INTENT_BITS,
   applyEntitlementsToModules,
+  builderIntents,
   computeIntents,
   createRedactor,
   fromRuntimeSchema,
@@ -65,6 +67,8 @@ export interface SupervisorDeps {
   /** Folder for each bot's own runtime data (one SQLite file per bot). */
   dataDir: string;
   emit: (event: BotEvent) => void;
+  /** Records automation runs reported by the bot. */
+  onWorkflowRun?: (botId: string, run: { workflowId: string; ok: boolean; steps: number; message: string }) => void;
   /** Shows an OS notification (respecting user preferences is done here, not by the caller). */
   desktopNotify?: (title: string, body: string) => void;
   timings?: Partial<SupervisorTimings>;
@@ -237,8 +241,20 @@ export class BotSupervisor {
 
   /** Everything the runtime needs, with modules limited to what the current plan allows. */
   runtimeOptions(botId: string): RuntimeOptions {
-    const modules = applyEntitlementsToModules(this.d.bots.modules(botId), this.d.entitlements().features);
-    return { ...this.d.bots.runtimeBasics(botId), modules, intents: computeIntents(modules), dataDir: this.d.dataDir };
+    const ent = this.d.entitlements();
+    const modules = applyEntitlementsToModules(this.d.bots.modules(botId), ent.features);
+    const stored = this.d.bots.builders(botId);
+    // After a downgrade, only the first workflows the plan allows keep running (nothing is deleted).
+    let allowed = ent.limits.maxWorkflows ?? Infinity;
+    const workflows = stored.workflows.map((w) => (w.enabled && allowed-- > 0 ? w : { ...w, enabled: false }));
+    const builders = { ...stored, workflows };
+    return {
+      ...this.d.bots.runtimeBasics(botId),
+      modules,
+      builders,
+      intents: computeIntents(modules) | builderIntents(builders, INTENT_BITS),
+      dataDir: this.d.dataDir,
+    };
   }
 
   /**
@@ -250,6 +266,15 @@ export class BotSupervisor {
     if (!h?.proc || !(h.state.status === 'online' || h.state.status === 'starting' || h.state.status === 'reconnecting')) return false;
     const options = this.runtimeOptions(botId);
     h.proc.postMessage({ type: 'set-modules', modules: options.modules });
+    return (options.intents & ~h.intents) !== 0;
+  }
+
+  /** Same as applyModules, for custom commands, embeds and workflows. */
+  applyBuilders(botId: string): boolean {
+    const h = this.handles.get(botId);
+    if (!h?.proc || !(h.state.status === 'online' || h.state.status === 'starting' || h.state.status === 'reconnecting')) return false;
+    const options = this.runtimeOptions(botId);
+    h.proc.postMessage({ type: 'set-builders', builders: options.builders });
     return (options.intents & ~h.intents) !== 0;
   }
 
@@ -369,6 +394,10 @@ export class BotSupervisor {
         this.update(h, { status: 'error', lastError: { code: msg.code, message: msg.message } });
         this.log(botId, 'error', msg.message);
         this.notify('bot.login_failed', 'crashes', botId, 'Bot could not start', `${this.name(botId)}: ${msg.message}`);
+        break;
+      case 'workflow-run':
+        this.d.onWorkflowRun?.(botId, msg);
+        if (!msg.ok) this.log(botId, 'warn', `Workflow ${msg.workflowId}: ${msg.message}`);
         break;
       case 'stopped':
         break;

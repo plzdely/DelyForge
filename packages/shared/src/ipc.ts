@@ -16,6 +16,7 @@ import {
 } from './bots.js';
 import type { Entitlements } from './entitlements.js';
 import { type BotModules, type GuildInfo, type ModuleUpdateResult, updateModuleSchema } from './modules.js';
+import { type Builders, type WorkflowRun, saveBuildersSchema } from './builders.js';
 import { appSettingsPatchSchema, type AppSettings } from './settings.js';
 import type { PlanId } from './plans.js';
 
@@ -59,6 +60,10 @@ export const IPC_CHANNELS = {
   discordGuilds: 'discord:guilds',
   modulesGet: 'modules:get',
   modulesUpdate: 'modules:update',
+  buildersGet: 'builders:get',
+  buildersSave: 'builders:save',
+  workflowRuns: 'builders:workflow-runs',
+  templatesApply: 'templates:apply',
 } as const;
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];
 
@@ -121,6 +126,12 @@ export const ipcInputSchemas = {
   [IPC_CHANNELS.discordGuilds]: z.object({ id: z.uuid(), refresh: z.boolean().optional() }).strict(),
   [IPC_CHANNELS.modulesGet]: botIdInputSchema,
   [IPC_CHANNELS.modulesUpdate]: updateModuleSchema,
+  [IPC_CHANNELS.buildersGet]: botIdInputSchema,
+  [IPC_CHANNELS.buildersSave]: saveBuildersSchema,
+  [IPC_CHANNELS.workflowRuns]: botIdInputSchema,
+  [IPC_CHANNELS.templatesApply]: z
+    .object({ id: z.uuid(), guildId: z.string().regex(/^\d{17,20}$/), templateId: z.string().max(40) })
+    .strict(),
 } as const satisfies Record<IpcChannel, z.ZodType>;
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -243,6 +254,15 @@ export interface DelyForgeBridge {
   modules: {
     get(id: string): Promise<IpcResult<BotModules>>;
     update(input: z.input<typeof updateModuleSchema>): Promise<IpcResult<ModuleUpdateResult>>;
+  };
+  builders: {
+    get(id: string): Promise<IpcResult<Builders>>;
+    /** Saves all of a bot's commands, embeds and workflows at once (validated as a whole). */
+    save(id: string, builders: Builders): Promise<IpcResult<Builders>>;
+    workflowRuns(id: string): Promise<IpcResult<WorkflowRun[]>>;
+  };
+  templates: {
+    apply(input: { id: string; guildId: string; templateId: string }): Promise<IpcResult<{ modules: BotModules; builders: Builders }>>;
   };
   events: {
     /** Subscribe to live bot events. Returns an unsubscribe function. */

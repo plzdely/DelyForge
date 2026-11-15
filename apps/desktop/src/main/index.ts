@@ -28,6 +28,7 @@ import { SecretRepository } from './db/secrets';
 import { DiscordApi } from './discord-api';
 import { BotConnections } from './runtime/connections';
 import { createElectronLauncher, resolveRuntimeEntry } from './runtime/electron-launcher';
+import { BuildersService } from './runtime/builders-service';
 import { ModulesService } from './runtime/modules-service';
 import { BotSupervisor } from './runtime/supervisor';
 import { ActivityRepository, DashboardRepository, SettingsRepository } from './db/repositories';
@@ -132,6 +133,7 @@ async function main(): Promise<void> {
     settings: () => settings.get(),
     entitlements,
     dataDir: join(dataDir, 'bots'),
+    onWorkflowRun: (botId, run) => buildersService.recordRun(botId, run),
     emit,
     desktopNotify: (title, body) => {
       if (!Notification.isSupported()) return;
@@ -155,6 +157,11 @@ async function main(): Promise<void> {
     entitlements,
     (botId) => supervisor.applyModules(botId),
   );
+
+  const buildersService = new BuildersService(db, bots, activity, entitlements, {
+    builders: (botId) => supervisor.applyBuilders(botId),
+    modules: (botId) => supervisor.applyModules(botId),
+  });
 
   const dashboard = new DashboardRepository(
     db,
@@ -275,6 +282,12 @@ async function main(): Promise<void> {
   handle(IPC_CHANNELS.discordGuilds, ({ id, refresh }) => modulesService.guilds(id, refresh));
   handle(IPC_CHANNELS.modulesGet, ({ id }) => modulesService.get(id));
   handle(IPC_CHANNELS.modulesUpdate, ({ id, guildId, moduleId, config }) => modulesService.update(id, guildId, moduleId, config));
+
+  // Builders & templates
+  handle(IPC_CHANNELS.buildersGet, ({ id }) => buildersService.get(id));
+  handle(IPC_CHANNELS.buildersSave, ({ id, builders }) => buildersService.save(id, builders));
+  handle(IPC_CHANNELS.workflowRuns, ({ id }) => buildersService.runs(id));
+  handle(IPC_CHANNELS.templatesApply, ({ id, guildId, templateId }) => buildersService.applyTemplate(id, guildId, templateId));
 
   // Logs
   handle(IPC_CHANNELS.logsList, ({ id, limit }) => {
