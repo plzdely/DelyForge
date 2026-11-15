@@ -32,6 +32,10 @@ const bridge: DelyForgeBridge = {
     resendVerification: () => invoke(IPC_CHANNELS.accountResendVerification),
     updateProfile: (displayName) => invoke(IPC_CHANNELS.accountUpdateProfile, { displayName }),
   },
+  analytics: {
+    report: (input) => invoke(IPC_CHANNELS.analyticsReport, input),
+    exportCsv: () => invoke(IPC_CHANNELS.analyticsExport),
+  },
   marketplace: {
     list: (filter) => invoke(IPC_CHANNELS.marketList, filter),
     detail: (slug) => invoke(IPC_CHANNELS.marketDetail, { slug }),

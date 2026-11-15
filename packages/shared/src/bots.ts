@@ -219,3 +219,16 @@ export function slugify(name: string): string {
       .slice(0, 40) || 'bot'
   );
 }
+
+// ─── Analytics (Phase 9) ──────────────────────────────────────────────────────────────────────────────────────────
+
+export interface AnalyticsReport {
+  days: number;
+  /** Oldest first, one entry per day (zeros for days without data). */
+  daily: { day: string; onlineSeconds: number; commands: number; errors: number; crashes: number }[];
+  /** Empty on plans without advanced analytics. */
+  topCommands: { name: string; uses: number; errors: number; avgMs: number }[];
+}
+
+/** Basic analytics covers a week; advanced analytics covers 90 days, per-command stats and CSV export. */
+export const ANALYTICS_DAYS = { basic: 7, advanced: 90 } as const;

@@ -202,7 +202,7 @@ export const NAV_SECTIONS: NavSection[] = [
     id: 'account',
     label: 'Account',
     items: [
-      { id: 'analytics', label: 'Analytics', path: '/analytics', icon: ChartColumn, available: false, phase: 9, summary: 'Uptime, command usage, errors and growth over time.' },
+      { id: 'analytics', label: 'Analytics', path: '/analytics', icon: ChartColumn, available: true, phase: 9, summary: 'Uptime, command usage, errors and growth over time.' },
       { id: 'team', label: 'Team Workspace', path: '/team', icon: Users, available: false, phase: 9, feature: 'team.workspaces', summary: 'Invite your team and control who can manage each bot.' },
       {
         id: 'account',

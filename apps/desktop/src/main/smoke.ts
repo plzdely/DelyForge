@@ -97,6 +97,7 @@ export async function runSmokeTest(win: BrowserWindow, outDir: string, logger: L
     await visit('/builders/commands', 'builder-directory');
     await visit('/builders/ai', 'ai-builder');
     await visit('/marketplace', 'marketplace');
+    await visit('/analytics', 'analytics');
     await visit(`/bots/${botId}/commands`, 'bot-commands-empty');
     await visit(`/bots/${botId}/embeds`, 'bot-embeds-locked');
     await visit(`/bots/${botId}/automations`, 'bot-automations-unconnected');

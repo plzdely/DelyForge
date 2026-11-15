@@ -94,4 +94,26 @@ export const MIGRATIONS: readonly string[] = [
   );
   CREATE INDEX workflow_runs_bot_idx ON workflow_runs (bot_id, id DESC);
   `,
+
+  // 4 — Phase 9: daily analytics (counts only)
+  `
+  CREATE TABLE bot_stats_daily (
+    bot_id         TEXT NOT NULL REFERENCES bot_projects(id) ON DELETE CASCADE,
+    day            TEXT NOT NULL,
+    online_seconds INTEGER NOT NULL DEFAULT 0,
+    commands       INTEGER NOT NULL DEFAULT 0,
+    command_errors INTEGER NOT NULL DEFAULT 0,
+    crashes        INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (bot_id, day)
+  );
+  CREATE TABLE command_stats_daily (
+    bot_id   TEXT NOT NULL REFERENCES bot_projects(id) ON DELETE CASCADE,
+    day      TEXT NOT NULL,
+    name     TEXT NOT NULL,
+    uses     INTEGER NOT NULL DEFAULT 0,
+    errors   INTEGER NOT NULL DEFAULT 0,
+    total_ms INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (bot_id, day, name)
+  );
+  `,
 ];

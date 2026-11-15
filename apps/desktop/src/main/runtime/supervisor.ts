@@ -17,6 +17,7 @@ import {
 } from '@delyforge/shared';
 import type { BotRepository } from '../db/bots';
 import type { LogRepository, NotificationRepository } from '../db/logs';
+import type { AnalyticsRepository } from '../db/analytics';
 import type { SecretRepository } from '../db/secrets';
 import { AppError } from '../errors';
 
@@ -69,6 +70,8 @@ export interface SupervisorDeps {
   emit: (event: BotEvent) => void;
   /** Records automation runs reported by the bot. */
   onWorkflowRun?: (botId: string, run: { workflowId: string; ok: boolean; steps: number; message: string }) => void;
+  /** Daily statistics (optional so tests can leave it out). */
+  analytics?: Pick<AnalyticsRepository, 'command' | 'heartbeat' | 'crash' | 'stopped'>;
   /** Shows an OS notification (respecting user preferences is done here, not by the caller). */
   desktopNotify?: (title: string, body: string) => void;
   timings?: Partial<SupervisorTimings>;
@@ -356,6 +359,7 @@ export class BotSupervisor {
         const m = msg.metrics;
         const history = [...h.state.history, { t: Date.now(), pingMs: m.pingMs, rssMb: Math.round(m.rssBytes / 1048576), cpuPercent: m.cpuPercent }].slice(-60);
         this.update(h, { metrics: m, history });
+        if (h.state.status === 'online') this.d.analytics?.heartbeat(botId);
         this.d.bots.recordGuildCount(botId, m.guildCount);
         if (m.rssBytes > this.t.highMemoryBytes && !h.highMemoryNotified) {
           h.highMemoryNotified = true;
@@ -371,6 +375,7 @@ export class BotSupervisor {
       }
       case 'command':
         this.d.bots.incrementCommands(botId);
+        this.d.analytics?.command(botId, msg.name, msg.ok, msg.durationMs);
         this.update(h, { commandsThisSession: h.state.commandsThisSession + 1 });
         break;
       case 'connection':
@@ -400,6 +405,7 @@ export class BotSupervisor {
         if (!msg.ok) this.log(botId, 'warn', `Workflow ${msg.workflowId}: ${msg.message}`);
         break;
       case 'stopped':
+        this.d.analytics?.stopped(botId);
         break;
     }
   }
@@ -429,6 +435,7 @@ export class BotSupervisor {
     const message = `The bot process stopped unexpectedly (exit code ${code ?? 'unknown'}).`;
     this.log(botId, 'error', message);
     this.update(h, { status: 'crashed', pid: null, readyAt: null, metrics: null, lastError: { code: 'CRASHED', message } });
+    this.d.analytics?.crash(botId);
 
     let project;
     try {

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import {
+  type AnalyticsReport,
   type AppNotification,
   type BotEvent,
   type BotLogEntry,
@@ -101,6 +102,8 @@ export const IPC_CHANNELS = {
   marketSubmit: 'market:submit',
   marketQueue: 'market:queue',
   marketModerate: 'market:moderate',
+  analyticsReport: 'analytics:report',
+  analyticsExport: 'analytics:export',
 } as const;
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];
 
@@ -215,6 +218,8 @@ export const ipcInputSchemas = {
     })
     .strict(),
   [IPC_CHANNELS.marketQueue]: noInput,
+  [IPC_CHANNELS.analyticsReport]: z.object({ id: z.uuid().nullable(), days: z.number().int().min(1).max(90) }).strict(),
+  [IPC_CHANNELS.analyticsExport]: noInput,
   [IPC_CHANNELS.marketModerate]: z.object({ versionId: z.string().min(1).max(40), approve: z.boolean(), notes: z.string().trim().max(1000) }).strict(),
 } as const satisfies Record<IpcChannel, z.ZodType>;
 
@@ -370,6 +375,12 @@ export interface DelyForgeBridge {
     apply(proposalId: string): Promise<IpcResult<AiApplyResult>>;
     reject(proposalId: string): Promise<IpcResult<null>>;
     troubleshoot(input: { id: string; question: string }): Promise<IpcResult<{ answer: AiTroubleshootAnswer; creditsUsed: number; usage: AiUsageInfo }>>;
+  };
+  analytics: {
+    /** Days are capped by the plan (7 on basic analytics, 90 on advanced). `id` null = all bots. */
+    report(input: { id: string | null; days: number }): Promise<IpcResult<AnalyticsReport>>;
+    /** Advanced analytics only: saves a CSV with one row per bot per day. */
+    exportCsv(): Promise<IpcResult<ExportResult>>;
   };
   marketplace: {
     list(filter: z.input<(typeof ipcInputSchemas)['market:list']>): Promise<IpcResult<ListingSummary[]>>;

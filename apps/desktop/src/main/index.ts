@@ -18,12 +18,15 @@ import {
   BRAND,
   type BotEvent,
   isAllowedExternalUrl,
+  ANALYTICS_DAYS,
   IPC_CHANNELS,
+  lowestPlanWithFeature,
   type AppSettings,
   slugify,
 } from '@delyforge/shared';
 import { AccountService } from './account';
 import { AiAssistant } from './ai-assistant';
+import { AnalyticsRepository } from './db/analytics';
 import { MarketplaceClient } from './marketplace';
 import { BotRepository } from './db/bots';
 import { openDatabase } from './db/database';
@@ -118,6 +121,7 @@ async function main(): Promise<void> {
   const bots = new BotRepository(db, activity, entitlements);
   const secrets = new SecretRepository(db, cipher);
   const logs = new LogRepository(db);
+  const analytics = new AnalyticsRepository(db);
   const notifications = new NotificationRepository(db);
   const connections = new BotConnections(bots, secrets, new DiscordApi(app.getVersion()), activity);
 
@@ -149,6 +153,7 @@ async function main(): Promise<void> {
     entitlements,
     dataDir: join(dataDir, 'bots'),
     onWorkflowRun: (botId, run) => buildersService.recordRun(botId, run),
+    analytics,
     emit,
     desktopNotify: (title, body) => {
       if (!Notification.isSupported()) return;
@@ -360,6 +365,26 @@ async function main(): Promise<void> {
     logs.clear(id);
     return null;
   });
+  // Analytics (local, counts only)
+  const advancedAnalytics = () => entitlements().features.includes('analytics.advanced');
+  handle(IPC_CHANNELS.analyticsReport, ({ id, days }) => {
+    if (id) bots.get(id);
+    const report = analytics.report(Math.min(days, advancedAnalytics() ? ANALYTICS_DAYS.advanced : ANALYTICS_DAYS.basic), id);
+    return advancedAnalytics() ? report : { ...report, topCommands: [] };
+  });
+  handle(IPC_CHANNELS.analyticsExport, async (_input, event) => {
+    if (!advancedAnalytics()) throw new AppError('FORBIDDEN', `CSV export is part of advanced analytics on the ${lowestPlanWithFeature('analytics.advanced')?.name ?? 'Pro'} plan.`);
+    const result = await saveDialog(event, {
+      title: 'Export analytics',
+      defaultPath: join(app.getPath('documents'), `delyforge-analytics-${new Date().toISOString().slice(0, 10)}.csv`),
+      filters: [{ name: 'CSV spreadsheet', extensions: ['csv'] }],
+    });
+    if (result.canceled || !result.filePath) return { saved: false, fileName: null };
+    const nameOf = (botId: string) => bots.list().find((b) => b.id === botId)?.name ?? 'Deleted bot';
+    await writeFile(result.filePath, analytics.csv(ANALYTICS_DAYS.advanced, nameOf), 'utf8');
+    return { saved: true, fileName: basename(result.filePath) };
+  });
+
   handle(IPC_CHANNELS.logsExport, async ({ id }, event) => {
     const project = bots.get(id);
     const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
