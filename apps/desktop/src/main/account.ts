@@ -116,14 +116,14 @@ export class AccountService {
 
   // ─── HTTP ────────────────────────────────────────────────────────────────────────────────────────────────────────
 
-  private async http<T>(method: string, path: string, body?: unknown, auth = false): Promise<T> {
+  private async http<T>(method: string, path: string, body?: unknown, auth = false, timeoutMs = 15_000): Promise<T> {
     const doFetch = async (token?: string) => {
       try {
         return await (this.opts.fetchImpl ?? fetch)(`${this.opts.apiUrl}${path}`, {
           method,
           headers: { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}) },
           body: body === undefined ? undefined : JSON.stringify(body),
-          signal: AbortSignal.timeout(15_000),
+          signal: AbortSignal.timeout(timeoutMs),
         });
       } catch {
         this.offline = true;
@@ -144,7 +144,8 @@ export class AccountService {
         this.clear();
         this.opts.onChange();
       }
-      throw new AppError(res.status === 401 ? 'FORBIDDEN' : res.status === 422 ? 'VALIDATION_FAILED' : res.status === 409 ? 'CONFLICT' : 'INTERNAL', message);
+      const code = res.status === 401 || res.status === 403 ? 'FORBIDDEN' : res.status === 422 ? 'VALIDATION_FAILED' : res.status === 409 ? 'CONFLICT' : res.status === 429 ? 'LIMIT_REACHED' : 'INTERNAL';
+      throw new AppError(code, message);
     }
     return json;
   }
@@ -265,6 +266,11 @@ export class AccountService {
 
   async portalUrl(): Promise<string> {
     return (await this.http<{ url: string }>('POST', '/v1/billing/portal', undefined, true)).url;
+  }
+
+  /** A signed-in call to the DelyForge API (used by the AI assistant; AI answers can take a minute or two). */
+  authed<T>(method: string, path: string, body?: unknown, timeoutMs?: number): Promise<T> {
+    return this.http<T>(method, path, body, true, timeoutMs);
   }
 
   async invoices(): Promise<InvoiceInfo[]> {

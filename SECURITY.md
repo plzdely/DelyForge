@@ -30,7 +30,7 @@ Email the maintainers privately (address to be published before release). Do not
 | S9 | SQL injection | Prisma parameterized queries (cloud); prepared statements only (local SQLite). No string-built SQL. | Shipped (Phase 1) |
 | S10 | API abuse / brute force | Global rate limiting (`@nestjs/throttler`), stricter limits on auth & AI routes, Helmet security headers, CORS allow-list. | Shipped (Phase 1) |
 | S11 | Malicious marketplace plugins | Declarative content by default; code plugins sandboxed with capability permissions; review + DelyForge signature required. | Design done; Phase 8 |
-| S12 | AI prompt injection / unsafe changes | AI output must pass config schemas; proposals require explicit user approval; AI never sees tokens. | Design done; Phase 6 |
+| S12 | AI prompt injection / unsafe changes | AI output is parsed item by item against the real config schemas and may only reference the server's real channel/role IDs; proposals are applied only after the user approves them, through the normal validated save paths; logs are redacted again before being sent; AI keys exist only on the API. | Shipped (Phase 6) |
 | S13 | Malicious update | Code-signed installer, HTTPS update feed, signature verification before install, no silent execution. | Planned (Phase 10) |
 | S14 | Privilege escalation to admin | Separate admin role checked by server guard on every admin route; all admin actions audit-logged. | Planned (Phase 7/9) |
 | S15 | Dependency supply chain | pnpm blocks install scripts except an explicit allow-list; lockfile committed; `pnpm audit` in CI. | Allow-list shipped (Phase 1) |

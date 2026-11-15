@@ -194,11 +194,18 @@ export class BillingService {
     } catch {
       throw new BadRequestException('Invalid signature');
     }
-    try {
-      await this.prisma.billingEvent.create({ data: { stripeEventId: event.id, type: event.type, payload: event as unknown as object } });
-    } catch {
-      return { received: true, duplicate: true }; // already processed (unique stripeEventId)
+    const seen = await this.prisma.billingEvent.findUnique({ where: { stripeEventId: event.id } });
+    if (seen?.processedAt) return { received: true, duplicate: true };
+    if (!seen) {
+      try {
+        await this.prisma.billingEvent.create({ data: { stripeEventId: event.id, type: event.type, payload: event as unknown as object } });
+      } catch {
+        // A parallel delivery inserted it first; only skip if that one finished.
+        const raced = await this.prisma.billingEvent.findUnique({ where: { stripeEventId: event.id } });
+        if (raced?.processedAt) return { received: true, duplicate: true };
+      }
     }
+    // An event that failed earlier (processedAt still empty) is applied again — Stripe retries it for exactly this.
     try {
       await this.apply(event);
       await this.prisma.billingEvent.update({ where: { stripeEventId: event.id }, data: { processedAt: new Date() } });
@@ -214,7 +221,7 @@ export class BillingService {
       case 'customer.subscription.created':
       case 'customer.subscription.updated':
       case 'customer.subscription.deleted':
-        await this.syncSubscription(event.data.object);
+        await this.syncSubscription(event.data.object, new Date(event.created * 1000));
         return;
       case 'invoice.payment_failed':
         this.logger.warn(`Payment failed for customer ${String(event.data.object.customer)}`);
@@ -225,16 +232,26 @@ export class BillingService {
   }
 
   /** Mirrors a Stripe subscription onto the workspace it was bought for. */
-  async syncSubscription(s: Stripe.Subscription): Promise<void> {
+  async syncSubscription(s: Stripe.Subscription, eventAt: Date): Promise<void> {
     const workspaceId = s.metadata['workspaceId'];
-    const planId = s.metadata['planId'];
+    const item = s.items.data[0];
+    // The plan comes from the price actually paid (metadata can be edited and goes stale after portal plan changes).
+    const price = item?.price.id ? await this.prisma.planPrice.findUnique({ where: { stripePriceId: item.price.id } }) : null;
+    const planId = price?.planId;
     if (!workspaceId || !planId || !isPlanId(planId)) {
-      this.logger.warn(`Subscription ${s.id} has no workspace/plan metadata — ignored.`);
+      this.logger.warn(`Subscription ${s.id} has no workspace metadata or an unknown price — ignored.`);
       return;
     }
-    const item = s.items.data[0];
+    const existing = await this.prisma.subscription.findUnique({ where: { workspaceId } });
+    // Stripe can deliver events out of order; never let an older event overwrite a newer state.
+    // shortcut: read-then-write, two events for one workspace in the same instant can still race; use a row lock if that shows up.
+    if (existing?.lastEventAt && existing.lastEventAt > eventAt) {
+      this.logger.log(`Ignored an older event for subscription ${s.id}.`);
+      return;
+    }
     const data = {
       planId,
+      lastEventAt: eventAt,
       status: s.status.toUpperCase() as 'ACTIVE',
       interval: item?.price.recurring?.interval === 'year' ? ('YEAR' as const) : ('MONTH' as const),
       stripeSubscriptionId: s.id,

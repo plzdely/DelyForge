@@ -32,6 +32,13 @@ const bridge: DelyForgeBridge = {
     resendVerification: () => invoke(IPC_CHANNELS.accountResendVerification),
     updateProfile: (displayName) => invoke(IPC_CHANNELS.accountUpdateProfile, { displayName }),
   },
+  ai: {
+    usage: () => invoke(IPC_CHANNELS.aiUsage),
+    build: (input) => invoke(IPC_CHANNELS.aiBuild, input),
+    apply: (proposalId) => invoke(IPC_CHANNELS.aiApply, { proposalId }),
+    reject: (proposalId) => invoke(IPC_CHANNELS.aiReject, { proposalId }),
+    troubleshoot: (input) => invoke(IPC_CHANNELS.aiTroubleshoot, input),
+  },
   billing: {
     checkout: (input) => invoke(IPC_CHANNELS.billingCheckout, input),
     portal: () => invoke(IPC_CHANNELS.billingPortal),

@@ -19,6 +19,7 @@
     "keys:generate": "node scripts/generate-keys.mjs"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^1.8.0",
     "@delyforge/shared": "workspace:*",
     "@nestjs/common": "^12.5.0",
     "@nestjs/core": "^12.5.0",

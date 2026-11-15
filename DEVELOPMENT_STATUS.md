@@ -1,6 +1,6 @@
 # Development Status
 
-_Last updated: 2026-11-15 — Phase 7 complete (done before Phase 6, which needs accounts)._
+_Last updated: 2026-11-15 — Phase 6 (AI) complete._
 
 Legend: ✅ done & verified · 🟡 done, not yet verified end-to-end · ⏳ pending · ⛔ blocked on an external action
 
@@ -137,6 +137,26 @@ per command (use Discord's Integrations settings).
    added behind `apps/api/src/mail/mailer.ts` before launch.
 3. **Production secrets:** `pnpm --filter @delyforge/api keys:generate`.
 
+## Phase 6 — AI
+
+| Item | Status | Verification |
+|---|---|---|
+| API AI gateway: plan check, monthly credits, usage + cost recorded per request, no charge for failed answers | ✅ | 5 integration tests with a fake provider (real PostgreSQL) |
+| Claude via Anthropic's official SDK: typed JSON answers, cached instructions, automatic refusal fallback | 🟡 | type-checked against the installed SDK; **never called for real** (needs an API key) |
+| AI Bot Builder: prompt → proposal → every item checked against the real settings rules and the server's real channels/roles → user approves → applied through the normal save paths | ✅ / 🟡 | shared + desktop tests; screen in smoke screenshots; real AI output untested |
+| AI troubleshooting from the console (status + last 120 log lines, secrets removed) | ✅ / 🟡 | desktop test checks tokens are stripped; real answers untested |
+| Webhook hardening (from the automated security review): plan taken from the Stripe price, failed events retried, out-of-order events ignored | ✅ | integration test |
+
+### Needs you
+1. **Anthropic API key:** create one at console.anthropic.com, put it in `apps/api/.env` as `ANTHROPIC_API_KEY=`, run
+   `pnpm db:seed`, restart the API. Without it the AI screen says "AI isn't set up yet" — nothing pretends to work.
+2. Check the AI's real proposals on a test server before selling (quality, cost per request).
+
+### Not built (named, not hidden)
+- A second AI provider (e.g. OpenAI). The gateway takes any provider through one small interface and the database
+  already lists providers/models, but only Claude is wired up.
+- Picking individual items from a proposal: it is apply-all or discard.
+
 ## Known limitations / honest notes
 - No accounts yet — the desktop app runs on the local Free plan (accounts & Stripe are Phase 7).
 - Bots run only while DelyForge is open on this computer (24/7 cloud hosting is Phase 9).
@@ -152,5 +172,4 @@ The Free plan allows 1 bot. To test with more, start the app with a simulated pl
 customer builds ignore it). In Git Bash: `DELYFORGE_DEV_PLAN=pro pnpm dev:desktop`. In PowerShell:
 `$env:DELYFORGE_DEV_PLAN='pro'; pnpm dev:desktop`.
 
-## Next up — Phase 6 (AI)
-Now possible: AI runs on the API, metered per signed-in workspace.
+## Next up — Phase 8 (marketplace and plugins)

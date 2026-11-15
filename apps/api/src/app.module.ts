@@ -14,10 +14,13 @@ import { loadEntitlementKeys } from './auth/crypto';
 import { BillingController } from './billing/billing.controller';
 import { BillingService, ENTITLEMENT_KEYS } from './billing/billing.service';
 import { ConsoleMailer, MAILER, type Mailer } from './mail/mailer';
+import { AiController } from './ai/ai.controller';
+import { AiService } from './ai/ai.service';
+import { AI_PROVIDERS, AnthropicProvider, type AiTextProvider } from './ai/provider';
 
 @Module({})
 export class AppModule {
-  static register(env: Env, overrides: { mailer?: Mailer } = {}): DynamicModule {
+  static register(env: Env, overrides: { mailer?: Mailer; aiProviders?: Record<string, AiTextProvider> } = {}): DynamicModule {
     return {
       module: AppModule,
       global: true,
@@ -26,7 +29,7 @@ export class AppModule {
         // Default: 100 requests / minute / IP. Sensitive routes (auth, AI) will set stricter limits.
         ThrottlerModule.forRoot([{ name: 'default', ttl: 60_000, limit: 100 }]),
       ],
-      controllers: [HealthController, PlansController, AuthController, MeController, BillingController],
+      controllers: [HealthController, PlansController, AuthController, MeController, BillingController, AiController],
       providers: [
         { provide: ENV, useValue: env },
         { provide: MAILER, useValue: overrides.mailer ?? new ConsoleMailer(env.NODE_ENV === 'production') },
@@ -35,6 +38,11 @@ export class AppModule {
         AuthService,
         AuthGuard,
         BillingService,
+        {
+          provide: AI_PROVIDERS,
+          useValue: overrides.aiProviders ?? (env.ANTHROPIC_API_KEY ? { anthropic: new AnthropicProvider(env.ANTHROPIC_API_KEY) } : {}),
+        },
+        AiService,
         { provide: APP_GUARD, useClass: ThrottlerGuard },
         { provide: APP_FILTER, useClass: AllExceptionsFilter },
       ],

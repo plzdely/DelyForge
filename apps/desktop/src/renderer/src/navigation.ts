@@ -165,7 +165,7 @@ export const NAV_SECTIONS: NavSection[] = [
         label: 'AI Bot Builder',
         path: '/builders/ai',
         icon: Sparkles,
-        available: false,
+        available: true,
         phase: 6,
         feature: 'ai.builder',
         summary: 'Describe your bot in plain English and review the generated setup before applying it.',

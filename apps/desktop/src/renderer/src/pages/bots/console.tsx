@@ -1,8 +1,9 @@
 import type { LogLevel } from '@delyforge/shared';
 import { useQueryClient } from '@tanstack/react-query';
-import { ArrowDownToLine, Download, Search, Trash2 } from 'lucide-react';
+import { ArrowDownToLine, Download, Search, Sparkles, Trash2 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
+import { TroubleshootDialog } from '@/components/ai/troubleshoot-dialog';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { ConfirmDialog } from '@/components/ui/dialog';
@@ -28,6 +29,7 @@ export function BotConsole() {
   const [level, setLevel] = useState<LevelFilter>('all');
   const [follow, setFollow] = useState(true);
   const [confirmClear, setConfirmClear] = useState(false);
+  const [askAi, setAskAi] = useState(false);
   const scroller = useRef<HTMLDivElement>(null);
   const retentionDays = useEntitlements().limits.logRetentionDays;
 
@@ -78,6 +80,9 @@ export function BotConsole() {
           ]}
         />
         <div className="ml-auto flex items-center gap-1.5">
+          <Button size="sm" onClick={() => setAskAi(true)}>
+            <Sparkles /> Ask AI
+          </Button>
           <Button size="sm" variant={follow ? 'secondary' : 'ghost'} aria-pressed={follow} onClick={() => setFollow(!follow)}>
             <ArrowDownToLine /> Auto-scroll
           </Button>
@@ -126,6 +131,7 @@ export function BotConsole() {
         confirmLabel="Clear logs"
         onConfirm={clear}
       />
+      {askAi ? <TroubleshootDialog botId={bot.id} onClose={() => setAskAi(false)} /> : null}
     </div>
   );
 }

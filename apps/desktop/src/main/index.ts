@@ -23,6 +23,7 @@ import {
   slugify,
 } from '@delyforge/shared';
 import { AccountService } from './account';
+import { AiAssistant } from './ai-assistant';
 import { BotRepository } from './db/bots';
 import { openDatabase } from './db/database';
 import { LogRepository, NotificationRepository } from './db/logs';
@@ -327,6 +328,14 @@ async function main(): Promise<void> {
   handle(IPC_CHANNELS.buildersSave, ({ id, builders }) => buildersService.save(id, builders));
   handle(IPC_CHANNELS.workflowRuns, ({ id }) => buildersService.runs(id));
   handle(IPC_CHANNELS.templatesApply, ({ id, guildId, templateId }) => buildersService.applyTemplate(id, guildId, templateId));
+
+  // AI (runs on the DelyForge API; proposals are applied only after the user approves them)
+  const ai = new AiAssistant(account, bots, modulesService, buildersService, logs, (botId) => supervisor.state(botId));
+  handle(IPC_CHANNELS.aiUsage, () => ai.usage());
+  handle(IPC_CHANNELS.aiBuild, ({ id, guildId, prompt }) => ai.build(id, guildId, prompt));
+  handle(IPC_CHANNELS.aiApply, ({ proposalId }) => ai.apply(proposalId));
+  handle(IPC_CHANNELS.aiReject, ({ proposalId }) => ai.reject(proposalId));
+  handle(IPC_CHANNELS.aiTroubleshoot, ({ id, question }) => ai.troubleshoot(id, question));
 
   // Logs
   handle(IPC_CHANNELS.logsList, ({ id, limit }) => {

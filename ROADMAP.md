@@ -34,7 +34,7 @@ Command Builder (slash/user/message commands, components, modals, live preview, 
 preview, limit validation, reusable templates), Automation Studio (node editor + execution engine with limits, history,
 test mode, versioning), Template Library (built-in templates, import/export/share).
 
-## Phase 6 — AI ← next
+## Phase 6 — AI ✅
 AI gateway on the API, provider adapters, usage metering, AI Bot Builder (prompt → validated proposal → preview → approve),
 AI command/embed/workflow generation, AI troubleshooting.
 

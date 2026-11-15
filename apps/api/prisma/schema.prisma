@@ -258,6 +258,8 @@ model Subscription {
   cancelAtPeriodEnd    Boolean            @default(false)
   canceledAt           DateTime?
   trialEndsAt          DateTime?
+  /// `created` time of the last Stripe event applied, so out-of-order deliveries are ignored.
+  lastEventAt          DateTime?
   createdAt            DateTime           @default(now())
   updatedAt            DateTime           @updatedAt
 

@@ -30,6 +30,8 @@ const envSchema = z.object({
   PUBLIC_API_URL: z.url().default('http://localhost:4000'),
   /** Where Stripe Checkout returns to (a page that tells the user to go back to DelyForge). */
   BILLING_RETURN_URL: z.url().optional(),
+  /** Anthropic API key for the AI features. Without it the AI routes answer "not set up" instead of failing. */
+  ANTHROPIC_API_KEY: z.string().optional().default(''),
 }).superRefine((env, ctx) => {
   if (env.NODE_ENV !== 'production') return;
   if (!env.ENTITLEMENT_PRIVATE_KEY) ctx.addIssue({ code: 'custom', path: ['ENTITLEMENT_PRIVATE_KEY'], message: 'required in production' });

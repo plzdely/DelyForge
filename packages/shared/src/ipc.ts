@@ -27,6 +27,7 @@ import {
   updateProfileSchema,
 } from './account.js';
 import { appSettingsPatchSchema, type AppSettings } from './settings.js';
+import type { AiProposalResult, AiTroubleshootAnswer, AiUsageInfo } from './ai.js';
 import type { PlanId } from './plans.js';
 
 /**
@@ -84,6 +85,11 @@ export const IPC_CHANNELS = {
   billingCheckout: 'billing:checkout',
   billingPortal: 'billing:portal',
   billingInvoices: 'billing:invoices',
+  aiUsage: 'ai:usage',
+  aiBuild: 'ai:build',
+  aiApply: 'ai:apply',
+  aiReject: 'ai:reject',
+  aiTroubleshoot: 'ai:troubleshoot',
 } as const;
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];
 
@@ -166,6 +172,11 @@ export const ipcInputSchemas = {
   [IPC_CHANNELS.billingCheckout]: checkoutSchema,
   [IPC_CHANNELS.billingPortal]: noInput,
   [IPC_CHANNELS.billingInvoices]: noInput,
+  [IPC_CHANNELS.aiUsage]: noInput,
+  [IPC_CHANNELS.aiBuild]: z.object({ id: z.uuid(), guildId: z.string().regex(/^\d{17,20}$/), prompt: z.string().trim().min(10).max(2000) }).strict(),
+  [IPC_CHANNELS.aiApply]: z.object({ proposalId: z.string().min(1).max(40) }).strict(),
+  [IPC_CHANNELS.aiReject]: z.object({ proposalId: z.string().min(1).max(40) }).strict(),
+  [IPC_CHANNELS.aiTroubleshoot]: z.object({ id: z.uuid(), question: z.string().trim().max(1000) }).strict(),
 } as const satisfies Record<IpcChannel, z.ZodType>;
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -313,10 +324,25 @@ export interface DelyForgeBridge {
   templates: {
     apply(input: { id: string; guildId: string; templateId: string }): Promise<IpcResult<{ modules: BotModules; builders: Builders }>>;
   };
+  ai: {
+    usage(): Promise<IpcResult<AiUsageInfo>>;
+    /** Asks the AI for a proposal for one server. Nothing changes until `apply`. */
+    build(input: { id: string; guildId: string; prompt: string }): Promise<IpcResult<AiProposalResult>>;
+    apply(proposalId: string): Promise<IpcResult<AiApplyResult>>;
+    reject(proposalId: string): Promise<IpcResult<null>>;
+    troubleshoot(input: { id: string; question: string }): Promise<IpcResult<{ answer: AiTroubleshootAnswer; creditsUsed: number; usage: AiUsageInfo }>>;
+  };
   events: {
     /** Subscribe to live bot events. Returns an unsubscribe function. */
     onBotEvent(listener: (event: BotEvent) => void): () => void;
   };
+}
+
+export interface AiApplyResult {
+  applied: string[];
+  /** Items that could not be applied (plan limits, name clashes), with the reason. */
+  skipped: string[];
+  restartRequired: boolean;
 }
 
 /** Entitlements as resolved by the main process (the UI never decides what a customer may use). */

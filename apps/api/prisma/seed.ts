@@ -54,6 +54,23 @@ async function main(): Promise<void> {
       }
     }
     console.log(`Seeded ${Object.keys(DEFAULT_PLANS).length} plans.`);
+
+    // AI model catalogue. Costs are Anthropic's list prices in cents per million tokens (used for our own reporting).
+    await prisma.aiProvider.upsert({ where: { id: 'anthropic' }, create: { id: 'anthropic', name: 'Anthropic' }, update: {} });
+    await prisma.aiModel.upsert({
+      where: { providerId_modelKey: { providerId: 'anthropic', modelKey: 'claude-opus-5-5' } },
+      create: {
+        providerId: 'anthropic',
+        modelKey: 'claude-opus-5-5',
+        displayName: 'Claude Opus 5.5',
+        inputCostPerMTokCents: 400,
+        outputCostPerMTokCents: 2000,
+        features: ['builder', 'troubleshoot'],
+        isDefault: true,
+      },
+      update: {},
+    });
+    console.log('Seeded the AI model catalogue.');
   } finally {
     await prisma.$disconnect();
   }

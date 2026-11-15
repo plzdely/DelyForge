@@ -6,6 +6,8 @@ versions follow [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Phase 6: AI Bot Builder (describe a bot → reviewed proposal → apply) and AI troubleshooting in the console, running on
+  the DelyForge API with monthly AI credits per plan.
 - Phase 7: DelyForge accounts (sign-up, sign-in, email verification, password reset, sessions), Stripe subscriptions
   (checkout, portal, invoices, webhooks), server-signed plan certificates with 7-day offline grace in the desktop app.
 - Phase 5: Command Builder (slash + right-click commands), Embed Builder with live preview, Automation Studio
@@ -32,3 +34,8 @@ versions follow [Semantic Versioning](https://semver.org/).
 - `@delyforge/desktop`: secure Electron shell, local SQLite database with migrations, design system, sidebar navigation with feature gating, Dashboard, Settings (theme), Subscription plans view.
 - `@delyforge/api`: NestJS API with validated configuration, health check, rate limiting, global error handling, Prisma schema and plans endpoint.
 - Local development database without Docker (`pnpm db:up` uses Prisma's bundled Postgres; Docker remains optional).
+
+### Fixed
+- Stripe webhooks: the plan now comes from the price paid, failed events are retried instead of skipped, and older
+  events arriving late no longer overwrite newer ones.
+- Database tests no longer fail randomly when run together on the local development database.
