@@ -2,7 +2,7 @@ import { type BotProject, isWithinLimit } from '@delyforge/shared';
 import { ArrowLeft, Bot, Star } from 'lucide-react';
 import { createContext, useContext, useMemo } from 'react';
 import { Link, NavLink, Outlet, useNavigate, useParams } from 'react-router';
-import { BotIdentityAvatar } from '@/components/bots/bot-avatar';
+import { BotIdentityAvatar, botBanner } from '@/components/bots/bot-avatar';
 import { BotActionsMenu } from '@/components/bots/bot-card';
 import { BotControls, BotStatusLine } from '@/components/bots/runtime-ui';
 import { useBotActions } from '@/components/bots/use-bot-actions';
@@ -85,9 +85,11 @@ export function BotLayout() {
           <ArrowLeft className="size-3.5" /> My Bots
         </Link>
 
-        <div className="mb-5 flex items-center gap-4">
-          <BotIdentityAvatar bot={b} size="lg" />
-          <div className="min-w-0 flex-1">
+        <div className="relative mb-5 overflow-hidden rounded-2xl border border-border bg-surface shadow-card">
+          <div className="h-20" style={{ background: botBanner(b.id) }} />
+          <div className="flex items-end gap-4 px-5 pb-4">
+            <BotIdentityAvatar bot={b} size="xl" className="-mt-9 rounded-2xl ring-4 ring-surface" />
+            <div className="min-w-0 flex-1 pb-0.5">
             <div className="flex items-center gap-2">
               <h1 className="truncate text-xl font-semibold tracking-[-0.02em] text-fg">{b.name}</h1>
               {b.groupName ? <Badge>{b.groupName}</Badge> : null}
@@ -105,9 +107,12 @@ export function BotLayout() {
               <BotStatusLine bot={b} />
               {b.botUsername ? <span className="text-xs text-fg-subtle">@{b.botUsername}</span> : null}
             </div>
+            </div>
+            <div className="flex items-center gap-1 pb-0.5">
+              <BotControls bot={b} />
+              <BotActionsMenu bot={b} actions={actions} canAdd={canAdd} />
+            </div>
           </div>
-          <BotControls bot={b} />
-          <BotActionsMenu bot={b} actions={actions} canAdd={canAdd} />
         </div>
 
         <nav aria-label="Bot sections" className="mb-5 flex gap-1 border-b border-border">

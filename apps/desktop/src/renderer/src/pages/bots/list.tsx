@@ -2,7 +2,7 @@ import { DEFAULT_PLANS, isWithinLimit } from '@delyforge/shared';
 import { Bot, Plus, Search, SearchX, Upload } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router';
-import { BotCard } from '@/components/bots/bot-card';
+import { BotCard, NewBotCard } from '@/components/bots/bot-card';
 import { useBotActions } from '@/components/bots/use-bot-actions';
 import { Page, PageHeader } from '@/components/layout/page';
 import { Button } from '@/components/ui/button';
@@ -201,6 +201,7 @@ export function BotsPage() {
               {visible.map((bot) => (
                 <BotCard key={bot.id} bot={bot} actions={actions} canAdd={canAdd} />
               ))}
+              {canAdd ? <NewBotCard /> : null}
             </div>
           )}
         </>

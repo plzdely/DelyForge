@@ -6,6 +6,8 @@ versions follow [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- UI refresh: readable contrast everywhere, more depth, a single Modules page, a new dashboard, bot cards and bot
+  page headers with each bot’s own colour banner, and a three-step guide on unconnected bots.
 - Personal edition (on by default): everything unlocked locally, no sign-in, server-only screens hidden. One switch
   (`PERSONAL_EDITION` in `packages/shared/src/brand.ts`) brings the commercial edition back.
 - Discord account linking (required in customer builds), bans that block the email and Discord account, and staff

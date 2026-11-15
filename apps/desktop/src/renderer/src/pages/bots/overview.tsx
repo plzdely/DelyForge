@@ -18,17 +18,19 @@ function Metric({
   value,
   hint,
   chart,
+  tone = 'neutral',
 }: {
   icon: typeof Clock;
   label: string;
   value: ReactNode;
   hint?: ReactNode;
   chart?: ReactNode;
+  tone?: 'neutral' | 'primary' | 'success' | 'info' | 'warning';
 }) {
   return (
     <Card className="p-4">
       <div className="flex items-center gap-2 text-xs font-medium text-fg-muted">
-        <IconTile icon={icon} size="sm" tone="neutral" />
+        <IconTile icon={icon} size="sm" tone={tone} />
         {label}
       </div>
       <div className="mt-2.5 text-xl font-semibold tracking-[-0.02em] text-fg tabular-nums">{value}</div>
@@ -59,15 +61,28 @@ export function BotOverview() {
       <Card className="relative overflow-hidden" data-route-ready={`/bots/${bot.id}`}>
         <div className="pointer-events-none absolute inset-0" style={{ background: 'var(--df-glow)' }} />
         <EmptyState
-          className="relative py-14"
+          className="relative pt-12 pb-6"
           icon={Plug}
           title="Connect this bot to Discord"
-          description="A short guided setup: create a Discord application, paste its token, invite the bot to your server and go live."
+          description="A short guided setup — about five minutes, no programming."
         >
           <Button variant="primary" asChild>
             <Link to="connect">Start setup</Link>
           </Button>
         </EmptyState>
+        <ol className="relative mx-auto grid max-w-3xl grid-cols-3 gap-3 px-6 pb-10">
+          {[
+            ['Create a Discord application', 'In Discord’s Developer Portal — we show you where to click.'],
+            ['Paste its token', 'It’s checked with Discord and stored encrypted on this PC only.'],
+            ['Invite and go live', 'Add the bot to your server, press Start, type /ping.'],
+          ].map(([title, text], i) => (
+            <li key={title} className="rounded-xl border border-border bg-bg-subtle/50 p-4">
+              <span className="flex size-6 items-center justify-center rounded-full bg-primary-soft text-2xs font-semibold text-primary">{i + 1}</span>
+              <p className="mt-2 text-sm font-medium text-fg">{title}</p>
+              <p className="mt-0.5 text-xs text-fg-muted">{text}</p>
+            </li>
+          ))}
+        </ol>
       </Card>
     );
   }
@@ -107,22 +122,26 @@ export function BotOverview() {
           label="Uptime"
           value={running && state.readyAt ? formatDuration(now - new Date(state.readyAt).getTime()) : '—'}
           hint={state.restartCount > 0 ? `${state.restartCount} automatic restart${state.restartCount === 1 ? '' : 's'} this session` : running ? 'Since last start' : 'Not running'}
+          tone="success"
         />
         <Metric
           icon={Server}
           label="Servers"
           value={running ? (m?.guildCount ?? bot.guildCount) : bot.guildCount}
           hint={running ? 'Live' : 'Last known'}
+          tone="info"
         />
         <Metric
           icon={SquareSlash}
           label="Commands"
           value={bot.commandsExecuted}
           hint={`All time · ${state.commandsThisSession} this session`}
+          tone="warning"
         />
         <Metric
           icon={Activity}
           label="Discord latency"
+          tone="primary"
           value={m?.pingMs != null ? `${m.pingMs} ms` : '—'}
           chart={<Sparkline values={history.map((h) => h.pingMs)} />}
         />
