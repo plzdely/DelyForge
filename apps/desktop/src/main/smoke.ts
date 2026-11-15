@@ -1,6 +1,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { type BrowserWindow, app } from 'electron';
+import { PERSONAL_EDITION } from '@delyforge/shared';
 import type { Logger } from './logger';
 
 export interface SmokeHooks {
@@ -129,8 +130,16 @@ export async function runSmokeTest(win: BrowserWindow, outDir: string, logger: L
     // ── Main process refuses to start an unconnected bot; plan limit still enforced ─────────────────────────────
     const startRefused = await js<string | false>(`window.delyforge.runtime.start('${botId}').then((r) => !r.ok && r.error.code)`);
     if (startRefused !== 'VALIDATION_FAILED') failures.push(`starting an unconnected bot was not refused (got ${String(startRefused)})`);
-    const limit = await js<string | false>(`window.delyforge.bots.create({ name: 'Second' }).then((r) => !r.ok && r.error.code)`);
-    if (limit !== 'LIMIT_REACHED') failures.push(`plan limit not enforced (got ${String(limit)})`);
+    const second = await js<{ ok: true; id: string } | { ok: false; code: string }>(
+      `window.delyforge.bots.create({ name: 'Second' }).then((r) => (r.ok ? { ok: true, id: r.data.id } : { ok: false, code: r.error.code }))`,
+    );
+    if (PERSONAL_EDITION) {
+      // No limits in the personal edition: a second bot is allowed (removed again so later steps see one bot).
+      if (second.ok) await js(`window.delyforge.bots.remove('${second.id}')`);
+      else failures.push(`personal edition refused a second bot (${second.code})`);
+    } else if (second.ok || second.code !== 'LIMIT_REACHED') {
+      failures.push(`plan limit not enforced (got ${second.ok ? 'created' : second.code})`);
+    }
 
     // ── Real bot process with a fake token ──────────────────────────────────────────────────────────────────────
     const probe = await hooks.runtimeProbe(botId);

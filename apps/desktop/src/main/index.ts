@@ -19,6 +19,7 @@ import {
   type BotEvent,
   isAllowedExternalUrl,
   ANALYTICS_DAYS,
+  PERSONAL_EDITION,
   IPC_CHANNELS,
   lowestPlanWithFeature,
   type AppSettings,
@@ -112,6 +113,7 @@ async function main(): Promise<void> {
   const devEntitlements = createEntitlementsProvider({
     isPackaged: app.isPackaged,
     devPlan: process.env['DELYFORGE_DEV_PLAN'],
+    personal: PERSONAL_EDITION,
   });
   if (devEntitlements().source === 'dev-override') {
     logger.warn(`Development plan override active: ${devEntitlements().effectivePlanId}`);
@@ -127,7 +129,7 @@ async function main(): Promise<void> {
     // fetch it from the API they talk to. Customer builds never do, so a fake server can't sign fake plans for them.
     allowKeyDiscovery: !app.isPackaged || !__DELYFORGE_PUBLIC_KEY__,
     // Customer builds (with a real server baked in) can't be used without an account that has Discord linked.
-    requireAccount: app.isPackaged ? Boolean(__DELYFORGE_API_URL__) : process.env['DELYFORGE_REQUIRE_ACCOUNT'] === '1',
+    requireAccount: !PERSONAL_EDITION && (app.isPackaged ? Boolean(__DELYFORGE_API_URL__) : process.env['DELYFORGE_REQUIRE_ACCOUNT'] === '1'),
     onChange: () => {
       emit({ type: 'account-updated' });
       onAccountChange();
@@ -140,7 +142,7 @@ async function main(): Promise<void> {
     if (!a.allowed) throw new AppError('FORBIDDEN', a.needs === 'discord' ? 'Connect your Discord account first (Account page).' : 'Sign in to DelyForge first.');
   };
   /** Server-certified plan, or the development override. */
-  const entitlements = () => (devEntitlements().source === 'dev-override' ? devEntitlements() : account.entitlements());
+  const entitlements = () => (devEntitlements().source === 'local' ? account.entitlements() : devEntitlements());
   const bots = new BotRepository(db, activity, entitlements);
   const secrets = new SecretRepository(db, cipher);
   const logs = new LogRepository(db);

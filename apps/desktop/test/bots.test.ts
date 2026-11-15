@@ -3,6 +3,7 @@ import { BOT_EXPORT_FORMAT, createBotProjectSchema, resolveEntitlements } from '
 import { BotRepository } from '../src/main/db/bots';
 import { openDatabase } from '../src/main/db/database';
 import { ActivityRepository } from '../src/main/db/repositories';
+import { FEATURE_KEYS } from '@delyforge/shared';
 import { createEntitlementsProvider } from '../src/main/entitlements';
 import { AppError } from '../src/main/errors';
 
@@ -188,5 +189,11 @@ describe('entitlements provider', () => {
       source: 'local',
     });
     expect(createEntitlementsProvider({ isPackaged: false, devPlan: 'platinum' })().effectivePlanId).toBe('free');
+  });
+
+  it('unlocks everything in the personal edition, installed or not', () => {
+    const e = createEntitlementsProvider({ isPackaged: true, devPlan: undefined, personal: true })();
+    expect(e).toMatchObject({ source: 'personal', limits: { maxBotProjects: null, maxWorkflows: null } });
+    expect([...e.features].sort()).toEqual([...FEATURE_KEYS].sort()); // every feature, including Free-only ones
   });
 });

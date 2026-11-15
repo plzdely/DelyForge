@@ -1,4 +1,4 @@
-import type { LogLevel } from '@delyforge/shared';
+import { type LogLevel, PERSONAL_EDITION } from '@delyforge/shared';
 import { useQueryClient } from '@tanstack/react-query';
 import { ArrowDownToLine, Download, Search, Sparkles, Trash2 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -80,9 +80,11 @@ export function BotConsole() {
           ]}
         />
         <div className="ml-auto flex items-center gap-1.5">
-          <Button size="sm" onClick={() => setAskAi(true)}>
-            <Sparkles /> Ask AI
-          </Button>
+          {PERSONAL_EDITION ? null : (
+            <Button size="sm" onClick={() => setAskAi(true)}>
+              <Sparkles /> Ask AI
+            </Button>
+          )}
           <Button size="sm" variant={follow ? 'secondary' : 'ghost'} aria-pressed={follow} onClick={() => setFollow(!follow)}>
             <ArrowDownToLine /> Auto-scroll
           </Button>

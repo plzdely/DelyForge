@@ -1,4 +1,4 @@
-import type { FeatureKey } from '@delyforge/shared';
+import { type FeatureKey, PERSONAL_EDITION } from '@delyforge/shared';
 import {
   Activity,
   BadgeCheck,
@@ -246,8 +246,14 @@ export function navItemForPath(pathname: string): NavItem | undefined {
   )[0];
 }
 
+/** Screens that need a paid DelyForge server; hidden in the personal edition. */
+const SERVER_ONLY = new Set(['ai', 'marketplace', 'team', 'account', 'subscription']);
+
 export function visibleSections(showRoadmap: boolean): NavSection[] {
-  return NAV_SECTIONS.map((s) => ({ ...s, items: s.items.filter((i) => i.available || showRoadmap) })).filter(
+  return NAV_SECTIONS.map((s) => ({
+    ...s,
+    items: s.items.filter((i) => (i.available || showRoadmap) && !(PERSONAL_EDITION && SERVER_ONLY.has(i.id))),
+  })).filter(
     (s) => s.items.length > 0,
   );
 }

@@ -505,5 +505,5 @@ export interface AiApplyResult {
 export interface AccountEntitlements extends Omit<Entitlements, 'graceEndsAt'> {
   graceEndsAt: string | null;
   /** `local` until accounts ship; `dev-override` only in unpackaged development builds. */
-  source: 'local' | 'dev-override' | 'account';
+  source: 'local' | 'dev-override' | 'account' | 'personal';
 }

@@ -85,6 +85,12 @@ export function Sidebar() {
       </nav>
 
       <div className="border-t border-border p-3">
+        {entitlements.source === 'personal' ? (
+          <div className="rounded-lg border border-border bg-surface p-3">
+            <div className="text-xs font-medium text-fg">Personal edition</div>
+            <div className="mt-1 text-2xs text-fg-subtle">Everything unlocked · runs on this PC</div>
+          </div>
+        ) : (
         <NavLink
           to="/subscription"
           className="block rounded-lg border border-border bg-surface p-3 transition-colors hover:border-border-strong"
@@ -102,6 +108,7 @@ export function Sidebar() {
             <span className="font-medium text-primary">View plans</span>
           </div>
         </NavLink>
+        )}
       </div>
     </aside>
   );

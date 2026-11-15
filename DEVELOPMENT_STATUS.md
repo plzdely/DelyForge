@@ -1,6 +1,12 @@
 # Development Status
 
-_Last updated: 2026-11-15 — All ten phases built. Final review pending with you._
+_Last updated: 2026-11-15 — switched to the free Personal edition (selling on hold)._
+
+> **Current mode: Personal edition** (`PERSONAL_EDITION = true` in `packages/shared/src/brand.ts`). Selling is on hold:
+> every feature is unlocked on this PC with no limits and no sign-in, and the screens that need a paid DelyForge server
+> (Account, Subscription, AI, Marketplace, Team) are hidden. All the commercial code below is still built and tested;
+> set the switch to `false` to bring it back.
+
 
 Legend: ✅ done & verified · 🟡 done, not yet verified end-to-end · ⏳ pending · ⛔ blocked on an external action
 
