@@ -32,6 +32,11 @@ const bridge: DelyForgeBridge = {
     resendVerification: () => invoke(IPC_CHANNELS.accountResendVerification),
     updateProfile: (displayName) => invoke(IPC_CHANNELS.accountUpdateProfile, { displayName }),
   },
+  updates: {
+    status: () => invoke(IPC_CHANNELS.updatesStatus),
+    check: () => invoke(IPC_CHANNELS.updatesCheck),
+    install: () => invoke(IPC_CHANNELS.updatesInstall),
+  },
   admin: {
     overview: () => invoke(IPC_CHANNELS.adminOverview),
     users: (q) => invoke(IPC_CHANNELS.adminUsers, { q }),

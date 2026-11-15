@@ -50,7 +50,7 @@ permissions, sandbox, updates, dependency/compatibility checks), integrations, d
 Team workspaces & per-bot permissions, audit logs, advanced analytics & exports, remote monitoring (WebSocket),
 cloud hosting foundation (`CloudBotHost`, isolated runtimes), web dashboard, internal admin dashboard.
 
-## Phase 10 — Production
+## Phase 10 — Production ✅ (installer, updates, release config; signing needs your certificate)
 Security audit, performance work, E2E test suite, code signing, Windows NSIS installer, auto-updates with rollback,
 user documentation, release.
 

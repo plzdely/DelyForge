@@ -1,0 +1,35 @@
+# DelyForge Windows installer. Built by `pnpm --filter @delyforge/desktop dist` (scripts/release.mjs).
+appId: com.plzdely.delyforge
+productName: DelyForge
+copyright: Copyright © plzdely
+directories:
+  output: release
+  buildResources: build
+# Everything (main process, bot runtime with discord.js, UI) is bundled into out/, so no node_modules are shipped.
+files:
+  - out/**/*
+  - package.json
+# Bots run in separate processes started from a file on disk; without asar they load exactly like in development.
+asar: false
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  icon: build/icon.ico
+  # Code signing: set CSC_LINK (path or base64 of your .pfx certificate) and CSC_KEY_PASSWORD before building.
+  # Unsigned builds work but Windows SmartScreen warns customers. Auto-update checks the signature when this is set:
+  # publisherName: ["Your company name exactly as on the certificate"]
+nsis:
+  # Double-click and done: installs for the current user, no admin prompt, no wizard pages.
+  oneClick: true
+  perMachine: false
+  createDesktopShortcut: always
+  createStartMenuShortcut: true
+  shortcutName: DelyForge
+  # Customers' bots, settings and backups survive uninstall/reinstall.
+  deleteAppDataOnUninstall: false
+  artifactName: DelyForge-Setup-${version}.${ext}
+publish:
+  # Updates are served from your own HTTPS address (latest.yml + the installer). Set DELYFORGE_UPDATE_URL when building.
+  provider: generic
+  url: ${env.DELYFORGE_UPDATE_URL}

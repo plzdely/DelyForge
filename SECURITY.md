@@ -31,10 +31,10 @@ Email the maintainers privately (address to be published before release). Do not
 | S10 | API abuse / brute force | Global rate limiting (`@nestjs/throttler`), stricter limits on auth & AI routes, Helmet security headers, CORS allow-list. | Shipped (Phase 1) |
 | S11 | Malicious marketplace plugins | Marketplace carries declarative data only (no code), validated by the app's own schemas with no server IDs; every version is reviewed by staff and Ed25519-signed (domain-separated from plan certificates); the app verifies the signature and re-validates before installing. Code plugins are not offered. | Shipped (Phase 8) |
 | S12 | AI prompt injection / unsafe changes | AI output is parsed item by item against the real config schemas and may only reference the server's real channel/role IDs; proposals are applied only after the user approves them, through the normal validated save paths; logs are redacted again before being sent; AI keys exist only on the API. | Shipped (Phase 6) |
-| S13 | Malicious update | Code-signed installer, HTTPS update feed, signature verification before install, no silent execution. | Planned (Phase 10) |
+| S13 | Malicious update | HTTPS update feed, background download, install only when the customer restarts; signature check once `publisherName` + a code-signing certificate are set (needs your certificate). Release builds ignore env overrides for API address and signing key. | Shipped (Phase 10) — signing pending certificate |
 | S14 | Privilege escalation to admin | Staff role re-read from the database on every admin call (SUPPORT read-only, ADMIN changes); every change audit-logged; staff can't change their own status. Team membership re-checked on every request; only owners can buy plans. | Shipped (Phase 9) |
 | S15 | Dependency supply chain | pnpm blocks install scripts except an explicit allow-list; lockfile committed; `pnpm audit` in CI. | Allow-list shipped (Phase 1) |
-| S16 | Backup leakage | Backups exclude tokens by default; optional token inclusion encrypted with a user passphrase (AES-256-GCM, scrypt KDF). | Planned (Phase 5/10) |
+| S16 | Backup leakage | Backups (and exports) never include tokens; files live in the app's own data folder on the customer's PC. Token backup is not offered. | Shipped (Phase 9) |
 | S17 | Discord ToS / API abuse | Only officially supported APIs; respect rate limits (discord.js limiter); no self-bots; no automation of the Developer Portal. | Policy |
 
 ## Development rules

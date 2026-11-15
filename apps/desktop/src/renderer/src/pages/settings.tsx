@@ -3,6 +3,7 @@ import { Check, Monitor, Moon, Sun } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Page, PageHeader } from '@/components/layout/page';
 import { BackupsCard } from '@/components/settings/backups-card';
+import { UpdatesRow } from '@/components/settings/updates-row';
 import { Card, CardHeader } from '@/components/ui/card';
 import { Separator, Skeleton } from '@/components/ui/misc';
 import { Switch } from '@/components/ui/switch';
@@ -180,6 +181,7 @@ export function SettingsPage() {
               <Skeleton className="col-span-2 h-24" />
             )}
           </dl>
+          <UpdatesRow />
         </Card>
       </div>
     </Page>

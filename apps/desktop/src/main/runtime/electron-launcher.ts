@@ -1,10 +1,11 @@
-import { createRequire } from 'node:module';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { utilityProcess } from 'electron';
 import type { Launcher, RuntimeProcess } from './supervisor';
 
-/** Path of the bot runtime entry (`@delyforge/bot-runtime/process`). */
+/** The bot runtime is bundled next to the main process (electron.vite.config.ts), in development and when installed. */
 export function resolveRuntimeEntry(): string {
-  return createRequire(import.meta.url).resolve('@delyforge/bot-runtime/process');
+  return join(dirname(fileURLToPath(import.meta.url)), 'bot-runtime.js');
 }
 
 /**

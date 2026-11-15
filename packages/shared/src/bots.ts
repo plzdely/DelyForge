@@ -163,7 +163,14 @@ export type BotEvent =
   | { type: 'project-updated'; botId: string }
   | { type: 'notification'; notification: AppNotification }
   /** Sign-in state or plan changed. */
-  | { type: 'account-updated' };
+  | { type: 'account-updated' }
+  /** A new version has downloaded and installs when the customer restarts. */
+  | { type: 'update-ready'; version: string };
+
+export type UpdateStatus =
+  | { state: 'disabled' | 'idle' | 'checking' }
+  | { state: 'downloading' | 'ready'; version: string }
+  | { state: 'error'; message: string };
 
 // ─── Export / import ─────────────────────────────────────────────────────────────────────────────────────────────
 

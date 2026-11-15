@@ -31,6 +31,7 @@ import {
 } from '@delyforge/shared';
 import { AccountService } from './account';
 import { AiAssistant } from './ai-assistant';
+import { createUpdater } from './updater';
 import { BackupService } from './backups';
 import { AnalyticsRepository } from './db/analytics';
 import { MarketplaceClient } from './marketplace';
@@ -114,10 +115,12 @@ async function main(): Promise<void> {
   if (devEntitlements().source === 'dev-override') {
     logger.warn(`Development plan override active: ${devEntitlements().effectivePlanId}`);
   }
-  const publicKeyB64 = process.env['DELYFORGE_ENTITLEMENT_PUBLIC_KEY'];
+  // Installed copies only trust what was baked in at build time: an environment variable must never be able to point the
+  // app at another server or signing key (that would let someone fake a paid plan). Development may override both.
+  const fromEnv = (name: string) => (app.isPackaged ? undefined : process.env[name] || undefined);
+  const publicKeyB64 = fromEnv('DELYFORGE_ENTITLEMENT_PUBLIC_KEY') ?? (__DELYFORGE_PUBLIC_KEY__ || undefined);
   const account = new AccountService(db, cipher, {
-    // shortcut: production API address is set at build time in Phase 10; development talks to the local API.
-    apiUrl: process.env['DELYFORGE_API_URL'] ?? 'http://localhost:4000',
+    apiUrl: fromEnv('DELYFORGE_API_URL') ?? (__DELYFORGE_API_URL__ || 'http://localhost:4000'),
     publicKeyPem: publicKeyB64 ? Buffer.from(publicKeyB64, 'base64').toString('utf8') : null,
     allowKeyDiscovery: !app.isPackaged,
     onChange: () => emit({ type: 'account-updated' }),
@@ -371,6 +374,16 @@ async function main(): Promise<void> {
     logs.clear(id);
     return null;
   });
+  // Automatic updates (installed copies with an update address only)
+  const updateUrl = __DELYFORGE_UPDATE_URL__;
+  const updater = createUpdater({ enabled: app.isPackaged && Boolean(updateUrl), url: updateUrl, logger, onReady: (version) => emit({ type: 'update-ready', version }) });
+  handle(IPC_CHANNELS.updatesStatus, () => updater.status());
+  handle(IPC_CHANNELS.updatesCheck, () => updater.check());
+  handle(IPC_CHANNELS.updatesInstall, () => {
+    updater.install();
+    return null;
+  });
+
   // Internal admin dashboard (staff only; the API checks the role on every call)
   handle(IPC_CHANNELS.adminOverview, () => account.authed<AdminOverview>('GET', '/v1/admin/overview'));
   handle(IPC_CHANNELS.adminUsers, ({ q }) => account.authed<AdminUser[]>('GET', `/v1/admin/users?q=${encodeURIComponent(q)}`));
@@ -490,10 +503,13 @@ async function main(): Promise<void> {
     });
   });
 
-  if (!process.env['DELYFORGE_SMOKE_DIR']) supervisor.startOnLaunch();
+  // The smoke test creates and changes bots, so it only runs on a throw-away profile (always the case in development
+  // via scripts/smoke.mjs; an installed copy needs DELYFORGE_USER_DATA too, so customer data can never be touched).
+  const smokeDir = process.env['DELYFORGE_SMOKE_DIR'] && (!app.isPackaged || process.env['DELYFORGE_USER_DATA']) ? process.env['DELYFORGE_SMOKE_DIR'] : null;
+  if (!smokeDir) supervisor.startOnLaunch();
 
-  if (process.env['DELYFORGE_SMOKE_DIR']) {
-    void runSmokeTest(win, process.env['DELYFORGE_SMOKE_DIR'], logger, {
+  if (smokeDir) {
+    void runSmokeTest(win, smokeDir, logger, {
       runtimeProbe: async (botId) => {
         // Clearly fake, correctly shaped token: Discord answers 401, or login fails if offline.
         const fake = 'MTAxMjM0NTY3ODkwMTIzNDU2Nw.GaBcDe.' + 'smoke-test-not-a-real-token-0000000';

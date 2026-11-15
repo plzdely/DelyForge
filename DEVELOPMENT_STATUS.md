@@ -1,6 +1,6 @@
 # Development Status
 
-_Last updated: 2026-11-15 — Phase 9 complete (teams, analytics, backups, admin)._
+_Last updated: 2026-11-15 — All ten phases built. Final review pending with you._
 
 Legend: ✅ done & verified · 🟡 done, not yet verified end-to-end · ⏳ pending · ⛔ blocked on an external action
 
@@ -201,6 +201,32 @@ sign out and in again in the app. A **Review queue** tab appears on the Marketpl
 See "Making yourself staff" under Phase 8: set your `role` to `ADMIN` in Prisma Studio. The Account page then shows
 **Admin dashboard**.
 
+## Phase 10 — Installer, updates, hardening
+
+| Item | Status | Verification |
+|---|---|---|
+| One-click Windows installer (NSIS, per-user, no admin, shortcuts, data kept on uninstall), app icon | ✅ | built `DelyForge-Setup-0.1.0.exe` (125 MB) |
+| Everything bundled (bot runtime + discord.js included), no node_modules shipped | ✅ | smoke test on the **packaged** app: all screens render, a real bot process starts and rejects a fake token |
+| Release builds bake in API address + signing key and ignore environment overrides; build refuses to run without them (https only) | ✅ | release script checks |
+| Automatic updates: background download over HTTPS, customer chooses when to restart, signature check when code-signed | 🟡 | built and type-checked; **never run against a real update server** |
+| Smoke-test switch can't touch a customer's real data in installed copies | ✅ | — |
+| Dependency audit | ✅ | 1 moderate issue, build tooling only (not shipped) |
+
+### Needs you before selling (the full list)
+1. **Host the API** on a server with HTTPS and a PostgreSQL database (e.g. Railway, Render, Fly.io + managed Postgres).
+   Run `pnpm --filter @delyforge/api keys:generate`, put the private values in the server's environment, then
+   `prisma migrate deploy` and `pnpm db:seed`.
+2. **Stripe** (Phase 7 list): products, prices, webhook to `https://<api>/v1/billing/webhook`.
+3. **Email provider** behind `apps/api/src/mail/mailer.ts` (Postmark, SES, Resend…). Until then no emails are sent in
+   production (the API refuses rather than pretending).
+4. **Anthropic API key** for the AI features (`ANTHROPIC_API_KEY` on the server).
+5. **Update hosting:** any HTTPS static folder (S3/R2 bucket, your website) for installers + `latest.yml`.
+6. **Code-signing certificate** (OV or EV) so Windows doesn't warn customers. Then set `publisherName` in
+   `apps/desktop/electron-builder.yml` so updates must carry your signature.
+7. **Make yourself staff:** set your user's role to `ADMIN` (Prisma Studio) to review marketplace submissions.
+8. Real-world checks no test can do: a Stripe test-mode purchase, a real AI proposal, a teammate invite end-to-end,
+   and installing + updating on a second PC.
+
 ## Known limitations / honest notes
 - No accounts yet — the desktop app runs on the local Free plan (accounts & Stripe are Phase 7).
 - Bots run only while DelyForge is open on this computer (24/7 cloud hosting is Phase 9).
@@ -216,4 +242,4 @@ The Free plan allows 1 bot. To test with more, start the app with a simulated pl
 customer builds ignore it). In Git Bash: `DELYFORGE_DEV_PLAN=pro pnpm dev:desktop`. In PowerShell:
 `$env:DELYFORGE_DEV_PLAN='pro'; pnpm dev:desktop`.
 
-## Next up — Phase 10 (installer, updates, hardening)
+## Next up — final test and review with you

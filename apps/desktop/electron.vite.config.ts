@@ -5,10 +5,23 @@ import { defineConfig } from 'electron-vite';
 
 export default defineConfig({
   main: {
-    // Bundle everything (including @delyforge/shared and zod) into one file; only Electron + Node built-ins stay external.
+    // Bundle everything (including @delyforge/shared, zod and the bot runtime with discord.js) so the installed app needs
+    // no node_modules; only Electron, Node built-ins and discord.js's optional native speed-ups stay external.
     build: {
       externalizeDeps: false,
-      rollupOptions: { external: ['electron', /^node:/] },
+      rollupOptions: {
+        input: {
+          index: resolve(import.meta.dirname, 'src/main/index.ts'),
+          'bot-runtime': resolve(import.meta.dirname, '../../packages/bot-runtime/dist/process.js'),
+        },
+        external: ['electron', /^node:/, 'zlib-sync', 'bufferutil', 'utf-8-validate', 'erlpack'],
+      },
+    },
+    // Release builds bake in the production API and the plan/package signing key (see scripts/release.mjs).
+    define: {
+      __DELYFORGE_API_URL__: JSON.stringify(process.env['DELYFORGE_API_URL'] ?? ''),
+      __DELYFORGE_PUBLIC_KEY__: JSON.stringify(process.env['DELYFORGE_ENTITLEMENT_PUBLIC_KEY'] ?? ''),
+      __DELYFORGE_UPDATE_URL__: JSON.stringify(process.env['DELYFORGE_UPDATE_URL'] ?? ''),
     },
   },
   preload: {

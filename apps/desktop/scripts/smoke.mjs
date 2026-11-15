@@ -12,7 +12,9 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const outDir = join(root, 'out', 'smoke');
 const profile = mkdtempSync(join(tmpdir(), 'delyforge-smoke-'));
 
-const child = spawn(electronPath, [root], {
+// `--packaged` runs the installer's unpacked app (release/win-unpacked) instead of the development build.
+const packaged = process.argv.includes('--packaged');
+const child = spawn(packaged ? join(root, 'release', 'win-unpacked', 'DelyForge.exe') : electronPath, packaged ? [] : [root], {
   env: { ...process.env, DELYFORGE_SMOKE_DIR: outDir, DELYFORGE_USER_DATA: profile, ELECTRON_RENDERER_URL: '' },
   stdio: 'inherit',
 });

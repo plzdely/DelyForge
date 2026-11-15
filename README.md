@@ -89,6 +89,36 @@ pnpm test:smoke
 `apps/desktop/out/smoke/`. Database integration tests run when Postgres is up:
 `DELYFORGE_DB_TESTS=1 pnpm --filter @delyforge/api test`.
 
+## Building the Windows installer
+
+Customers only ever download and double-click `DelyForge-Setup-<version>.exe`. It installs for the current user (no admin
+prompt), adds Start-menu and desktop shortcuts, and keeps everyone's bots and settings when uninstalling or updating.
+
+**Test installer on your own PC** (talks to `http://localhost:4000`, never auto-updates, not code-signed):
+
+```bash
+pnpm --filter @delyforge/desktop dist:unsigned
+```
+
+The installer appears in `apps/desktop/release/`. To check the packaged app works without installing it:
+
+```bash
+pnpm --filter @delyforge/desktop exec node scripts/smoke.mjs --packaged
+```
+
+**Customer installer:** set these first (the build refuses to run without them), then run `pnpm --filter @delyforge/desktop dist`:
+
+| Variable | What it is |
+|---|---|
+| `DELYFORGE_API_URL` | Your live API address, e.g. `https://api.yourdomain.com` |
+| `DELYFORGE_ENTITLEMENT_PUBLIC_KEY` | The public key printed by `pnpm --filter @delyforge/api keys:generate` (the server keeps the private half) |
+| `DELYFORGE_UPDATE_URL` | An HTTPS folder where you upload each new installer **and** `latest.yml` |
+| `CSC_LINK`, `CSC_KEY_PASSWORD` | Your code-signing certificate (optional, but without it Windows warns customers) |
+
+Release builds ignore these as environment variables at run time, so nobody can point an installed copy at a fake server.
+After building, upload `DelyForge-Setup-<version>.exe`, its `.blockmap` and `latest.yml` to the update folder — installed
+copies find it within 6 hours, download it in the background and ask the customer to restart.
+
 ## Documentation
 
 - [ARCHITECTURE.md](ARCHITECTURE.md) — technical design and decisions

@@ -2,6 +2,7 @@ import { z } from 'zod';
 import {
   type AnalyticsReport,
   type BackupInfo,
+  type UpdateStatus,
   type AppNotification,
   type BotEvent,
   type BotLogEntry,
@@ -128,6 +129,9 @@ export const IPC_CHANNELS = {
   adminRevoke: 'admin:revoke',
   adminListingStatus: 'admin:listing-status',
   adminReviewHidden: 'admin:review-hidden',
+  updatesStatus: 'updates:status',
+  updatesCheck: 'updates:check',
+  updatesInstall: 'updates:install',
 } as const;
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];
 
@@ -244,6 +248,9 @@ export const ipcInputSchemas = {
   [IPC_CHANNELS.marketQueue]: noInput,
   [IPC_CHANNELS.analyticsReport]: z.object({ id: z.uuid().nullable(), days: z.number().int().min(1).max(90) }).strict(),
   [IPC_CHANNELS.analyticsExport]: noInput,
+  [IPC_CHANNELS.updatesStatus]: noInput,
+  [IPC_CHANNELS.updatesCheck]: noInput,
+  [IPC_CHANNELS.updatesInstall]: noInput,
   [IPC_CHANNELS.adminOverview]: noInput,
   [IPC_CHANNELS.adminUsers]: z.object({ q: z.string().trim().max(100) }).strict(),
   [IPC_CHANNELS.adminAudit]: noInput,
@@ -417,6 +424,12 @@ export interface DelyForgeBridge {
     apply(proposalId: string): Promise<IpcResult<AiApplyResult>>;
     reject(proposalId: string): Promise<IpcResult<null>>;
     troubleshoot(input: { id: string; question: string }): Promise<IpcResult<{ answer: AiTroubleshootAnswer; creditsUsed: number; usage: AiUsageInfo }>>;
+  };
+  updates: {
+    status(): Promise<IpcResult<UpdateStatus>>;
+    check(): Promise<IpcResult<UpdateStatus>>;
+    /** Restarts into the downloaded update (only when one is ready). */
+    install(): Promise<IpcResult<null>>;
   };
   /** DelyForge staff only — the server checks the role on every call. */
   admin: {

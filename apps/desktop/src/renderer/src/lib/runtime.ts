@@ -44,6 +44,14 @@ export function useBotEventStream(): void {
         case 'project-updated':
           void qc.invalidateQueries({ queryKey: queryKeys.bots });
           break;
+        case 'update-ready':
+          void qc.invalidateQueries({ queryKey: ['updates'] });
+          toast(`DelyForge ${event.version} is ready`, {
+            description: 'Restart to update. Your bots stop briefly and start again afterwards.',
+            duration: Infinity,
+            action: { label: 'Restart now', onClick: () => void call((b) => b.updates.install()) },
+          });
+          break;
         case 'account-updated':
           void qc.invalidateQueries({ queryKey: ['account'] });
           void qc.invalidateQueries({ queryKey: ['entitlements'] });

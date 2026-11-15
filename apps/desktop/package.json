@@ -12,14 +12,13 @@
     "preview": "electron-vite preview",
     "typecheck": "tsc -b tsconfig.json --noEmit false",
     "test": "vitest run",
-    "test:smoke": "node scripts/smoke.mjs"
-  },
-  "dependencies": {
-    "@delyforge/bot-runtime": "workspace:*",
-    "@delyforge/shared": "workspace:*",
-    "zod": "^4.6.7"
+    "test:smoke": "node scripts/smoke.mjs",
+    "dist": "node scripts/release.mjs",
+    "dist:unsigned": "node scripts/release.mjs --allow-unconfigured"
   },
   "devDependencies": {
+    "@delyforge/bot-runtime": "workspace:*",
+    "@delyforge/shared": "workspace:*",
     "@fontsource-variable/geist": "^5.3.0",
     "@fontsource-variable/geist-mono": "^5.3.0",
     "@tailwindcss/vite": "^4.3.5",
@@ -32,6 +31,7 @@
     "clsx": "^2.1.1",
     "electron": "^45.3.2",
     "electron-builder": "^26.18.0",
+    "electron-updater": "^6.8.11",
     "electron-vite": "^6.0.0",
     "lucide-react": "^1.72.0",
     "radix-ui": "^1.8.1",
@@ -44,6 +44,7 @@
     "typescript": "~6.0.3",
     "vite": "^8.3.8",
     "vitest": "^5.1.0",
+    "zod": "^4.6.7",
     "zustand": "^5.1.0"
   },
   "productName": "DelyForge"
