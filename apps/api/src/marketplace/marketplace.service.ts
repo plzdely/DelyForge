@@ -155,6 +155,8 @@ export class MarketplaceService {
 
     const existing = await this.prisma.listing.findUnique({ where: { slug: input.slug }, include: { versions: true } });
     if (existing && existing.developerId !== dev.id) throw new ConflictException('That listing address is taken.');
+    // Only staff can lift a suspension; new versions must not put a suspended listing back into review.
+    if (existing?.status === 'SUSPENDED') throw new ForbiddenException('This listing is suspended. Contact DelyForge support.');
     if (existing) {
       if (existing.type !== input.type) throw new UnprocessableEntityException('A listing’s type can’t change.');
       if (existing.versions.some((v) => v.version === input.version)) throw new ConflictException(`Version ${input.version} was already submitted.`);
@@ -203,7 +205,7 @@ export class MarketplaceService {
   async queue(userId: string): Promise<ReviewQueueItem[]> {
     await this.requireStaff(userId);
     const rows = await this.prisma.listingVersion.findMany({
-      where: { reviewStatus: 'PENDING' },
+      where: { reviewStatus: 'PENDING', listing: { status: { not: 'SUSPENDED' } } },
       include: { listing: { include: { developer: true } } },
       orderBy: { createdAt: 'asc' },
       take: 100,
@@ -225,6 +227,7 @@ export class MarketplaceService {
     await this.requireStaff(userId);
     const v = await this.prisma.listingVersion.findUnique({ where: { id: versionId }, include: { listing: { include: { versions: true } } } });
     if (!v || v.reviewStatus !== 'PENDING') throw new NotFoundException('That version isn’t waiting for review.');
+    if (approve && v.listing.status === 'SUSPENDED') throw new ForbiddenException('This listing is suspended; lift the suspension first.');
     // Re-check with today's rules: the schemas may have tightened since it was submitted.
     const checked = validatePackage(v.content);
     if (approve && !checked.ok) throw new UnprocessableEntityException(`Can’t approve: ${checked.error}`);

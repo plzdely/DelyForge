@@ -84,6 +84,13 @@ describe.skipIf(!enabled)('marketplace (PostgreSQL)', () => {
     expect((await http().get(`/v1/marketplace/listings/${slug}`)).body.downloads).toBe(1);
   });
 
+  it('keeps a suspended listing suspended when a new version is submitted', async () => {
+    await prisma.listing.update({ where: { slug }, data: { status: 'SUSPENDED' } });
+    await submit({ modules: {}, commands: [COMMAND], embeds: [], workflows: [] }, '1.0.1').expect(403);
+    await http().get(`/v1/marketplace/listings/${slug}`).expect(404);
+    await prisma.listing.update({ where: { slug }, data: { status: 'PUBLISHED' } });
+  });
+
   it('accepts reviews from people who installed it', async () => {
     await http().post(`/v1/marketplace/listings/${slug}/reviews`).set('authorization', buyer).send({ rating: 4, body: 'Handy' }).expect(204);
     const detail = await http().get(`/v1/marketplace/listings/${slug}`).expect(200);
