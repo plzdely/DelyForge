@@ -38,7 +38,7 @@ test mode, versioning), Template Library (built-in templates, import/export/shar
 AI gateway on the API, provider adapters, usage metering, AI Bot Builder (prompt → validated proposal → preview → approve),
 AI command/embed/workflow generation, AI troubleshooting.
 
-## Phase 7 — Commercial system
+## Phase 7 — Commercial system ✅ (built before Phase 6)
 Accounts (register, verify email, login, reset, sessions, profile), Stripe Checkout + Billing Portal + webhooks,
 subscriptions (monthly/annual, upgrade/downgrade/cancel, grace periods), signed entitlement tokens, billing history.
 

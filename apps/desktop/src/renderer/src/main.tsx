@@ -8,6 +8,7 @@ import { AppShell } from '@/components/layout/app-shell';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { isBridgeAvailable } from '@/lib/bridge';
 import { AutomationsTab, CommandsTab, EmbedsTab } from '@/pages/bots/builders';
+import { AccountPage } from '@/pages/account';
 import { BotConsole } from '@/pages/bots/console';
 import { BuilderDirectoryPage, TemplatesPage } from '@/pages/templates';
 import { ConnectWizard } from '@/pages/bots/connect';
@@ -41,6 +42,7 @@ const router = createHashRouter([
       { index: true, element: <DashboardPage /> },
       { path: 'settings', element: <SettingsPage /> },
       { path: 'subscription', element: <SubscriptionPage /> },
+      { path: 'account', element: <AccountPage /> },
       { path: 'bots', element: <BotsPage /> },
       { path: 'bots/new', element: <CreateBotPage /> },
       {

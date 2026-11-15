@@ -7,10 +7,17 @@ import { HealthController } from './health/health.controller';
 import { PlansController } from './plans/plans.controller';
 import { PlansService } from './plans/plans.service';
 import { PrismaModule } from './prisma/prisma.module';
+import { AuthController, MeController } from './auth/auth.controller';
+import { AuthGuard } from './auth/auth.guard';
+import { AuthService } from './auth/auth.service';
+import { loadEntitlementKeys } from './auth/crypto';
+import { BillingController } from './billing/billing.controller';
+import { BillingService, ENTITLEMENT_KEYS } from './billing/billing.service';
+import { ConsoleMailer, MAILER, type Mailer } from './mail/mailer';
 
 @Module({})
 export class AppModule {
-  static register(env: Env): DynamicModule {
+  static register(env: Env, overrides: { mailer?: Mailer } = {}): DynamicModule {
     return {
       module: AppModule,
       global: true,
@@ -19,10 +26,15 @@ export class AppModule {
         // Default: 100 requests / minute / IP. Sensitive routes (auth, AI) will set stricter limits.
         ThrottlerModule.forRoot([{ name: 'default', ttl: 60_000, limit: 100 }]),
       ],
-      controllers: [HealthController, PlansController],
+      controllers: [HealthController, PlansController, AuthController, MeController, BillingController],
       providers: [
         { provide: ENV, useValue: env },
+        { provide: MAILER, useValue: overrides.mailer ?? new ConsoleMailer(env.NODE_ENV === 'production') },
+        { provide: ENTITLEMENT_KEYS, useValue: loadEntitlementKeys(env.ENTITLEMENT_PRIVATE_KEY || undefined) },
         PlansService,
+        AuthService,
+        AuthGuard,
+        BillingService,
         { provide: APP_GUARD, useClass: ThrottlerGuard },
         { provide: APP_FILTER, useClass: AllExceptionsFilter },
       ],

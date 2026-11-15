@@ -17,10 +17,12 @@ import {
   BOT_LIMITS,
   BRAND,
   type BotEvent,
+  isAllowedExternalUrl,
   IPC_CHANNELS,
   type AppSettings,
   slugify,
 } from '@delyforge/shared';
+import { AccountService } from './account';
 import { BotRepository } from './db/bots';
 import { openDatabase } from './db/database';
 import { LogRepository, NotificationRepository } from './db/logs';
@@ -89,19 +91,30 @@ async function main(): Promise<void> {
   const db = openDatabase(join(dataDir, 'delyforge.db'));
   const settings = new SettingsRepository(db);
   const activity = new ActivityRepository(db);
-  const entitlements = createEntitlementsProvider({
+  const cipher = {
+    isAvailable: () => safeStorage.isEncryptionAvailable(),
+    encrypt: (plain: string) => safeStorage.encryptString(plain),
+    decrypt: (data: Buffer) => safeStorage.decryptString(data),
+  };
+  const devEntitlements = createEntitlementsProvider({
     isPackaged: app.isPackaged,
     devPlan: process.env['DELYFORGE_DEV_PLAN'],
   });
-  if (entitlements().source === 'dev-override') {
-    logger.warn(`Development plan override active: ${entitlements().effectivePlanId}`);
+  if (devEntitlements().source === 'dev-override') {
+    logger.warn(`Development plan override active: ${devEntitlements().effectivePlanId}`);
   }
-  const bots = new BotRepository(db, activity, entitlements);
-  const secrets = new SecretRepository(db, {
-    isAvailable: () => safeStorage.isEncryptionAvailable(),
-    encrypt: (plain) => safeStorage.encryptString(plain),
-    decrypt: (data) => safeStorage.decryptString(data),
+  const publicKeyB64 = process.env['DELYFORGE_ENTITLEMENT_PUBLIC_KEY'];
+  const account = new AccountService(db, cipher, {
+    // shortcut: production API address is set at build time in Phase 10; development talks to the local API.
+    apiUrl: process.env['DELYFORGE_API_URL'] ?? 'http://localhost:4000',
+    publicKeyPem: publicKeyB64 ? Buffer.from(publicKeyB64, 'base64').toString('utf8') : null,
+    allowKeyDiscovery: !app.isPackaged,
+    onChange: () => emit({ type: 'account-updated' }),
   });
+  /** Server-certified plan, or the development override. */
+  const entitlements = () => (devEntitlements().source === 'dev-override' ? devEntitlements() : account.entitlements());
+  const bots = new BotRepository(db, activity, entitlements);
+  const secrets = new SecretRepository(db, cipher);
   const logs = new LogRepository(db);
   const notifications = new NotificationRepository(db);
   const connections = new BotConnections(bots, secrets, new DiscordApi(app.getVersion()), activity);
@@ -217,6 +230,32 @@ async function main(): Promise<void> {
     return null;
   });
   handle(IPC_CHANNELS.accountGetEntitlements, () => entitlements());
+  handle(IPC_CHANNELS.accountStatus, () => account.status());
+  handle(IPC_CHANNELS.accountRegister, (input) => account.register(input));
+  handle(IPC_CHANNELS.accountLogin, (input) => account.login(input));
+  handle(IPC_CHANNELS.accountLogout, () => account.logout());
+  handle(IPC_CHANNELS.accountRefresh, () => account.refreshPlan());
+  handle(IPC_CHANNELS.accountForgotPassword, async ({ email }) => {
+    await account.forgotPassword(email);
+    return null;
+  });
+  handle(IPC_CHANNELS.accountResendVerification, async () => {
+    await account.resendVerification();
+    return null;
+  });
+  handle(IPC_CHANNELS.accountUpdateProfile, ({ displayName }) => account.updateProfile(displayName));
+  const openStripe = async (url: string) => {
+    if (!isAllowedExternalUrl(url)) throw new AppError('INTERNAL', 'Unexpected billing address from the server.');
+    await shell.openExternal(url);
+    return null;
+  };
+  handle(IPC_CHANNELS.billingCheckout, async ({ planId, interval }) => openStripe(await account.checkoutUrl(planId, interval)));
+  handle(IPC_CHANNELS.billingPortal, async () => openStripe(await account.portalUrl()));
+  handle(IPC_CHANNELS.billingInvoices, () => account.invoices());
+  // Keep the plan certificate fresh: now and every 6 hours.
+  const refreshPlan = () => void account.refreshPlan().catch((e: Error) => logger.warn(`Plan refresh failed: ${e.message}`));
+  refreshPlan();
+  setInterval(refreshPlan, 6 * 3600_000).unref();
 
   // Bot projects
   handle(IPC_CHANNELS.botsList, () => bots.list());

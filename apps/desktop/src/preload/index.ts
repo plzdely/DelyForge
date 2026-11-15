@@ -23,6 +23,19 @@ const bridge: DelyForgeBridge = {
   },
   account: {
     getEntitlements: () => invoke(IPC_CHANNELS.accountGetEntitlements),
+    status: () => invoke(IPC_CHANNELS.accountStatus),
+    register: (input) => invoke(IPC_CHANNELS.accountRegister, input),
+    login: (input) => invoke(IPC_CHANNELS.accountLogin, input),
+    logout: () => invoke(IPC_CHANNELS.accountLogout),
+    refresh: () => invoke(IPC_CHANNELS.accountRefresh),
+    forgotPassword: (email) => invoke(IPC_CHANNELS.accountForgotPassword, { email }),
+    resendVerification: () => invoke(IPC_CHANNELS.accountResendVerification),
+    updateProfile: (displayName) => invoke(IPC_CHANNELS.accountUpdateProfile, { displayName }),
+  },
+  billing: {
+    checkout: (input) => invoke(IPC_CHANNELS.billingCheckout, input),
+    portal: () => invoke(IPC_CHANNELS.billingPortal),
+    invoices: () => invoke(IPC_CHANNELS.billingInvoices),
   },
   bots: {
     list: () => invoke(IPC_CHANNELS.botsList),

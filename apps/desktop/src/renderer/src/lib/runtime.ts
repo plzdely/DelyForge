@@ -44,6 +44,11 @@ export function useBotEventStream(): void {
         case 'project-updated':
           void qc.invalidateQueries({ queryKey: queryKeys.bots });
           break;
+        case 'account-updated':
+          void qc.invalidateQueries({ queryKey: ['account'] });
+          void qc.invalidateQueries({ queryKey: ['entitlements'] });
+          void qc.invalidateQueries({ queryKey: queryKeys.dashboard });
+          break;
         case 'notification':
           qc.setQueryData<AppNotification[]>(runtimeKeys.notifications, (prev) =>
             prev ? [event.notification, ...prev] : prev,

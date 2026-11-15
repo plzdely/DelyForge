@@ -161,7 +161,9 @@ export type BotEvent =
   | { type: 'state'; state: BotRuntimeState }
   | { type: 'log'; entry: BotLogEntry }
   | { type: 'project-updated'; botId: string }
-  | { type: 'notification'; notification: AppNotification };
+  | { type: 'notification'; notification: AppNotification }
+  /** Sign-in state or plan changed. */
+  | { type: 'account-updated' };
 
 // ─── Export / import ─────────────────────────────────────────────────────────────────────────────────────────────
 

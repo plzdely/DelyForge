@@ -42,6 +42,7 @@ const env = loadEnv({
   NODE_ENV: 'test',
   DATABASE_URL: 'postgresql://unused:unused@localhost:1/unused',
   CORS_ORIGINS: 'http://localhost:5173',
+  JWT_SECRET: 'test-secret-test-secret-test-secret-123',
 });
 
 let app: INestApplication;
@@ -112,10 +113,11 @@ describe('errors', () => {
 
 describe('configuration', () => {
   it('rejects a missing or non-PostgreSQL DATABASE_URL without printing values', () => {
-    expect(() => loadEnv({})).toThrow(/DATABASE_URL/);
-    expect(() => loadEnv({ DATABASE_URL: 'mysql://secret-password@host/db' })).toThrow(/PostgreSQL/);
+    const jwt = { JWT_SECRET: 'x'.repeat(40) };
+    expect(() => loadEnv({ ...jwt })).toThrow(/DATABASE_URL/);
+    expect(() => loadEnv({ ...jwt, DATABASE_URL: 'mysql://secret-password@host/db' })).toThrow(/PostgreSQL/);
     try {
-      loadEnv({ DATABASE_URL: 'mysql://secret-password@host/db' });
+      loadEnv({ ...jwt, DATABASE_URL: 'mysql://secret-password@host/db' });
     } catch (e) {
       expect((e as Error).message).not.toContain('secret-password');
     }

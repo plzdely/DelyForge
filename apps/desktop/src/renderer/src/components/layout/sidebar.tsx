@@ -91,7 +91,7 @@ export function Sidebar() {
         >
           <div className="flex items-center justify-between">
             <span className="text-xs font-medium text-fg">{plan.name} plan</span>
-            <span className="rounded border border-border px-1 text-2xs text-fg-subtle">Local</span>
+            <span className="rounded border border-border px-1 text-2xs text-fg-subtle">{entitlements.source === 'account' ? 'Account' : entitlements.source === 'dev-override' ? 'Dev' : 'Local'}</span>
           </div>
           <div className="mt-1 flex items-center justify-between text-2xs">
             <span className="text-fg-subtle">

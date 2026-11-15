@@ -13,3 +13,5 @@ declare class URLSearchParams {
   get(name: string): string | null;
   toString(): string;
 }
+declare function btoa(data: string): string;
+declare function atob(data: string): string;

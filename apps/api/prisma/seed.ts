@@ -43,10 +43,12 @@ async function main(): Promise<void> {
           const existing = await prisma.planPrice.findFirst({
             where: { planId: plan.id, interval, currency: 'usd', active: true },
           });
+          // Stripe price IDs come from the environment (STRIPE_PRICE_PRO_MONTH, …) once products exist in Stripe.
+          const stripePriceId = process.env[`STRIPE_PRICE_${plan.id.toUpperCase()}_${interval}`] || null;
           if (existing) {
-            await prisma.planPrice.update({ where: { id: existing.id }, data: { amountCents } });
+            await prisma.planPrice.update({ where: { id: existing.id }, data: { amountCents, ...(stripePriceId ? { stripePriceId } : {}) } });
           } else {
-            await prisma.planPrice.create({ data: { planId: plan.id, interval, amountCents, currency: 'usd' } });
+            await prisma.planPrice.create({ data: { planId: plan.id, interval, amountCents, currency: 'usd', stripePriceId } });
           }
         }
       }

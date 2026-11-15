@@ -7,8 +7,8 @@ import { requestIdMiddleware } from './common/request-id.middleware';
 import type { Env } from './config/env';
 
 /** Builds the configured Nest application. Shared by `main.ts` and the test suite. */
-export async function createApp(env: Env): Promise<INestApplication> {
-  const app = await NestFactory.create(AppModule.register(env), {
+export async function createApp(env: Env, overrides: Parameters<typeof AppModule.register>[1] = {}): Promise<INestApplication> {
+  const app = await NestFactory.create(AppModule.register(env, overrides), {
     logger: new ConsoleLogger({
       json: env.NODE_ENV === 'production',
       prefix: 'DelyForge',

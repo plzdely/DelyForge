@@ -17,6 +17,15 @@ import {
 import type { Entitlements } from './entitlements.js';
 import { type BotModules, type GuildInfo, type ModuleUpdateResult, updateModuleSchema } from './modules.js';
 import { type Builders, type WorkflowRun, saveBuildersSchema } from './builders.js';
+import {
+  type AccountStatus,
+  type InvoiceInfo,
+  checkoutSchema,
+  forgotPasswordSchema,
+  loginSchema,
+  registerSchema,
+  updateProfileSchema,
+} from './account.js';
 import { appSettingsPatchSchema, type AppSettings } from './settings.js';
 import type { PlanId } from './plans.js';
 
@@ -64,6 +73,17 @@ export const IPC_CHANNELS = {
   buildersSave: 'builders:save',
   workflowRuns: 'builders:workflow-runs',
   templatesApply: 'templates:apply',
+  accountStatus: 'account:status',
+  accountRegister: 'account:register',
+  accountLogin: 'account:login',
+  accountLogout: 'account:logout',
+  accountRefresh: 'account:refresh',
+  accountForgotPassword: 'account:forgot-password',
+  accountResendVerification: 'account:resend-verification',
+  accountUpdateProfile: 'account:update-profile',
+  billingCheckout: 'billing:checkout',
+  billingPortal: 'billing:portal',
+  billingInvoices: 'billing:invoices',
 } as const;
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];
 
@@ -76,6 +96,9 @@ export const EXTERNAL_URL_ALLOWLIST = [
   'support.discord.com',
   'docs.discord.com',
   'github.com',
+  'checkout.stripe.com',
+  'billing.stripe.com',
+  'invoice.stripe.com',
 ] as const;
 
 export function isAllowedExternalUrl(raw: string): boolean {
@@ -132,6 +155,17 @@ export const ipcInputSchemas = {
   [IPC_CHANNELS.templatesApply]: z
     .object({ id: z.uuid(), guildId: z.string().regex(/^\d{17,20}$/), templateId: z.string().max(40) })
     .strict(),
+  [IPC_CHANNELS.accountStatus]: noInput,
+  [IPC_CHANNELS.accountRegister]: registerSchema,
+  [IPC_CHANNELS.accountLogin]: loginSchema,
+  [IPC_CHANNELS.accountLogout]: noInput,
+  [IPC_CHANNELS.accountRefresh]: noInput,
+  [IPC_CHANNELS.accountForgotPassword]: forgotPasswordSchema,
+  [IPC_CHANNELS.accountResendVerification]: noInput,
+  [IPC_CHANNELS.accountUpdateProfile]: updateProfileSchema,
+  [IPC_CHANNELS.billingCheckout]: checkoutSchema,
+  [IPC_CHANNELS.billingPortal]: noInput,
+  [IPC_CHANNELS.billingInvoices]: noInput,
 } as const satisfies Record<IpcChannel, z.ZodType>;
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -212,6 +246,21 @@ export interface DelyForgeBridge {
   };
   account: {
     getEntitlements(): Promise<IpcResult<AccountEntitlements>>;
+    status(): Promise<IpcResult<AccountStatus>>;
+    register(input: z.input<typeof registerSchema>): Promise<IpcResult<AccountStatus>>;
+    login(input: z.input<typeof loginSchema>): Promise<IpcResult<AccountStatus>>;
+    logout(): Promise<IpcResult<AccountStatus>>;
+    /** Re-checks the plan with the server (e.g. right after paying). */
+    refresh(): Promise<IpcResult<AccountStatus>>;
+    forgotPassword(email: string): Promise<IpcResult<null>>;
+    resendVerification(): Promise<IpcResult<null>>;
+    updateProfile(displayName: string): Promise<IpcResult<AccountStatus>>;
+  };
+  billing: {
+    /** Opens Stripe Checkout in the browser. */
+    checkout(input: z.input<typeof checkoutSchema>): Promise<IpcResult<null>>;
+    portal(): Promise<IpcResult<null>>;
+    invoices(): Promise<IpcResult<InvoiceInfo[]>>;
   };
   bots: {
     list(): Promise<IpcResult<BotProject[]>>;

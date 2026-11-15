@@ -22,6 +22,18 @@ const envSchema = z.object({
     ),
   STRIPE_SECRET_KEY: z.string().optional().default(''),
   STRIPE_WEBHOOK_SECRET: z.string().optional().default(''),
+  /** Signs access tokens. At least 32 random characters — `pnpm --filter @delyforge/api keys:generate` makes one. */
+  JWT_SECRET: z.string().min(32, 'JWT_SECRET must be at least 32 characters'),
+  /** Base64 of a PKCS#8 PEM Ed25519 private key that signs plan certificates. Optional in development. */
+  ENTITLEMENT_PRIVATE_KEY: z.string().optional().default(''),
+  /** Public address of this API, used in email links. */
+  PUBLIC_API_URL: z.url().default('http://localhost:4000'),
+  /** Where Stripe Checkout returns to (a page that tells the user to go back to DelyForge). */
+  BILLING_RETURN_URL: z.url().optional(),
+}).superRefine((env, ctx) => {
+  if (env.NODE_ENV !== 'production') return;
+  if (!env.ENTITLEMENT_PRIVATE_KEY) ctx.addIssue({ code: 'custom', path: ['ENTITLEMENT_PRIVATE_KEY'], message: 'required in production' });
+  if (env.JWT_SECRET.includes('dev-only')) ctx.addIssue({ code: 'custom', path: ['JWT_SECRET'], message: 'replace the development value in production' });
 });
 
 export type Env = z.infer<typeof envSchema>;

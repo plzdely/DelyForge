@@ -1,6 +1,6 @@
 # Development Status
 
-_Last updated: 2026-11-15 — Phase 5 complete._
+_Last updated: 2026-11-15 — Phase 7 complete (done before Phase 6, which needs accounts)._
 
 Legend: ✅ done & verified · 🟡 done, not yet verified end-to-end · ⏳ pending · ⛔ blocked on an external action
 
@@ -118,6 +118,25 @@ Not yet confirmed by hand: Stop → bot goes offline in Discord, and the connect
 against a fake member, template sharing/export, select menus and modals in custom commands, required-role checks
 per command (use Discord's Integrations settings).
 
+## Phase 7 — Accounts, billing, entitlements
+
+| Item | Status | Verification |
+|---|---|---|
+| API: register, login, logout, refresh-token rotation with theft detection, sessions, profile, change password | ✅ | integration test against real PostgreSQL |
+| API: email verification and password reset (single-use, expiring, hashed tokens; generic answers so emails can't be probed) | ✅ | integration test |
+| Passwords hashed with scrypt; access tokens HS256 15 min; strict rate limits on auth routes | ✅ | unit + integration tests |
+| Signed plan certificates (Ed25519, 24 h) computed server-side from subscription + overrides | ✅ | unit + integration tests |
+| Stripe: Checkout, customer portal, invoices, signed + idempotent webhooks syncing subscriptions | ✅ / 🟡 | webhook verified with Stripe's own test signatures; real checkout needs Stripe keys |
+| Desktop: sign in / create account / forgot password, profile, plan status, 7-day offline grace, encrypted refresh token | ✅ | 5 tests with a fake API + smoke screenshot |
+| Desktop: upgrade buttons open Stripe Checkout, Manage billing, billing history, auto-refresh after paying | 🟡 | needs Stripe keys and products |
+
+### Needs you before launch
+1. **Stripe:** create an account, two Products (Pro, Business) with monthly + yearly Prices, then put the keys and the four
+   price IDs in `apps/api/.env` and run `pnpm db:seed`. Add a webhook endpoint pointing at `/v1/billing/webhook`.
+2. **Email provider:** emails are printed to the API console in development. A real provider (e.g. Postmark or SES) must be
+   added behind `apps/api/src/mail/mailer.ts` before launch.
+3. **Production secrets:** `pnpm --filter @delyforge/api keys:generate`.
+
 ## Known limitations / honest notes
 - No accounts yet — the desktop app runs on the local Free plan (accounts & Stripe are Phase 7).
 - Bots run only while DelyForge is open on this computer (24/7 cloud hosting is Phase 9).
@@ -134,3 +153,4 @@ customer builds ignore it). In Git Bash: `DELYFORGE_DEV_PLAN=pro pnpm dev:deskto
 `$env:DELYFORGE_DEV_PLAN='pro'; pnpm dev:desktop`.
 
 ## Next up — Phase 6 (AI)
+Now possible: AI runs on the API, metered per signed-in workspace.

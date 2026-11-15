@@ -6,6 +6,8 @@ versions follow [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Phase 7: DelyForge accounts (sign-up, sign-in, email verification, password reset, sessions), Stripe subscriptions
+  (checkout, portal, invoices, webhooks), server-signed plan certificates with 7-day offline grace in the desktop app.
 - Phase 5: Command Builder (slash + right-click commands), Embed Builder with live preview, Automation Studio
   (triggers, steps, conditions, waits, run history), 10 bot templates.
 - Phase 4 (batch 2): Leveling, Tickets, Verification, Reaction Roles, Suggestions and Giveaways modules; self-updating

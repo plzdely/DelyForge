@@ -15,7 +15,8 @@
     "prisma:seed": "prisma db seed",
     "postinstall": "prisma generate",
     "db:start": "prisma dev -d -n delyforge --port 51213 --db-port 51214 --shadow-db-port 51215",
-    "db:stop": "prisma dev stop delyforge"
+    "db:stop": "prisma dev stop delyforge",
+    "keys:generate": "node scripts/generate-keys.mjs"
   },
   "dependencies": {
     "@delyforge/shared": "workspace:*",
@@ -30,6 +31,7 @@
     "pg": "^8.23.1",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2",
+    "stripe": "^23.1.0",
     "zod": "^4.6.7"
   },
   "devDependencies": {
