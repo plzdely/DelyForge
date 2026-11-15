@@ -29,10 +29,32 @@ export class AuthController {
   /** Discord sends the browser back here after the person approves (or cancels) linking. */
   @Get('discord/callback')
   @Header('content-type', 'text/html; charset=utf-8')
-  @Header('content-security-policy', "default-src 'none'; style-src 'unsafe-inline'")
+  @Header('content-security-policy', "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'")
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
   async discordCallback(@Query('code') code?: string, @Query('state') state?: string, @Query('error') error?: string) {
     const r = await this.discord.callback({ code, state, error });
+    if (!r.confirm) return page(r.title, r.message);
+    const c = r.confirm;
+    return page(
+      r.title,
+      `<p>Link the Discord account <strong>${escapeHtml(c.discordName)}</strong> to the DelyForge account <strong>${escapeHtml(c.accountName)}</strong> (${escapeHtml(c.maskedEmail)})?</p>
+      <form method="post" action="/v1/auth/discord/confirm">
+        <input type="hidden" name="nonce" value="${escapeHtml(c.nonce)}">
+        <button type="submit">Yes, link them</button>
+      </form>
+      <p>Didn’t just click “Connect Discord” in DelyForge, or that isn’t your account? Close this page.</p>`,
+      true,
+    );
+  }
+
+  /** The browser confirmation from the callback page. Only this links the Discord account. */
+  @Post('discord/confirm')
+  @HttpCode(200)
+  @Header('content-type', 'text/html; charset=utf-8')
+  @Header('content-security-policy', "default-src 'none'; style-src 'unsafe-inline'")
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  async discordConfirm(@Body() body: unknown) {
+    const r = await this.discord.confirm(parse(z.object({ nonce: z.string().min(1).max(100) }), body).nonce);
     return page(r.title, r.message);
   }
 

@@ -26,11 +26,19 @@ describe.skipIf(!enabled)('Discord linking and bans (PostgreSQL)', () => {
   let member: string;
 
   const register = async (n: string) => `Bearer ${(await http().post('/v1/auth/register').send({ email: email(n), password, displayName: n }).expect(201)).body.accessToken}`;
-  /** Runs the browser part: start, then Discord "redirects back" with a code. */
-  const link = async (auth: string) => {
+  const nonceIn = (html: string) => /name="nonce" value="([^"]+)"/.exec(html)?.[1];
+  const confirm = (nonce: string) => http().post('/v1/auth/discord/confirm').type('form').send({ nonce });
+  /** The browser part: Discord "redirects back" with a code; returns the callback page (confirmation or error). */
+  const callback = async (auth: string) => {
     const { url } = (await http().post('/v1/me/discord').set('authorization', auth).expect(200)).body as { url: string };
     const state = new URL(url).searchParams.get('state')!;
     return http().get('/v1/auth/discord/callback').query({ code: 'fake-code', state });
+  };
+  /** Callback, then "Yes, link them" when the page offers it. */
+  const link = async (auth: string) => {
+    const page = await callback(auth);
+    const nonce = nonceIn(page.text);
+    return nonce ? confirm(nonce) : page;
   };
 
   beforeAll(async () => {
@@ -53,8 +61,14 @@ describe.skipIf(!enabled)('Discord linking and bans (PostgreSQL)', () => {
     expect((await http().get('/v1/entitlements').set('authorization', member)).body.claims.discordOk).toBe(false);
     const { url } = (await http().post('/v1/me/discord').set('authorization', member).expect(200)).body;
     expect(url).toMatch(/^https:\/\/discord\.com\/oauth2\/authorize\?.*scope=identify/);
-    const page = await link(member);
-    expect(page.text).toContain('Discord connected');
+    // The callback alone links nothing: it names the DelyForge account and waits for "Yes".
+    const ask = await callback(member);
+    expect(ask.text).toContain(`m***@example.com`);
+    expect(ask.text).toContain('Yes, link them');
+    expect((await http().get('/v1/me').set('authorization', member)).body.discord).toBeNull();
+    const nonce = nonceIn(ask.text)!;
+    expect((await confirm(nonce).expect(200)).text).toContain('Discord connected');
+    expect((await confirm(nonce)).text).toMatch(/expired|already used/);
     expect((await http().get('/v1/me').set('authorization', member)).body.discord).toMatchObject({ id: discordId, username: 'Bad Guy' });
     expect((await http().get('/v1/entitlements').set('authorization', member)).body.claims.discordOk).toBe(true);
   });

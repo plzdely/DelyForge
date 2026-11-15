@@ -122,7 +122,9 @@ async function main(): Promise<void> {
   const account = new AccountService(db, cipher, {
     apiUrl: fromEnv('DELYFORGE_API_URL') ?? (__DELYFORGE_API_URL__ || 'http://localhost:4000'),
     publicKeyPem: publicKeyB64 ? Buffer.from(publicKeyB64, 'base64').toString('utf8') : null,
-    allowKeyDiscovery: !app.isPackaged,
+    // Copies without a built-in key (development and `dist:unsigned` test builds — `dist` refuses to build without one)
+    // fetch it from the API they talk to. Customer builds never do, so a fake server can't sign fake plans for them.
+    allowKeyDiscovery: !app.isPackaged || !__DELYFORGE_PUBLIC_KEY__,
     // Customer builds (with a real server baked in) can't be used without an account that has Discord linked.
     requireAccount: app.isPackaged ? Boolean(__DELYFORGE_API_URL__) : process.env['DELYFORGE_REQUIRE_ACCOUNT'] === '1',
     onChange: () => {

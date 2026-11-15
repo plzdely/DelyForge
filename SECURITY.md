@@ -35,7 +35,7 @@ Email the maintainers privately (address to be published before release). Do not
 | S14 | Privilege escalation to admin | Staff role re-read from the database on every admin call (SUPPORT read-only, ADMIN changes); every change audit-logged; staff can't change their own status. Team membership re-checked on every request; only owners can buy plans. | Shipped (Phase 9) |
 | S15 | Dependency supply chain | pnpm blocks install scripts except an explicit allow-list; lockfile committed; `pnpm audit` in CI. | Allow-list shipped (Phase 1) |
 | S16 | Backup leakage | Backups (and exports) never include tokens; files live in the app's own data folder on the customer's PC. Token backup is not offered. | Shipped (Phase 9) |
-| S18 | Banned users returning | Customer builds require an account with Discord linked (signed `discordOk` claim); bans block the email and Discord ID; Discord linking uses OAuth2 `identify` with a single-use, 10-minute state token; no Discord token is stored. | Shipped |
+| S18 | Banned users returning | Customer builds require an account with Discord linked (signed `discordOk` claim); bans block the email and Discord ID; Discord linking uses OAuth2 `identify` with a single-use, 10-minute state token, then a browser confirmation page naming the DelyForge account (masked email) before anything is linked, so a link sent by someone else cannot attach your Discord to their account; the account must still be active; no Discord token is stored. | Shipped |
 | S17 | Discord ToS / API abuse | Only officially supported APIs; respect rate limits (discord.js limiter); no self-bots; no automation of the Developer Portal. | Policy |
 
 ## Development rules

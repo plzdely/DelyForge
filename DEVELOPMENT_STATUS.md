@@ -247,7 +247,8 @@ See "Making yourself staff" under Phase 8: set your `role` to `ADMIN` in Prisma 
 3. Same page: copy **Client ID**; click **Reset Secret** → copy the secret.
 4. Put them in `apps/api/.env` as `DISCORD_CLIENT_ID=...` and `DISCORD_CLIENT_SECRET=...`, then restart the API.
    Never share the secret or commit it.
-5. To try the sign-in gate in development: start the app with `DELYFORGE_REQUIRE_ACCOUNT=1 pnpm dev:desktop`
+5. When you click Authorize on Discord, the browser shows which DelyForge account will be linked; click **Yes, link them**.
+6. To try the sign-in gate in development: start the app with `DELYFORGE_REQUIRE_ACCOUNT=1 pnpm dev:desktop`
    (PowerShell: `$env:DELYFORGE_REQUIRE_ACCOUNT='1'; pnpm dev:desktop`).
 
 ### Not built
