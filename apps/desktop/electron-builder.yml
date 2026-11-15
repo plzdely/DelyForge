@@ -2,6 +2,9 @@
 appId: com.plzdely.delyforge
 productName: DelyForge
 copyright: Copyright © plzdely
+# Install folder is named after the package name; use a plain one (data lives under %APPDATA%\DelyForge regardless).
+extraMetadata:
+  name: delyforge
 directories:
   output: release
   buildResources: build

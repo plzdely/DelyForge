@@ -70,6 +70,8 @@ const isDev = !app.isPackaged && Boolean(DEV_SERVER_URL);
 // ─── Pre-ready setup ────────────────────────────────────────────────────────────────────────────────────────────────
 
 app.setName(BRAND.productName);
+// Installed copies identify as the installer's app ID, so Windows ties notifications and shortcuts to DelyForge.
+if (app.isPackaged && process.platform === 'win32') app.setAppUserModelId('com.plzdely.delyforge');
 // Allows tests to use an isolated profile instead of the real one.
 if (process.env['DELYFORGE_USER_DATA']) app.setPath('userData', process.env['DELYFORGE_USER_DATA']);
 
