@@ -1,5 +1,5 @@
 import { type BotModules, type Builders, type LogLevel, type ModuleConfigs, resolveGuildModules } from '@delyforge/shared';
-import { type ButtonInteraction, type ChatInputCommandInteraction, type Client, type CommandInteraction, Events, type Guild, MessageFlags, type StringSelectMenuInteraction } from 'discord.js';
+import { type ButtonInteraction, type ChatInputCommandInteraction, type Client, type CommandInteraction, Events, type Guild, MessageFlags, type ModalSubmitInteraction, type StringSelectMenuInteraction } from 'discord.js';
 import { BotStore, planCommandSync } from '../store.js';
 import { commandKey, customCommandJSON, matchingWorkflows, runCustomCommand, runWorkflow } from './builders.js';
 import { commandHash, desiredCommands } from './commands.js';
@@ -7,7 +7,7 @@ import type { ModuleContext } from './context.js';
 import * as logging from './logging.js';
 import { MODERATION_COMMANDS, automodCheck, handleModerationCommand } from './moderation.js';
 import { UTILITY_COMMANDS, handleUtilityCommand } from './utility.js';
-import { endDueGiveaways, handleGiveaway, handleSuggest, onGiveawayEnter, onSuggestionButton } from './community.js';
+import { endDueGiveaways, handleGiveaway, handleSuggest, onGiveawayEnter, onSuggestionButton, onSuggestionDecision } from './community.js';
 import { LEVELING_COMMANDS, handleLevelingCommand, onMessageXp } from './leveling.js';
 import { CID, syncPanels } from './panels.js';
 import { onRoleButton, onRoleMenu, onVerify } from './roles.js';
@@ -234,6 +234,7 @@ export class ModuleHost {
       if (i.isChatInputCommand()) return this.runCommand(i);
       if (i.isUserContextMenuCommand() || i.isMessageContextMenuCommand()) return this.runCustom(i);
       if (i.isButton() || i.isStringSelectMenu()) return this.runComponent(i);
+      if (i.isModalSubmit()) return this.runModal(i);
     });
   }
 
@@ -286,6 +287,18 @@ export class ModuleHost {
     }
   }
 
+  /** Pop-up forms the bot showed. Custom IDs look like `df:<module>:<action>:<args…>`. */
+  private async runModal(i: ModalSubmitInteraction): Promise<void> {
+    const [prefix, kind, action, a, b] = i.customId.split(':');
+    if (prefix !== 'df') return;
+    try {
+      if (kind === 'sug' && action === 'decide' && a && b) await onSuggestionDecision(this.ctx, i, a, Number(b));
+    } catch (e) {
+      this.log('error', `Form “${i.customId}” failed: ${(e as Error).message}`);
+      await this.replyError(i);
+    }
+  }
+
   private async runCustom(i: CommandInteraction): Promise<void> {
     const started = Date.now();
     try {
@@ -297,7 +310,7 @@ export class ModuleHost {
     }
   }
 
-  private async replyError(i: CommandInteraction | ButtonInteraction | StringSelectMenuInteraction): Promise<void> {
+  private async replyError(i: CommandInteraction | ButtonInteraction | StringSelectMenuInteraction | ModalSubmitInteraction): Promise<void> {
     const content = 'Something went wrong. The error was written to the bot’s console in DelyForge.';
     if (i.deferred || i.replied) await i.editReply({ content }).catch(() => null);
     else await i.reply({ content, flags: MessageFlags.Ephemeral }).catch(() => null);

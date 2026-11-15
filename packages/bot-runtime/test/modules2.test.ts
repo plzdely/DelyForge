@@ -164,3 +164,33 @@ describe('panels and commands', () => {
     expect(names).toEqual(['rank', 'leaderboard', 'ticket', 'suggest', 'giveaway']);
   });
 });
+
+describe('giveaway role requirement and suggestion reasons', () => {
+  it('stores the required role and decides a suggestion only once, with its reason', () => {
+    const s = store();
+    const id = s.addGiveaway({ guildId: 'g', channelId: 'c', prize: 'Nitro', winners: 1, hostId: 'h', endsAt: 1000, requiredRoleId: R1 });
+    expect(s.giveaway(id)?.requiredRoleId).toBe(R1);
+    const plain = s.addGiveaway({ guildId: 'g', channelId: 'c', prize: 'Nitro', winners: 1, hostId: 'h', endsAt: 1000 });
+    expect(s.giveaway(plain)?.requiredRoleId).toBeNull();
+
+    const sug = s.addSuggestion('g', 'c', 'u', 'More emojis');
+    expect(s.setSuggestionStatus(sug, 'approved', 'Great idea')).toBe(true);
+    expect(s.setSuggestionStatus(sug, 'rejected', 'Changed my mind')).toBe(false);
+    expect(s.suggestion(sug)).toMatchObject({ status: 'approved', reason: 'Great idea' });
+    s.close();
+  });
+
+  it('adds the new columns to a database made by an older version, keeping its data', async () => {
+    const { DatabaseSync } = await import('node:sqlite');
+    const dir = mkdtempSync(join(tmpdir(), 'df-store-old-'));
+    dirs.push(dir);
+    const path = join(dir, 'bot-1.db');
+    const old = new DatabaseSync(path);
+    old.exec(`CREATE TABLE giveaways (id INTEGER PRIMARY KEY AUTOINCREMENT, guild_id TEXT NOT NULL, channel_id TEXT NOT NULL, message_id TEXT, prize TEXT NOT NULL, winners INTEGER NOT NULL, host_id TEXT NOT NULL, ends_at INTEGER NOT NULL, ended INTEGER NOT NULL DEFAULT 0, winner_ids TEXT NOT NULL DEFAULT '[]');
+      INSERT INTO giveaways (guild_id, channel_id, prize, winners, host_id, ends_at) VALUES ('g', 'c', 'Old prize', 1, 'h', 5);`);
+    old.close();
+    const s = BotStore.open(dir, '1');
+    expect(s.giveaway(1)).toMatchObject({ prize: 'Old prize', requiredRoleId: null });
+    s.close();
+  });
+});

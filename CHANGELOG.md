@@ -6,6 +6,7 @@ versions follow [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Giveaways can require a role to enter; staff can give a reason when approving or rejecting a suggestion.
 - Bots keep running when the window is closed (DelyForge moves to the tray), and DelyForge can start with Windows.
 - UI refresh: readable contrast everywhere, more depth, a single Modules page, a new dashboard, bot cards and bot
   page headers with each bot’s own colour banner, and a three-step guide on unconnected bots.

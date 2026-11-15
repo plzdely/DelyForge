@@ -106,7 +106,9 @@ Not yet confirmed by hand: Stop → bot goes offline in Discord, and the connect
 | Giveaways: /giveaway start/end/reroll, enter/leave button, fair crypto-random winners, survives restarts | ✅ / 🟡 | duration, winner, end-once tests |
 | Settings forms for all six modules | ✅ | typecheck + smoke |
 
-**Not built (honest):** welcome images, moderation appeals, ticket ratings, suggestion reasons, giveaway role requirements, warnings/XP management screens in the app.
+**Added later:** giveaway role requirement (`/giveaway start required_role:`), reasons when staff approve/reject suggestions (pop-up form).
+
+**Not built (honest):** welcome images, moderation appeals, ticket ratings, warnings/XP management screens in the app.
 
 ## Phase 5 — Builders
 

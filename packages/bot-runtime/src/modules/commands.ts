@@ -161,7 +161,8 @@ const GIVEAWAY: CommandJSON = new SlashCommandBuilder()
       .addStringOption((o) => o.setName('prize').setDescription('What can be won').setRequired(true).setMaxLength(200))
       .addStringOption((o) => o.setName('duration').setDescription('How long, e.g. 30m, 2h, 1d, 1h30m').setRequired(true).setMaxLength(20))
       .addIntegerOption((o) => o.setName('winners').setDescription('Number of winners (default 1)').setMinValue(1).setMaxValue(20))
-      .addChannelOption((o) => o.setName('channel').setDescription('Where to post it (default: here)').addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)),
+      .addChannelOption((o) => o.setName('channel').setDescription('Where to post it (default: here)').addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement))
+      .addRoleOption((o) => o.setName('required_role').setDescription('Only members with this role can enter')),
   )
   .addSubcommand((s) =>
     s

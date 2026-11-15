@@ -7,13 +7,15 @@ import {
   type Client,
   ComponentType,
   MessageFlags,
+  type ModalSubmitInteraction,
   PermissionFlagsBits,
+  TextInputStyle,
 } from 'discord.js';
 import type { Giveaway } from '../store.js';
 import { COLORS, type ModuleContext, hexToInt, sendableChannel, truncate } from './context.js';
 import { isStaff } from './roles.js';
 
-const ephemeral = (i: ButtonInteraction | ChatInputCommandInteraction, content: string) =>
+const ephemeral = (i: ButtonInteraction | ChatInputCommandInteraction | ModalSubmitInteraction, content: string) =>
   i.replied || i.deferred
     ? i.editReply({ content, allowedMentions: { parse: [] } })
     : i.reply({ content, flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] } });
@@ -26,7 +28,7 @@ const STATUS = {
   rejected: { label: '❌ Rejected', color: COLORS.danger },
 } as const;
 
-function suggestionMessage(s: { id: number; userId: string; content: string; status: string }, votes: { up: number; down: number }, decidedBy?: string) {
+function suggestionMessage(s: { id: number; userId: string; content: string; status: string; reason?: string | null }, votes: { up: number; down: number }, decidedBy?: string) {
   const status = STATUS[s.status as keyof typeof STATUS] ?? STATUS.open;
   const open = s.status === 'open';
   const btn = (label: string, id: string, style: ButtonStyle, disabled = !open) => ({ type: ComponentType.Button as const, style, label, custom_id: id, disabled });
@@ -40,6 +42,7 @@ function suggestionMessage(s: { id: number; userId: string; content: string; sta
           { name: 'Votes', value: `👍 ${votes.up}   👎 ${votes.down}`, inline: true },
           { name: 'Status', value: decidedBy ? `${status.label} by <@${decidedBy}>` : status.label, inline: true },
           { name: 'Suggested by', value: `<@${s.userId}>`, inline: true },
+          ...(s.reason ? [{ name: 'Reason', value: truncate(s.reason, 1000) }] : []),
         ],
       } satisfies APIEmbed,
     ],
@@ -85,9 +88,31 @@ export async function onSuggestionButton(ctx: ModuleContext, i: ButtonInteractio
   if (!isStaff(i.member, ctx.config(i.guildId).suggestions.staffRoleIds)) {
     return void (await ephemeral(i, 'Only staff can approve or reject suggestions.'));
   }
+  if (action !== 'approve' && action !== 'reject') return;
+  await i.showModal({
+    title: `${action === 'approve' ? 'Approve' : 'Reject'} suggestion #${id}`,
+    custom_id: `df:sug:decide:${action}:${id}`,
+    components: [
+      {
+        type: ComponentType.ActionRow,
+        components: [{ type: ComponentType.TextInput, custom_id: 'reason', label: 'Reason (optional, shown to everyone)', style: TextInputStyle.Paragraph, required: false, max_length: 500 }],
+      },
+    ],
+  });
+}
+
+/** The staff member submitted the Approve/Reject pop-up. Everything is checked again: time has passed. */
+export async function onSuggestionDecision(ctx: ModuleContext, i: ModalSubmitInteraction, action: string, id: number): Promise<void> {
+  if (!i.inCachedGuild() || (action !== 'approve' && action !== 'reject')) return;
+  const s = ctx.store.suggestion(id);
+  if (!s || s.guildId !== i.guildId) return void (await ephemeral(i, 'This suggestion no longer exists.'));
+  if (!isStaff(i.member, ctx.config(i.guildId).suggestions.staffRoleIds)) return void (await ephemeral(i, 'Only staff can approve or reject suggestions.'));
   const status = action === 'approve' ? 'approved' : 'rejected';
-  ctx.store.setSuggestionStatus(id, status);
-  await i.update(suggestionMessage({ ...s, status }, ctx.store.votes(id), i.user.id));
+  const reason = i.fields.getTextInputValue('reason').trim() || null;
+  if (!ctx.store.setSuggestionStatus(id, status, reason)) return void (await ephemeral(i, 'This suggestion has already been decided.'));
+  const message = suggestionMessage({ ...s, status, reason }, ctx.store.votes(id), i.user.id);
+  if (i.isFromMessage()) await i.update(message);
+  else await ephemeral(i, `Suggestion #${id} ${status}.`);
 }
 
 // ─── Giveaways ────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -120,7 +145,7 @@ function giveawayEmbed(g: Giveaway, color: string, entries?: number): APIEmbed {
     title: `🎉 ${g.prize}`,
     description: g.ended
       ? `Ended <t:${ends}:R>\n**Winner${g.winnerIds.length === 1 ? '' : 's'}:** ${g.winnerIds.length ? g.winnerIds.map((w) => `<@${w}>`).join(', ') : 'nobody entered 😢'}`
-      : `Click **Enter** to join!\nEnds <t:${ends}:R> (<t:${ends}:f>)\n**Winners:** ${g.winners}`,
+      : `Click **Enter** to join!\nEnds <t:${ends}:R> (<t:${ends}:f>)\n**Winners:** ${g.winners}${g.requiredRoleId ? `\n**Required role:** <@&${g.requiredRoleId}>` : ''}`,
     footer: { text: `Giveaway #${g.id}${entries !== undefined ? ` · ${entries} entries` : ''}` },
     color: g.ended ? COLORS.brand : hexToInt(color),
   };
@@ -175,7 +200,10 @@ export async function handleGiveaway(ctx: ModuleContext, i: ChatInputCommandInte
     }
     const prize = truncate(i.options.getString('prize', true).trim(), 200);
     const winners = i.options.getInteger('winners') ?? 1;
-    const id = ctx.store.addGiveaway({ guildId: i.guildId, channelId: channel.id, prize, winners, hostId: i.user.id, endsAt: Date.now() + duration });
+    const role = i.options.getRole('required_role');
+    // @everyone (same ID as the server) means no requirement.
+    const requiredRoleId = role && role.id !== i.guildId ? role.id : null;
+    const id = ctx.store.addGiveaway({ guildId: i.guildId, channelId: channel.id, prize, winners, hostId: i.user.id, endsAt: Date.now() + duration, requiredRoleId });
     const g = ctx.store.giveaway(id)!;
     const msg = await channel.send({ embeds: [giveawayEmbed(g, c.color)], components: [enterRow(id, false)], allowedMentions: { parse: [] } });
     ctx.store.setGiveawayMessage(id, msg.id);
@@ -209,6 +237,11 @@ export async function onGiveawayEnter(ctx: ModuleContext, i: ButtonInteraction, 
   const g = ctx.store.giveaway(id);
   if (!g || g.guildId !== i.guildId || g.ended || g.endsAt <= Date.now()) return void (await ephemeral(i, 'This giveaway has ended.'));
   if (i.user.bot) return;
+  // Members who lost the role can still leave; only joining needs it.
+  // shortcut: the role is checked when entering, not again when winners are drawn.
+  if (g.requiredRoleId && !i.member.roles.cache.has(g.requiredRoleId) && !ctx.store.entries(id).includes(i.user.id)) {
+    return void (await ephemeral(i, `You need the <@&${g.requiredRoleId}> role to enter this giveaway.`));
+  }
   const { entered, count } = ctx.store.toggleEntry(id, i.user.id);
   await ephemeral(i, entered ? `You’re in! 🎉 Good luck. (${count} entries) Click again to leave.` : `You left the giveaway. (${count} entries)`);
 }

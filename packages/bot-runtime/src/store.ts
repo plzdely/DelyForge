@@ -22,6 +22,8 @@ export interface Giveaway {
   endsAt: number;
   ended: boolean;
   winnerIds: string[];
+  /** Only members with this role may enter (null = anyone). */
+  requiredRoleId: string | null;
 }
 
 interface GiveawayRow {
@@ -35,6 +37,7 @@ interface GiveawayRow {
   ends_at: number;
   ended: number;
   winner_ids: string;
+  required_role_id: string | null;
 }
 
 const toGiveaway = (r: GiveawayRow): Giveaway => ({
@@ -48,6 +51,7 @@ const toGiveaway = (r: GiveawayRow): Giveaway => ({
   endsAt: r.ends_at,
   ended: r.ended === 1,
   winnerIds: JSON.parse(r.winner_ids) as string[],
+  requiredRoleId: r.required_role_id,
 });
 
 export interface ManagedCommand {
@@ -143,6 +147,14 @@ export class BotStore {
         PRIMARY KEY (giveaway_id, user_id)
       );
     `);
+    // Columns added after the first release: create them in databases made by older versions.
+    this.addColumnIfMissing('giveaways', 'required_role_id', 'TEXT');
+    this.addColumnIfMissing('suggestions', 'reason', 'TEXT');
+  }
+
+  private addColumnIfMissing(table: string, column: string, type: string): void {
+    const cols = this.db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+    if (!cols.some((c) => c.name === column)) this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
   }
 
   static open(dataDir: string, botUserId: string): BotStore {
@@ -287,15 +299,16 @@ export class BotStore {
     this.db.prepare('UPDATE suggestions SET message_id = ? WHERE id = ?').run(messageId, id);
   }
 
-  suggestion(id: number): { id: number; guildId: string; userId: string; content: string; status: string } | null {
+  suggestion(id: number): { id: number; guildId: string; userId: string; content: string; status: string; reason: string | null } | null {
     const r = this.db.prepare('SELECT * FROM suggestions WHERE id = ?').get(id) as
-      | { id: number; guild_id: string; user_id: string; content: string; status: string }
+      | { id: number; guild_id: string; user_id: string; content: string; status: string; reason: string | null }
       | undefined;
-    return r ? { id: r.id, guildId: r.guild_id, userId: r.user_id, content: r.content, status: r.status } : null;
+    return r ? { id: r.id, guildId: r.guild_id, userId: r.user_id, content: r.content, status: r.status, reason: r.reason } : null;
   }
 
-  setSuggestionStatus(id: number, status: 'approved' | 'rejected'): void {
-    this.db.prepare('UPDATE suggestions SET status = ? WHERE id = ?').run(status, id);
+  /** Decides an open suggestion once; false if it was already decided (two staff clicking at once). */
+  setSuggestionStatus(id: number, status: 'approved' | 'rejected', reason: string | null = null): boolean {
+    return Number(this.db.prepare("UPDATE suggestions SET status = ?, reason = ? WHERE id = ? AND status = 'open'").run(status, reason, id).changes) === 1;
   }
 
   /** Records a vote; voting the same way again takes it back. Returns the new totals. */
@@ -320,10 +333,10 @@ export class BotStore {
 
   // ─── Giveaways ───────────────────────────────────────────────────────────────────────────────────────────────────
 
-  addGiveaway(g: { guildId: string; channelId: string; prize: string; winners: number; hostId: string; endsAt: number }): number {
+  addGiveaway(g: { guildId: string; channelId: string; prize: string; winners: number; hostId: string; endsAt: number; requiredRoleId?: string | null }): number {
     const r = this.db
-      .prepare('INSERT INTO giveaways (guild_id, channel_id, prize, winners, host_id, ends_at) VALUES (?, ?, ?, ?, ?, ?)')
-      .run(g.guildId, g.channelId, g.prize, g.winners, g.hostId, g.endsAt);
+      .prepare('INSERT INTO giveaways (guild_id, channel_id, prize, winners, host_id, ends_at, required_role_id) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .run(g.guildId, g.channelId, g.prize, g.winners, g.hostId, g.endsAt, g.requiredRoleId ?? null);
     return Number(r.lastInsertRowid);
   }
 
