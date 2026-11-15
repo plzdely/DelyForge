@@ -46,7 +46,7 @@ subscriptions (monthly/annual, upgrade/downgrade/cancel, grace periods), signed 
 Marketplace (listings, search, reviews, purchases, developer onboarding, review queue, signing), plugin system (manifest,
 permissions, sandbox, updates, dependency/compatibility checks), integrations, developer docs.
 
-## Phase 9 — Advanced platform
+## Phase 9 — Advanced platform ✅ (teams, analytics, backups, admin; cloud features deferred)
 Team workspaces & per-bot permissions, audit logs, advanced analytics & exports, remote monitoring (WebSocket),
 cloud hosting foundation (`CloudBotHost`, isolated runtimes), web dashboard, internal admin dashboard.
 

@@ -14,6 +14,7 @@ import { AiBuilderPage } from '@/pages/ai-builder';
 import { MarketplacePage } from '@/pages/marketplace';
 import { AnalyticsPage } from '@/pages/analytics';
 import { TeamPage } from '@/pages/team';
+import { AdminPage } from '@/pages/admin';
 import { BuilderDirectoryPage, TemplatesPage } from '@/pages/templates';
 import { ConnectWizard } from '@/pages/bots/connect';
 import { BotLayout } from '@/pages/bots/layout';
@@ -73,6 +74,7 @@ const router = createHashRouter([
       { path: 'marketplace', element: <MarketplacePage /> },
       { path: 'analytics', element: <AnalyticsPage /> },
       { path: 'team', element: <TeamPage /> },
+      { path: 'admin', element: <AdminPage /> },
       { path: '*', element: <RoadmapPage /> },
     ],
   },

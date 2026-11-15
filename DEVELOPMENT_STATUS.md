@@ -1,6 +1,6 @@
 # Development Status
 
-_Last updated: 2026-11-15 — Phase 8 (marketplace) complete._
+_Last updated: 2026-11-15 — Phase 9 complete (teams, analytics, backups, admin)._
 
 Legend: ✅ done & verified · 🟡 done, not yet verified end-to-end · ⏳ pending · ⛔ blocked on an external action
 
@@ -180,6 +180,27 @@ per command (use Discord's Integrations settings).
 In `apps/api`, run `pnpm exec prisma studio`, open the **User** table, set your account's `role` to `ADMIN`, save, then
 sign out and in again in the app. A **Review queue** tab appears on the Marketplace page.
 
+## Phase 9 — Teams, analytics, backups, admin
+
+| Item | Status | Verification |
+|---|---|---|
+| Analytics: online time, commands, failures, crashes per day; top commands; 7 days (basic) or 90 days + CSV export (Pro) | ✅ | 2 desktop tests; screen in smoke test |
+| Automatic daily backups of every bot's settings (no tokens), 14 kept, back up now, restore in place (Pro) | ✅ | 3 desktop tests |
+| Team workspaces (Business): invite by email, seats incl. pending invites, accept in-app with a confirmed email, switch workspace, remove/leave; removal applies immediately; only the owner can buy | ✅ | 4 integration tests (real PostgreSQL) |
+| Admin dashboard (staff): overview, customer search, suspend/reactivate, grant "Pro/Business for N days", suspend listings, hide reviews, audit log | ✅ | 3 integration tests; screen not clicked through |
+| Unbuilt plan promises labelled "(coming soon)" on the pricing page | ✅ | — |
+
+### Not built (named, not hidden)
+- **Cloud features:** remote monitoring/management, cloud hosting of bots, the web dashboard, sharing bots between team
+  members and per-bot permissions. They all need bots synced to the cloud — a hosting and cost decision for you.
+  The database already has `CloudBotProject` and `BotAccessGrant` tables for this.
+- Changing a team member's role (remove and re-invite instead), a customer-facing audit log (Enterprise), advanced
+  integrations, advanced automation/monitoring tiers.
+
+### Making yourself staff
+See "Making yourself staff" under Phase 8: set your `role` to `ADMIN` in Prisma Studio. The Account page then shows
+**Admin dashboard**.
+
 ## Known limitations / honest notes
 - No accounts yet — the desktop app runs on the local Free plan (accounts & Stripe are Phase 7).
 - Bots run only while DelyForge is open on this computer (24/7 cloud hosting is Phase 9).
@@ -195,4 +216,4 @@ The Free plan allows 1 bot. To test with more, start the app with a simulated pl
 customer builds ignore it). In Git Bash: `DELYFORGE_DEV_PLAN=pro pnpm dev:desktop`. In PowerShell:
 `$env:DELYFORGE_DEV_PLAN='pro'; pnpm dev:desktop`.
 
-## Next up — Phase 9 (teams, analytics, admin)
+## Next up — Phase 10 (installer, updates, hardening)

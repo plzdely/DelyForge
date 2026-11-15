@@ -180,6 +180,16 @@ export function AccountPage() {
               </Button>
             </CardBody>
           </Card>
+          <div className="flex gap-2">
+            <Button size="sm" asChild>
+              <Link to="/team">Team</Link>
+            </Button>
+            {s.profile?.role === 'ADMIN' || s.profile?.role === 'SUPPORT' ? (
+              <Button size="sm" asChild>
+                <Link to="/admin">Admin dashboard</Link>
+              </Button>
+            ) : null}
+          </div>
           <Separator />
           <Button variant="ghost" onClick={() => logout.mutate(undefined)} disabled={logout.isPending}>
             <LogOut /> Sign out

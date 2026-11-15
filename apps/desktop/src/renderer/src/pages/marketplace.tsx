@@ -124,7 +124,15 @@ function ReviewForm({ slug }: { slug: string }) {
 }
 
 function DetailDialog({ slug, onClose }: { slug: string; onClose: () => void }) {
-  const signedIn = useAccount().data?.signedIn ?? false;
+  const qc = useQueryClient();
+  const account = useAccount().data;
+  const signedIn = account?.signedIn ?? false;
+  const staff = account?.profile?.role === 'ADMIN' || account?.profile?.role === 'SUPPORT';
+  const hide = useMutation({
+    mutationFn: (id: string) => call((b) => b.admin.setReviewHidden({ id, hidden: true })),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.detail(slug) }),
+    onError: errorToast('Couldn’t hide the review'),
+  });
   const { data: l, error } = useQuery({ queryKey: keys.detail(slug), queryFn: () => call((b) => b.marketplace.detail(slug)) });
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()} title={l?.title ?? 'Loading…'} description={l ? `${LISTING_TYPE_NAMES[l.type]} by ${l.developer} · v${l.version} · reviewed and signed by DelyForge` : undefined} className="max-w-2xl">
@@ -148,8 +156,9 @@ function DetailDialog({ slug, onClose }: { slug: string; onClose: () => void }) 
             {signedIn ? <ReviewForm slug={slug} /> : null}
             <ul className="mt-3 space-y-2">
               {l.reviews.map((r) => (
-                <li key={`${r.author}-${r.createdAt}`} className="text-xs">
+                <li key={r.id} className="text-xs">
                   <span className="text-warning">{'★'.repeat(r.rating)}</span> <span className="font-medium text-fg">{r.author}</span>
+                  {staff ? <Button size="sm" variant="ghost" onClick={() => hide.mutate(r.id)}>Hide</Button> : null}
                   {r.body ? <p className="text-fg-muted">{r.body}</p> : null}
                 </li>
               ))}

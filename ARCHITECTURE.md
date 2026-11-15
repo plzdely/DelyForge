@@ -202,14 +202,15 @@ Main process
 
 * **AI keys never ship in the desktop app.** The desktop calls `POST /ai/*` on the DelyForge API; the API holds provider
   keys (environment / secret manager) and proxies requests.
-* `AiProvider` interface (`generate`, `stream`, `estimateCost`) with adapters (Anthropic, OpenAI, others). Models,
-  prices and which model serves which feature are configured in the DB, so they can change without an app release.
+* `AiTextProvider` interface (`complete` → schema-shaped answer + token counts) in `apps/api/src/ai/provider.ts`. Shipped
+  adapter: Anthropic (official SDK, structured output, cached instructions, refusal fallback). Models, prices and which
+  model serves which feature are configured in the DB (`AiProvider`/`AiModel`), so they change without an app release.
 * **Structured output:** the AI returns JSON that must pass the same Zod schemas as hand-made configs. Invalid output is
   rejected or repaired — it is never applied blindly.
 * **Change proposals, never silent edits:** AI results become an `AiChangeProposal` (a diff of modules / commands /
   workflows) that the user previews and explicitly approves before anything is written.
-* **Metering:** every request records tokens and cost in `AiUsage`; monthly allowances per plan are checked before the
-  call; remaining usage is shown in the UI; costs roll up for business reporting.
+* **Metering:** credits are reserved under a per-workspace database lock before the call and settled to the real
+  token count after; every request records tokens and cost in `AiUsage`; remaining usage is shown in the UI; costs roll up for business reporting.
 * Prompt-injection defences: user server data passed to AI is treated as data, and AI output can only produce
   configuration within the validated schema — it cannot run code or access tokens.
 
@@ -226,11 +227,22 @@ Third-party code is **untrusted**. Two tiers:
    permissions it needs (e.g. `messages:send`, `roles:assign`, `http:fetch:api.example.com`); the user approves them at
    install; the host API enforces them at runtime with CPU/memory/time limits.
 
-Marketplace flow: developer onboarding → upload package → automated checks (schema validation, static analysis,
-size limits, dependency scan) → human review → **package signed by DelyForge** → published. The desktop app refuses
-unsigned or tampered packages. Purchases go through Stripe (Connect for developer payouts, platform commission).
+Shipped (Phase 8): tier 1 only. Flow: developer profile → submit pack (validated by `validatePackage`, no Discord IDs)
+→ staff review queue → approval signs the exact pack text with the DelyForge Ed25519 key (prefixed
+`delyforge-package:v1`) → published. Install returns the signed text; the desktop verifies the signature, re-validates
+and installs through `BuildersService.installContent` (the same path as built-in templates). Paid listings (Stripe
+Connect) and code plugins (tier 2) are not built.
 
 ---
+
+## 10b. Teams, analytics, backups, admin (Phase 9)
+
+* **Teams:** a session remembers its active workspace (`Session.workspaceId`); `AuthGuard` checks on every request that
+  the user still belongs to the token's workspace. Members share the workspace's plan, limits and AI credits. Bots stay
+  on each member's PC — sharing bots and per-bot permissions need cloud sync, which is not built.
+* **Analytics:** counted locally (SQLite `bot_stats_daily`, `command_stats_daily`) from supervisor events — counts only.
+* **Backups:** daily files of every bot's export (no tokens) in the app data folder, newest 14 kept; restore in place.
+* **Admin:** `/v1/admin/*` for staff; the role is re-read from the database on each call; changes are audit-logged.
 
 ## 11. Updates
 
