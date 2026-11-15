@@ -25,6 +25,9 @@ import { BillingService } from '../billing/billing.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AI_PROVIDERS, type AiTextProvider } from './provider';
 
+/** Credits held while a request runs (settled to the real amount afterwards). */
+const RESERVE: Record<AiFeature, number> = { builder: 10, troubleshoot: 3 };
+
 const schemaText = (s: z.ZodType) => JSON.stringify(z.toJSONSchema(s, { unrepresentable: 'any' }));
 
 /** Built once: it never changes, so the provider can cache it. */
@@ -98,8 +101,8 @@ export class AiService {
     return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
   }
 
-  private async usedThisMonth(workspaceId: string, now: Date): Promise<number> {
-    const sum = await this.prisma.aiUsage.aggregate({ where: { workspaceId, createdAt: { gte: AiService.monthStart(now) } }, _sum: { credits: true } });
+  private async usedThisMonth(workspaceId: string, now: Date, db: Pick<PrismaService, 'aiUsage'> = this.prisma): Promise<number> {
+    const sum = await db.aiUsage.aggregate({ where: { workspaceId, createdAt: { gte: AiService.monthStart(now) } }, _sum: { credits: true } });
     return sum._sum.credits ?? 0;
   }
 
@@ -127,12 +130,7 @@ export class AiService {
     if (!claims.features.includes(key)) {
       throw new ForbiddenException(`AI features are available on the ${lowestPlanWithFeature(key)?.name ?? 'Pro'} plan.`);
     }
-    // shortcut: check-then-spend, so two requests sent at the same instant can overshoot the allowance by one request.
     const limit = claims.limits.aiCreditsPerMonth;
-    if ((await this.usedThisMonth(workspaceId, now)) >= limit) {
-      throw new ForbiddenException(`You’ve used all ${limit} AI credits for this month. They reset on the 1st.`);
-    }
-
     const model = await this.prisma.aiModel.findFirst({
       where: { enabled: true, provider: { enabled: true }, providerId: { in: Object.keys(this.providers) }, features: { array_contains: [feature] } },
       orderBy: { isDefault: 'desc' },
@@ -140,13 +138,20 @@ export class AiService {
     const provider = model ? this.providers[model.providerId] : undefined;
     if (!model || !provider) throw new ServiceUnavailableException('No AI model is enabled for this feature. Run the database seed (pnpm db:seed).');
 
-    const record = (inputTokens: number, outputTokens: number, credits: number, success: boolean) =>
-      this.prisma.aiUsage.create({
+    // Check the allowance and reserve credits under a per-workspace lock, so parallel requests can't all slip through.
+    const reservation = await this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${workspaceId}))`;
+      if ((await this.usedThisMonth(workspaceId, now, tx)) >= limit) {
+        throw new ForbiddenException(`You’ve used all ${limit} AI credits for this month. They reset on the 1st.`);
+      }
+      return tx.aiUsage.create({
+        data: { workspaceId, userId, modelId: model.id, feature, inputTokens: 0, outputTokens: 0, credits: RESERVE[feature], costMicroCents: 0, success: false },
+      });
+    });
+    const settle = (inputTokens: number, outputTokens: number, credits: number, success: boolean) =>
+      this.prisma.aiUsage.update({
+        where: { id: reservation.id },
         data: {
-          workspaceId,
-          userId,
-          modelId: model.id,
-          feature,
           inputTokens,
           outputTokens,
           credits,
@@ -161,12 +166,12 @@ export class AiService {
       result = await provider.complete({ model: model.modelKey, ...req });
     } catch (e) {
       this.logger.error(`AI provider ${provider.id} failed: ${(e as Error).message}`);
-      await record(0, 0, 0, false);
+      await settle(0, 0, 0, false); // nothing was generated, nothing is charged
       throw new ServiceUnavailableException('The AI service is busy or unavailable. Please try again in a minute.');
     }
-    // Customers are only charged for answers they can use.
-    const credits = result.output ? creditsFor(result.inputTokens, result.outputTokens) : 0;
-    await record(result.inputTokens, result.outputTokens, credits, result.output !== null);
+    // Whatever the model generated is counted, usable or not — otherwise refusals would be free to repeat at our cost.
+    const credits = creditsFor(result.inputTokens, result.outputTokens);
+    await settle(result.inputTokens, result.outputTokens, credits, result.output !== null);
     if (result.output === null) {
       throw new UnprocessableEntityException(result.refused ? 'The AI declined this request. Try describing it differently.' : 'The AI’s answer couldn’t be used. Please try again.');
     }

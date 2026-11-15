@@ -141,7 +141,7 @@ per command (use Discord's Integrations settings).
 
 | Item | Status | Verification |
 |---|---|---|
-| API AI gateway: plan check, monthly credits, usage + cost recorded per request, no charge for failed answers | ✅ | 5 integration tests with a fake provider (real PostgreSQL) |
+| API AI gateway: plan check, monthly credits reserved under a per-workspace lock (parallel requests can't overspend), usage + cost recorded per request; outages cost nothing, generated answers are charged even if unusable | ✅ | 7 integration tests with a fake provider (real PostgreSQL) |
 | Claude via Anthropic's official SDK: typed JSON answers, cached instructions, automatic refusal fallback | 🟡 | type-checked against the installed SDK; **never called for real** (needs an API key) |
 | AI Bot Builder: prompt → proposal → every item checked against the real settings rules and the server's real channels/roles → user approves → applied through the normal save paths | ✅ / 🟡 | shared + desktop tests; screen in smoke screenshots; real AI output untested |
 | AI troubleshooting from the console (status + last 120 log lines, secrets removed) | ✅ / 🟡 | desktop test checks tokens are stripped; real answers untested |

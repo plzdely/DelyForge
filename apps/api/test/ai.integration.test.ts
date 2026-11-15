@@ -26,12 +26,15 @@ describe.skipIf(!enabled)('AI gateway (PostgreSQL)', () => {
   let app: INestApplication;
   let prisma: PrismaService;
   let fail = false;
+  let refuse = false;
   const calls: string[] = [];
   const fake: AiTextProvider = {
     id: 'anthropic',
     async complete(req) {
       calls.push(req.model);
       if (fail) throw new Error('provider down');
+      await new Promise((ok) => setTimeout(ok, 50));
+      if (refuse) return { output: null, inputTokens: 4000, outputTokens: 200, refused: true };
       const output = 'modules' in (req.schema as { shape?: object }).shape! ? OUTPUT : { summary: 'Token reset', likelyCause: 'Invalid token', steps: ['Reconnect'] };
       return { output, inputTokens: 4000, outputTokens: 2000, refused: false };
     },
@@ -53,6 +56,8 @@ describe.skipIf(!enabled)('AI gateway (PostgreSQL)', () => {
     await app?.close();
   });
 
+  const troubleshoot = () =>
+    http().post('/v1/ai/troubleshoot').set('authorization', auth).send({ question: '', botName: 'Bot', status: 'error', lastError: 'TOKEN_INVALID', logs: ['login failed'] });
   const build = () => http().post('/v1/ai/bot-builder').set('authorization', auth).send({ prompt: 'Welcome new people please', guild: GUILD });
 
   it('is refused on the Free plan', async () => {
@@ -90,11 +95,30 @@ describe.skipIf(!enabled)('AI gateway (PostgreSQL)', () => {
     expect(res.body.answer.likelyCause).toBe('Invalid token');
   });
 
+  it('charges for answers the AI generated even when it declined', async () => {
+    const before = (await http().get('/v1/ai/usage').set('authorization', auth)).body.used as number;
+    refuse = true;
+    await build().expect(422);
+    refuse = false;
+    const after = (await http().get('/v1/ai/usage').set('authorization', auth)).body.used as number;
+    expect(after - before).toBe(3);
+  });
+
+  it('lets only one of several simultaneous requests through at the limit', async () => {
+    const model = await prisma.aiModel.findFirstOrThrow({ where: { modelKey: 'claude-opus-5-5' } });
+    const userId = (await prisma.workspace.findUniqueOrThrow({ where: { id: workspaceId } })).ownerId;
+    const used = (await http().get('/v1/ai/usage').set('authorization', auth)).body.used as number;
+    await prisma.aiUsage.create({ data: { workspaceId, userId, modelId: model.id, feature: 'builder', inputTokens: 0, outputTokens: 0, credits: 299 - used, costMicroCents: 0, success: true } });
+    // Troubleshooting has its own rate limit, so this doesn't trip the builder's 6-per-minute limit.
+    const results = await Promise.all([troubleshoot(), troubleshoot(), troubleshoot()]);
+    expect(results.map((r) => r.status).sort()).toEqual([201, 403, 403]);
+  });
+
   it('stops when the monthly credits are used up', async () => {
     const model = await prisma.aiModel.findFirstOrThrow({ where: { modelKey: 'claude-opus-5-5' } });
     const userId = (await prisma.workspace.findUniqueOrThrow({ where: { id: workspaceId } })).ownerId;
     await prisma.aiUsage.create({ data: { workspaceId, userId, modelId: model.id, feature: 'builder', inputTokens: 0, outputTokens: 0, credits: 300, costMicroCents: 0, success: true } });
-    const res = await build().expect(403);
+    const res = await troubleshoot().expect(403);
     expect(res.body.error.message).toContain('AI credits');
   });
 });

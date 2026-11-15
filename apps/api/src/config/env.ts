@@ -20,6 +20,8 @@ const envSchema = z.object({
         .map((s) => s.trim())
         .filter(Boolean),
     ),
+  /** Max database connections. The local `prisma dev` database needs 1 (it mixes up parallel connections). */
+  DATABASE_POOL_MAX: z.coerce.number().int().min(1).max(100).optional(),
   STRIPE_SECRET_KEY: z.string().optional().default(''),
   STRIPE_WEBHOOK_SECRET: z.string().optional().default(''),
   /** Signs access tokens. At least 32 random characters — `pnpm --filter @delyforge/api keys:generate` makes one. */

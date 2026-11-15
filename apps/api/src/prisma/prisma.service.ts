@@ -9,7 +9,7 @@ export class PrismaService extends PrismaClient implements OnModuleDestroy {
   private readonly logger = new Logger(PrismaService.name);
 
   constructor(@Inject(ENV) env: Env) {
-    super({ adapter: new PrismaPg({ connectionString: env.DATABASE_URL }) });
+    super({ adapter: new PrismaPg({ connectionString: env.DATABASE_URL, ...(env.DATABASE_POOL_MAX ? { max: env.DATABASE_POOL_MAX } : {}) }) });
   }
 
   async isHealthy(): Promise<boolean> {
