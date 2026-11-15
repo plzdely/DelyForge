@@ -164,3 +164,13 @@ export interface PendingInvite {
   role: TeamRole;
   expiresAt: string;
 }
+
+// ─── Discord linking ──────────────────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Discord sends its answer to the DelyForge app on the person's own computer at http://127.0.0.1:<port><path>
+ * (register exactly this address as the redirect in the Discord Developer Portal).
+ */
+export const DISCORD_LOOPBACK = { port: 53682, path: '/discord-callback' } as const;
+
+export const discordCompleteSchema = z.object({ code: z.string().min(1).max(200), state: z.string().min(1).max(100) }).strict();

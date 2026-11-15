@@ -363,8 +363,8 @@ export interface DelyForgeBridge {
     forgotPassword(email: string): Promise<IpcResult<null>>;
     resendVerification(): Promise<IpcResult<null>>;
     updateProfile(displayName: string): Promise<IpcResult<AccountStatus>>;
-    /** Opens Discord's sign-in page in the browser to link this account. */
-    linkDiscord(): Promise<IpcResult<null>>;
+    /** Opens Discord in the browser and waits (up to 10 minutes) until the person approves; then links it. */
+    linkDiscord(): Promise<IpcResult<AccountStatus>>;
   };
   billing: {
     /** Opens Stripe Checkout in the browser. */

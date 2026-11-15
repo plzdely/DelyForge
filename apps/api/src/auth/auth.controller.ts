@@ -1,6 +1,7 @@
 import { Body, Controller, Delete, Get, Header, HttpCode, Inject, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import {
+  discordCompleteSchema,
   changePasswordSchema,
   forgotPasswordSchema,
   loginSchema,
@@ -25,38 +26,6 @@ export class AuthController {
     @Inject(AuthService) private readonly auth: AuthService,
     @Inject(DiscordLinkService) private readonly discord: DiscordLinkService,
   ) {}
-
-  /** Discord sends the browser back here after the person approves (or cancels) linking. */
-  @Get('discord/callback')
-  @Header('content-type', 'text/html; charset=utf-8')
-  @Header('content-security-policy', "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'")
-  @Throttle({ default: { limit: 20, ttl: 60_000 } })
-  async discordCallback(@Query('code') code?: string, @Query('state') state?: string, @Query('error') error?: string) {
-    const r = await this.discord.callback({ code, state, error });
-    if (!r.confirm) return page(r.title, r.message);
-    const c = r.confirm;
-    return page(
-      r.title,
-      `<p>Link the Discord account <strong>${escapeHtml(c.discordName)}</strong> to the DelyForge account <strong>${escapeHtml(c.accountName)}</strong> (${escapeHtml(c.maskedEmail)})?</p>
-      <form method="post" action="/v1/auth/discord/confirm">
-        <input type="hidden" name="nonce" value="${escapeHtml(c.nonce)}">
-        <button type="submit">Yes, link them</button>
-      </form>
-      <p>Didn’t just click “Connect Discord” in DelyForge, or that isn’t your account? Close this page.</p>`,
-      true,
-    );
-  }
-
-  /** The browser confirmation from the callback page. Only this links the Discord account. */
-  @Post('discord/confirm')
-  @HttpCode(200)
-  @Header('content-type', 'text/html; charset=utf-8')
-  @Header('content-security-policy', "default-src 'none'; style-src 'unsafe-inline'")
-  @Throttle({ default: { limit: 20, ttl: 60_000 } })
-  async discordConfirm(@Body() body: unknown) {
-    const r = await this.discord.confirm(parse(z.object({ nonce: z.string().min(1).max(100) }), body).nonce);
-    return page(r.title, r.message);
-  }
 
   @Post('register')
   @Throttle(STRICT)
@@ -155,6 +124,15 @@ export class MeController {
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   linkDiscord(@Auth() a: AccessClaims) {
     return this.discord.start(a.sub);
+  }
+
+  /** The app hands over Discord's answer (received on this person's own computer) to finish linking. */
+  @Post('discord/complete')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  completeDiscord(@Auth() a: AccessClaims, @Body() body: unknown) {
+    const input = parse(discordCompleteSchema, body);
+    return this.discord.complete(a.sub, input.code, input.state);
   }
 
   @Get()

@@ -1,34 +1,26 @@
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { CircleCheck } from 'lucide-react';
-import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardBody, CardHeader } from '@/components/ui/card';
-import { useAccount, useInvalidateAccount } from '@/lib/account';
+import { accountKeys, useAccount, useInvalidateAccount } from '@/lib/account';
 import { call } from '@/lib/bridge';
 
 /** Shows the linked Discord account, or a button that opens Discord's sign-in page in the browser. */
 export function DiscordConnect({ required = false }: { required?: boolean }) {
   const account = useAccount();
+  const qc = useQueryClient();
   const invalidate = useInvalidateAccount();
   const discord = account.data?.profile?.discord ?? null;
-  const [waiting, setWaiting] = useState(false);
   const link = useMutation({
     mutationFn: () => call((b) => b.account.linkDiscord()),
-    onSuccess: () => {
-      setWaiting(true);
-      toast('Finish in your browser', { description: 'Approve DelyForge on Discord, then come back here.' });
+    onSuccess: (status) => {
+      qc.setQueryData(accountKeys.status, status);
+      invalidate();
+      toast.success('Discord connected');
     },
-    onError: (e: Error) => toast.error('Couldn’t open Discord', { description: e.message }),
+    onError: (e: Error) => toast.error('Discord not connected', { description: e.message }),
   });
-
-  // When the person comes back from the browser, ask the server whether the link went through.
-  useEffect(() => {
-    if (!waiting) return;
-    const onFocus = () => void call((b) => b.account.refresh()).then(invalidate).catch(() => null);
-    window.addEventListener('focus', onFocus);
-    return () => window.removeEventListener('focus', onFocus);
-  }, [waiting]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <Card>
@@ -46,13 +38,9 @@ export function DiscordConnect({ required = false }: { required?: boolean }) {
         ) : (
           <div className="flex items-center gap-3">
             <Button variant="primary" disabled={link.isPending} onClick={() => link.mutate()}>
-              Connect Discord
+              {link.isPending ? 'Waiting for Discord…' : 'Connect Discord'}
             </Button>
-            {waiting ? (
-              <Button variant="ghost" onClick={() => void call((b) => b.account.refresh()).then(invalidate)}>
-                I’ve approved it
-              </Button>
-            ) : null}
+            {link.isPending ? <span className="text-xs text-fg-muted">Click Authorize in your browser, then come back.</span> : null}
           </div>
         )}
       </CardBody>

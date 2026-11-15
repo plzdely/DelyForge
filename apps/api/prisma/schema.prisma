@@ -106,8 +106,6 @@ model EmailToken {
   /// SHA-256 of the token sent by email. Single use.
   tokenHash  String            @unique
   newEmail   String?
-  /// DISCORD_LINK confirmation step: the Discord account waiting for the person to confirm.
-  payload    Json?
   expiresAt  DateTime
   consumedAt DateTime?
   createdAt  DateTime          @default(now())

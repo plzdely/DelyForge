@@ -31,6 +31,7 @@ import {
 } from '@delyforge/shared';
 import { AccountService } from './account';
 import { AiAssistant } from './ai-assistant';
+import { waitForDiscordAnswer } from './discord-link';
 import { createUpdater } from './updater';
 import { BackupService } from './backups';
 import { AnalyticsRepository } from './db/analytics';
@@ -263,11 +264,23 @@ async function main(): Promise<void> {
   handle(IPC_CHANNELS.accountRegister, (input) => account.register(input));
   handle(IPC_CHANNELS.accountLogin, (input) => account.login(input));
   handle(IPC_CHANNELS.accountLogout, () => account.logout());
+  let discordLinking = false;
   handle(IPC_CHANNELS.accountLinkDiscord, async () => {
-    const url = await account.discordLinkUrl();
-    if (!isAllowedExternalUrl(url)) throw new AppError('INTERNAL', 'Unexpected sign-in address from the server.');
-    await shell.openExternal(url);
-    return null;
+    if (discordLinking) throw new AppError('CONFLICT', 'Discord is already open in your browser — finish there first.');
+    discordLinking = true;
+    try {
+      // Listen first, so Discord's answer (sent to this computer) can't arrive before we're ready.
+      const { ready, answer } = waitForDiscordAnswer();
+      await ready;
+      const url = await account.discordLinkUrl();
+      if (!isAllowedExternalUrl(url)) throw new AppError('INTERNAL', 'Unexpected sign-in address from the server.');
+      await shell.openExternal(url);
+      const { code, state } = await answer;
+      await account.authed('POST', '/v1/me/discord/complete', { code, state });
+      return await account.refreshPlan();
+    } finally {
+      discordLinking = false;
+    }
   });
   handle(IPC_CHANNELS.accountRefresh, () => account.refreshPlan());
   handle(IPC_CHANNELS.accountForgotPassword, async ({ email }) => {

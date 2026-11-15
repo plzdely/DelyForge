@@ -26,20 +26,13 @@ describe.skipIf(!enabled)('Discord linking and bans (PostgreSQL)', () => {
   let member: string;
 
   const register = async (n: string) => `Bearer ${(await http().post('/v1/auth/register').send({ email: email(n), password, displayName: n }).expect(201)).body.accessToken}`;
-  const nonceIn = (html: string) => /name="nonce" value="([^"]+)"/.exec(html)?.[1];
-  const confirm = (nonce: string) => http().post('/v1/auth/discord/confirm').type('form').send({ nonce });
-  /** The browser part: Discord "redirects back" with a code; returns the callback page (confirmation or error). */
-  const callback = async (auth: string) => {
+  /** "Connect Discord": returns the one-time state from the Discord page address. */
+  const start = async (auth: string) => {
     const { url } = (await http().post('/v1/me/discord').set('authorization', auth).expect(200)).body as { url: string };
-    const state = new URL(url).searchParams.get('state')!;
-    return http().get('/v1/auth/discord/callback').query({ code: 'fake-code', state });
+    return new URL(url).searchParams.get('state')!;
   };
-  /** Callback, then "Yes, link them" when the page offers it. */
-  const link = async (auth: string) => {
-    const page = await callback(auth);
-    const nonce = nonceIn(page.text);
-    return nonce ? confirm(nonce) : page;
-  };
+  /** What the app does once Discord's answer reaches this computer. */
+  const complete = (auth: string, state: string) => http().post('/v1/me/discord/complete').set('authorization', auth).send({ code: 'fake-code', state });
 
   beforeAll(async () => {
     app = await createApp(loadEnv({ ...process.env, NODE_ENV: 'test', DISCORD_CLIENT_ID: 'client', DISCORD_CLIENT_SECRET: 'secret' }), { mailer: new MemoryMailer() });
@@ -61,23 +54,23 @@ describe.skipIf(!enabled)('Discord linking and bans (PostgreSQL)', () => {
     expect((await http().get('/v1/entitlements').set('authorization', member)).body.claims.discordOk).toBe(false);
     const { url } = (await http().post('/v1/me/discord').set('authorization', member).expect(200)).body;
     expect(url).toMatch(/^https:\/\/discord\.com\/oauth2\/authorize\?.*scope=identify/);
-    // The callback alone links nothing: it names the DelyForge account and waits for "Yes".
-    const ask = await callback(member);
-    expect(ask.text).toContain(`m***@example.com`);
-    expect(ask.text).toContain('Yes, link them');
-    expect((await http().get('/v1/me').set('authorization', member)).body.discord).toBeNull();
-    const nonce = nonceIn(ask.text)!;
-    expect((await confirm(nonce).expect(200)).text).toContain('Discord connected');
-    expect((await confirm(nonce)).text).toMatch(/expired|already used/);
+    // Discord answers the app on the person's own computer, never a web page.
+    expect(new URL(url).searchParams.get('redirect_uri')).toBe('http://127.0.0.1:53682/discord-callback');
+    // Only the newest link works.
+    const old = new URL(url).searchParams.get('state')!;
+    const state = await start(member);
+    await complete(member, old).expect(422);
+    expect((await complete(member, state).expect(200)).body).toEqual({ username: 'Bad Guy' });
+    await complete(member, state).expect(422); // single use
     expect((await http().get('/v1/me').set('authorization', member)).body.discord).toMatchObject({ id: discordId, username: 'Bad Guy' });
     expect((await http().get('/v1/entitlements').set('authorization', member)).body.claims.discordOk).toBe(true);
   });
 
-  it('refuses reused links and a Discord account already linked elsewhere', async () => {
-    const { url } = (await http().post('/v1/me/discord').set('authorization', admin).expect(200)).body;
-    const state = new URL(url).searchParams.get('state')!;
-    expect((await http().get('/v1/auth/discord/callback').query({ code: 'c', state })).text).toContain('already linked to another');
-    expect((await http().get('/v1/auth/discord/callback').query({ code: 'c', state })).text).toContain('expired');
+  it('refuses a link started by someone else and a Discord account already linked elsewhere', async () => {
+    // The attack: someone sends you their own "Connect Discord" link. Your app (signed in as you) can't finish it.
+    const theirs = await start(admin);
+    expect((await complete(member, theirs).expect(403)).body.error.message).toContain('another DelyForge account');
+    expect((await complete(admin, await start(admin)).expect(403)).body.error.message).toContain('already linked to another');
   });
 
   it('a ban blocks the account, its email and its Discord account; unbanning lifts all three', async () => {
@@ -90,7 +83,7 @@ describe.skipIf(!enabled)('Discord linking and bans (PostgreSQL)', () => {
 
     // A brand-new account can't link the banned Discord account either.
     const fresh = await register('fresh');
-    expect((await link(fresh)).text).toContain('can’t be used with DelyForge');
+    expect((await complete(fresh, await start(fresh)).expect(403)).body.error.message).toContain('can’t be used with DelyForge');
 
     await http().post(`/v1/admin/users/${u.id}/status`).set('authorization', admin).send({ status: 'ACTIVE', reason: 'Appeal accepted' }).expect(204);
     await http().post('/v1/auth/login').send({ email: email('member'), password }).expect(200);

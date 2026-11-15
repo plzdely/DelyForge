@@ -242,13 +242,13 @@ See "Making yourself staff" under Phase 8: set your `role` to `ADMIN` in Prisma 
 1. Go to <https://discord.com/developers/applications> → **New Application** → name it "DelyForge" → Create.
    (Use a different application from any bot you run.)
 2. Left menu **OAuth2** → under **Redirects** click **Add Redirect** and enter
-   `http://localhost:4000/v1/auth/discord/callback` for testing (later also `https://<your API>/v1/auth/discord/callback`)
+   `http://127.0.0.1:53682/discord-callback` (this one address works for testing **and** for customers — Discord sends
+   its answer to the DelyForge app on the same PC, so there is no second address to add when you go live)
    → **Save Changes**.
 3. Same page: copy **Client ID**; click **Reset Secret** → copy the secret.
 4. Put them in `apps/api/.env` as `DISCORD_CLIENT_ID=...` and `DISCORD_CLIENT_SECRET=...`, then restart the API.
    Never share the secret or commit it.
-5. When you click Authorize on Discord, the browser shows which DelyForge account will be linked; click **Yes, link them**.
-6. To try the sign-in gate in development: start the app with `DELYFORGE_REQUIRE_ACCOUNT=1 pnpm dev:desktop`
+5. To try the sign-in gate in development: start the app with `DELYFORGE_REQUIRE_ACCOUNT=1 pnpm dev:desktop`
    (PowerShell: `$env:DELYFORGE_REQUIRE_ACCOUNT='1'; pnpm dev:desktop`).
 
 ### Not built
