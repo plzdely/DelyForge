@@ -280,7 +280,7 @@ export class BotRepository {
 
   // ─── Export / import ─────────────────────────────────────────────────────────────────────────────────────────────
 
-  exportProject(id: string, appVersion: string): BotProjectExport {
+  exportProject(id: string, appVersion: string, quiet = false): BotProjectExport {
     const row = this.getRow(id);
     const data: BotProjectExport = {
       format: BOT_EXPORT_FORMAT,
@@ -297,8 +297,25 @@ export class BotRepository {
         builtinPing: row.builtin_ping === 1,
       },
     };
-    this.activity.record('bot', `Exported “${row.name}”`, id);
+    if (!quiet) this.activity.record('bot', `Exported “${row.name}”`, id);
     return botProjectExportSchema.parse(data);
+  }
+
+  /** Puts a backed-up project's settings back onto the same bot (name and Discord connection are kept). */
+  restoreSettings(id: string, project: BotProjectExport['project']): void {
+    const row = this.getRow(id);
+    this.db
+      .prepare('UPDATE bot_projects SET description = ?, group_name = ?, config = ?, presence = ?, permissions = ?, builtin_ping = ? WHERE id = ?')
+      .run(
+        project.description,
+        project.groupName,
+        JSON.stringify(project.config),
+        project.presence ? JSON.stringify(project.presence) : row.presence,
+        project.permissions ?? row.permissions,
+        project.builtinPing === undefined ? row.builtin_ping : project.builtinPing ? 1 : 0,
+        id,
+      );
+    this.activity.record('bot', `Restored “${row.name}” from a backup`, id);
   }
 
   /** Validates an export file's text and creates a new project from it. */

@@ -26,6 +26,7 @@ import {
 } from '@delyforge/shared';
 import { AccountService } from './account';
 import { AiAssistant } from './ai-assistant';
+import { BackupService } from './backups';
 import { AnalyticsRepository } from './db/analytics';
 import { MarketplaceClient } from './marketplace';
 import { BotRepository } from './db/bots';
@@ -365,6 +366,21 @@ async function main(): Promise<void> {
     logs.clear(id);
     return null;
   });
+  // Backups (Pro): daily, settings only — tokens are never included
+  const backups = new BackupService(join(dataDir, 'backups'), bots, entitlements, app.getVersion(), (botId) => {
+    supervisor.applyModules(botId);
+    supervisor.applyBuilders(botId);
+  });
+  const backupIfDue = () => void backups.runIfDue().catch((err) => logger.warn('Automatic backup failed', err));
+  setTimeout(backupIfDue, 60_000).unref();
+  setInterval(backupIfDue, 6 * 60 * 60_000).unref();
+  handle(IPC_CHANNELS.backupsList, () => backups.list());
+  handle(IPC_CHANNELS.backupsRun, () => backups.run());
+  handle(IPC_CHANNELS.backupsRestore, async ({ file, id }) => {
+    await backups.restore(file, id);
+    return null;
+  });
+
   // Analytics (local, counts only)
   const advancedAnalytics = () => entitlements().features.includes('analytics.advanced');
   handle(IPC_CHANNELS.analyticsReport, ({ id, days }) => {

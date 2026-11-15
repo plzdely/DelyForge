@@ -2,6 +2,7 @@ import { BRAND, type Theme } from '@delyforge/shared';
 import { Check, Monitor, Moon, Sun } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Page, PageHeader } from '@/components/layout/page';
+import { BackupsCard } from '@/components/settings/backups-card';
 import { Card, CardHeader } from '@/components/ui/card';
 import { Separator, Skeleton } from '@/components/ui/misc';
 import { Switch } from '@/components/ui/switch';
@@ -150,6 +151,8 @@ export function SettingsPage() {
             </div>
           ))}
         </Card>
+
+        <BackupsCard />
 
         <Card>
           <CardHeader title="About" description={`${BRAND.productName} — ${BRAND.byline}. ${BRAND.tagline}`} />

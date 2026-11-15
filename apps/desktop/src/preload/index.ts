@@ -32,6 +32,11 @@ const bridge: DelyForgeBridge = {
     resendVerification: () => invoke(IPC_CHANNELS.accountResendVerification),
     updateProfile: (displayName) => invoke(IPC_CHANNELS.accountUpdateProfile, { displayName }),
   },
+  backups: {
+    list: () => invoke(IPC_CHANNELS.backupsList),
+    run: () => invoke(IPC_CHANNELS.backupsRun),
+    restore: (input) => invoke(IPC_CHANNELS.backupsRestore, input),
+  },
   analytics: {
     report: (input) => invoke(IPC_CHANNELS.analyticsReport, input),
     exportCsv: () => invoke(IPC_CHANNELS.analyticsExport),

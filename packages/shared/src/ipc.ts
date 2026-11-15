@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import {
   type AnalyticsReport,
+  type BackupInfo,
   type AppNotification,
   type BotEvent,
   type BotLogEntry,
@@ -104,6 +105,9 @@ export const IPC_CHANNELS = {
   marketModerate: 'market:moderate',
   analyticsReport: 'analytics:report',
   analyticsExport: 'analytics:export',
+  backupsList: 'backups:list',
+  backupsRun: 'backups:run',
+  backupsRestore: 'backups:restore',
 } as const;
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];
 
@@ -220,6 +224,9 @@ export const ipcInputSchemas = {
   [IPC_CHANNELS.marketQueue]: noInput,
   [IPC_CHANNELS.analyticsReport]: z.object({ id: z.uuid().nullable(), days: z.number().int().min(1).max(90) }).strict(),
   [IPC_CHANNELS.analyticsExport]: noInput,
+  [IPC_CHANNELS.backupsList]: noInput,
+  [IPC_CHANNELS.backupsRun]: noInput,
+  [IPC_CHANNELS.backupsRestore]: z.object({ file: z.string().regex(/^\d{4}-\d{2}-\d{2}\.json$/), id: z.uuid() }).strict(),
   [IPC_CHANNELS.marketModerate]: z.object({ versionId: z.string().min(1).max(40), approve: z.boolean(), notes: z.string().trim().max(1000) }).strict(),
 } as const satisfies Record<IpcChannel, z.ZodType>;
 
@@ -375,6 +382,13 @@ export interface DelyForgeBridge {
     apply(proposalId: string): Promise<IpcResult<AiApplyResult>>;
     reject(proposalId: string): Promise<IpcResult<null>>;
     troubleshoot(input: { id: string; question: string }): Promise<IpcResult<{ answer: AiTroubleshootAnswer; creditsUsed: number; usage: AiUsageInfo }>>;
+  };
+  backups: {
+    list(): Promise<IpcResult<BackupInfo[]>>;
+    /** Backs up every bot now (Pro). */
+    run(): Promise<IpcResult<BackupInfo>>;
+    /** Puts one bot's settings back to how they were in that backup. */
+    restore(input: { file: string; id: string }): Promise<IpcResult<null>>;
   };
   analytics: {
     /** Days are capped by the plan (7 on basic analytics, 90 on advanced). `id` null = all bots. */

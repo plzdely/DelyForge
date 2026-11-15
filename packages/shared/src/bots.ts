@@ -232,3 +232,12 @@ export interface AnalyticsReport {
 
 /** Basic analytics covers a week; advanced analytics covers 90 days, per-command stats and CSV export. */
 export const ANALYTICS_DAYS = { basic: 7, advanced: 90 } as const;
+
+// ─── Backups (Phase 9) ────────────────────────────────────────────────────────────────────────────────────────────
+
+export interface BackupInfo {
+  /** `YYYY-MM-DD.json` */
+  file: string;
+  createdAt: string;
+  bots: { id: string; name: string }[];
+}
