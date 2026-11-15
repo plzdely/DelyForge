@@ -1,0 +1,209 @@
+import { randomInt } from 'node:crypto';
+import {
+  type APIEmbed,
+  type ButtonInteraction,
+  ButtonStyle,
+  type ChatInputCommandInteraction,
+  type Client,
+  ComponentType,
+  MessageFlags,
+} from 'discord.js';
+import type { Giveaway } from '../store.js';
+import { COLORS, type ModuleContext, hexToInt, sendableChannel, truncate } from './context.js';
+import { isStaff } from './roles.js';
+
+const ephemeral = (i: ButtonInteraction | ChatInputCommandInteraction, content: string) =>
+  i.replied || i.deferred
+    ? i.editReply({ content, allowedMentions: { parse: [] } })
+    : i.reply({ content, flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] } });
+
+// ─── Suggestions ──────────────────────────────────────────────────────────────────────────────────────────────────
+
+const STATUS = {
+  open: { label: 'Open for votes', color: COLORS.info },
+  approved: { label: '✅ Approved', color: COLORS.success },
+  rejected: { label: '❌ Rejected', color: COLORS.danger },
+} as const;
+
+function suggestionMessage(s: { id: number; userId: string; content: string; status: string }, votes: { up: number; down: number }, decidedBy?: string) {
+  const status = STATUS[s.status as keyof typeof STATUS] ?? STATUS.open;
+  const open = s.status === 'open';
+  const btn = (label: string, id: string, style: ButtonStyle, disabled = !open) => ({ type: ComponentType.Button as const, style, label, custom_id: id, disabled });
+  return {
+    embeds: [
+      {
+        title: `Suggestion #${s.id}`,
+        description: s.content,
+        color: status.color,
+        fields: [
+          { name: 'Votes', value: `👍 ${votes.up}   👎 ${votes.down}`, inline: true },
+          { name: 'Status', value: decidedBy ? `${status.label} by <@${decidedBy}>` : status.label, inline: true },
+          { name: 'Suggested by', value: `<@${s.userId}>`, inline: true },
+        ],
+      } satisfies APIEmbed,
+    ],
+    components: [
+      {
+        type: ComponentType.ActionRow as const,
+        components: [
+          btn('👍', `df:sug:up:${s.id}`, ButtonStyle.Secondary),
+          btn('👎', `df:sug:down:${s.id}`, ButtonStyle.Secondary),
+          btn('Approve', `df:sug:approve:${s.id}`, ButtonStyle.Success),
+          btn('Reject', `df:sug:reject:${s.id}`, ButtonStyle.Danger),
+        ],
+      },
+    ],
+    allowedMentions: { parse: [] as [] },
+  };
+}
+
+export async function handleSuggest(ctx: ModuleContext, i: ChatInputCommandInteraction): Promise<void> {
+  if (!i.inCachedGuild()) return;
+  const c = ctx.config(i.guildId).suggestions;
+  if (!c.enabled || !c.channelId) return void (await ephemeral(i, 'Suggestions aren’t set up in this server.'));
+  const channel = await sendableChannel(ctx, i.guild, c.channelId, 'Suggestions');
+  if (!channel) return void (await ephemeral(i, 'The suggestions channel isn’t available right now.'));
+  const content = truncate(i.options.getString('idea', true).trim(), 1500);
+  const id = ctx.store.addSuggestion(i.guildId, channel.id, i.user.id, content);
+  const msg = await channel.send(suggestionMessage({ id, userId: i.user.id, content, status: 'open' }, { up: 0, down: 0 }));
+  ctx.store.setSuggestionMessage(id, msg.id);
+  await ephemeral(i, `Thanks! Your suggestion was posted: ${msg.url}`);
+}
+
+export async function onSuggestionButton(ctx: ModuleContext, i: ButtonInteraction, action: string, id: number): Promise<void> {
+  if (!i.inCachedGuild()) return;
+  const s = ctx.store.suggestion(id);
+  if (!s || s.guildId !== i.guildId) return void (await ephemeral(i, 'This suggestion no longer exists.'));
+  if (s.status !== 'open') return void (await ephemeral(i, 'This suggestion has already been decided.'));
+
+  if (action === 'up' || action === 'down') {
+    const votes = ctx.store.vote(id, i.user.id, action === 'up' ? 1 : -1);
+    await i.update(suggestionMessage(s, votes));
+    return;
+  }
+  if (!isStaff(i.member, ctx.config(i.guildId).suggestions.staffRoleIds)) {
+    return void (await ephemeral(i, 'Only staff can approve or reject suggestions.'));
+  }
+  const status = action === 'approve' ? 'approved' : 'rejected';
+  ctx.store.setSuggestionStatus(id, status);
+  await i.update(suggestionMessage({ ...s, status }, ctx.store.votes(id), i.user.id));
+}
+
+// ─── Giveaways ────────────────────────────────────────────────────────────────────────────────────────────────────
+
+/** "1h30m", "2d", "45m" → milliseconds (1 minute to 30 days), or null. */
+export function parseDuration(text: string): number | null {
+  const re = /(\d+)\s*([dhm])/gi;
+  const units: Record<string, number> = { d: 86_400_000, h: 3_600_000, m: 60_000 };
+  let total = 0;
+  let matched = '';
+  for (const m of text.matchAll(re)) {
+    total += Number(m[1]) * units[m[2]!.toLowerCase()]!;
+    matched += m[0];
+  }
+  if (!matched || matched.replace(/\s/g, '') !== text.replace(/\s/g, '')) return null;
+  return total >= 60_000 && total <= 30 * 86_400_000 ? total : null;
+}
+
+/** Fair, unique random winners (crypto-quality randomness), excluding anyone in `exclude`. */
+export function pickWinners(entries: readonly string[], count: number, exclude: readonly string[] = []): string[] {
+  const pool = entries.filter((e) => !exclude.includes(e));
+  const winners: string[] = [];
+  while (winners.length < count && pool.length) winners.push(pool.splice(randomInt(pool.length), 1)[0]!);
+  return winners;
+}
+
+function giveawayEmbed(g: Giveaway, color: string, entries?: number): APIEmbed {
+  const ends = Math.floor(g.endsAt / 1000);
+  return {
+    title: `🎉 ${g.prize}`,
+    description: g.ended
+      ? `Ended <t:${ends}:R>\n**Winner${g.winnerIds.length === 1 ? '' : 's'}:** ${g.winnerIds.length ? g.winnerIds.map((w) => `<@${w}>`).join(', ') : 'nobody entered 😢'}`
+      : `Click **Enter** to join!\nEnds <t:${ends}:R> (<t:${ends}:f>)\n**Winners:** ${g.winners}`,
+    footer: { text: `Giveaway #${g.id}${entries !== undefined ? ` · ${entries} entries` : ''}` },
+    color: g.ended ? COLORS.brand : hexToInt(color),
+  };
+}
+
+const enterRow = (id: number, disabled: boolean) => ({
+  type: ComponentType.ActionRow as const,
+  components: [{ type: ComponentType.Button as const, style: ButtonStyle.Primary, label: 'Enter', emoji: { name: '🎉' }, custom_id: `df:gw:enter:${id}`, disabled }],
+});
+
+async function announceWinners(ctx: ModuleContext, client: Client, g: Giveaway, reroll: boolean): Promise<void> {
+  const channel = await client.channels.fetch(g.channelId).catch(() => null);
+  if (!channel?.isSendable()) return;
+  const config = ctx.config(g.guildId).giveaways;
+  if (g.messageId && 'messages' in channel) {
+    const count = ctx.store.entries(g.id).length;
+    await channel.messages.edit(g.messageId, { embeds: [giveawayEmbed(g, config.color, count)], components: [enterRow(g.id, true)] }).catch(() => null);
+  }
+  const content = g.winnerIds.length
+    ? `🎉 ${reroll ? 'New winner' : 'Congratulations'} ${g.winnerIds.map((w) => `<@${w}>`).join(', ')}! You won **${g.prize}**.`
+    : `The giveaway for **${g.prize}** ended with no entries.`;
+  await channel.send({ content, allowedMentions: { users: g.winnerIds } }).catch(() => null);
+}
+
+/** Ends giveaways whose time is up. Runs every 15 s; safe to run twice (the store only lets one caller end each). */
+export async function endDueGiveaways(ctx: ModuleContext, client: Client): Promise<void> {
+  for (const g of ctx.store.dueGiveaways(Date.now())) {
+    if (!client.guilds.cache.has(g.guildId)) continue;
+    const winners = pickWinners(ctx.store.entries(g.id), g.winners);
+    if (!ctx.store.endGiveaway(g.id, winners)) continue;
+    await announceWinners(ctx, client, { ...g, ended: true, winnerIds: winners }, false);
+    ctx.log('info', `Giveaway #${g.id} (“${g.prize}”) ended with ${winners.length} winner(s).`);
+  }
+}
+
+export async function handleGiveaway(ctx: ModuleContext, i: ChatInputCommandInteraction): Promise<void> {
+  if (!i.inCachedGuild()) return;
+  const c = ctx.config(i.guildId).giveaways;
+  if (!c.enabled) return void (await ephemeral(i, 'Giveaways aren’t enabled in this server.'));
+  if (!isStaff(i.member, c.managerRoleIds)) return void (await ephemeral(i, 'Only giveaway managers can do that.'));
+  const sub = i.options.getSubcommand();
+
+  if (sub === 'start') {
+    const duration = parseDuration(i.options.getString('duration', true));
+    if (!duration) return void (await ephemeral(i, 'Use a duration like `30m`, `2h`, `1d` or `1h30m` (1 minute to 30 days).'));
+    const target = i.options.getChannel('channel') ?? i.channel;
+    const channel = target ? await sendableChannel(ctx, i.guild, target.id, 'Giveaway') : null;
+    if (!channel) return void (await ephemeral(i, 'I can’t post in that channel.'));
+    const prize = truncate(i.options.getString('prize', true).trim(), 200);
+    const winners = i.options.getInteger('winners') ?? 1;
+    const id = ctx.store.addGiveaway({ guildId: i.guildId, channelId: channel.id, prize, winners, hostId: i.user.id, endsAt: Date.now() + duration });
+    const g = ctx.store.giveaway(id)!;
+    const msg = await channel.send({ embeds: [giveawayEmbed(g, c.color)], components: [enterRow(id, false)], allowedMentions: { parse: [] } });
+    ctx.store.setGiveawayMessage(id, msg.id);
+    return void (await ephemeral(i, `Giveaway #${id} started: ${msg.url}`));
+  }
+
+  const id = i.options.getInteger('id', true);
+  const g = ctx.store.giveaway(id);
+  if (!g || g.guildId !== i.guildId) return void (await ephemeral(i, `There’s no giveaway #${id} in this server.`));
+
+  if (sub === 'end') {
+    if (g.ended) return void (await ephemeral(i, 'That giveaway has already ended.'));
+    const winners = pickWinners(ctx.store.entries(id), g.winners);
+    if (!ctx.store.endGiveaway(id, winners)) return void (await ephemeral(i, 'That giveaway has already ended.'));
+    await announceWinners(ctx, i.client, { ...g, ended: true, winnerIds: winners }, false);
+    return void (await ephemeral(i, `Giveaway #${id} ended.`));
+  }
+
+  // reroll
+  if (!g.ended) return void (await ephemeral(i, 'That giveaway is still running — end it first.'));
+  const fresh = pickWinners(ctx.store.entries(id), 1, g.winnerIds);
+  if (!fresh.length) return void (await ephemeral(i, 'There’s nobody left to pick.'));
+  const winnerIds = [...g.winnerIds, ...fresh];
+  ctx.store.setWinners(id, winnerIds);
+  await announceWinners(ctx, i.client, { ...g, winnerIds: fresh }, true);
+  await ephemeral(i, `Rerolled giveaway #${id}.`);
+}
+
+export async function onGiveawayEnter(ctx: ModuleContext, i: ButtonInteraction, id: number): Promise<void> {
+  if (!i.inCachedGuild()) return;
+  const g = ctx.store.giveaway(id);
+  if (!g || g.guildId !== i.guildId || g.ended || g.endsAt <= Date.now()) return void (await ephemeral(i, 'This giveaway has ended.'));
+  if (i.user.bot) return;
+  const { entered, count } = ctx.store.toggleEntry(id, i.user.id);
+  await ephemeral(i, entered ? `You’re in! 🎉 Good luck. (${count} entries) Click again to leave.` : `You left the giveaway. (${count} entries)`);
+}

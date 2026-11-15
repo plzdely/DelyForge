@@ -1,11 +1,16 @@
 import { type BotModules, type LogLevel, type ModuleConfigs, resolveGuildModules } from '@delyforge/shared';
-import { type Client, Events, type Guild, MessageFlags } from 'discord.js';
+import { type ButtonInteraction, type ChatInputCommandInteraction, type Client, Events, type Guild, MessageFlags, type StringSelectMenuInteraction } from 'discord.js';
 import { BotStore, planCommandSync } from '../store.js';
 import { commandHash, desiredCommands } from './commands.js';
 import type { ModuleContext } from './context.js';
 import * as logging from './logging.js';
 import { MODERATION_COMMANDS, automodCheck, handleModerationCommand } from './moderation.js';
 import { UTILITY_COMMANDS, handleUtilityCommand } from './utility.js';
+import { endDueGiveaways, handleGiveaway, handleSuggest, onGiveawayEnter, onSuggestionButton } from './community.js';
+import { LEVELING_COMMANDS, handleLevelingCommand, onMessageXp } from './leveling.js';
+import { CID, syncPanels } from './panels.js';
+import { onRoleButton, onRoleMenu, onVerify } from './roles.js';
+import { TICKET_COMMANDS, handleTicketCommand, onTicketClose, onTicketCloseConfirm, onTicketOpen } from './tickets.js';
 import * as welcome from './welcome.js';
 
 /**
@@ -16,6 +21,9 @@ export class ModuleHost {
   private modules: BotModules;
   private store: BotStore | null = null;
   private syncing = new Set<string>();
+  /** Servers whose settings changed during a sync — synced again as soon as it finishes. */
+  private resync = new Set<string>();
+  private giveawayTimer: ReturnType<typeof setInterval> | null = null;
   private readonly ctx: ModuleContext;
 
   constructor(
@@ -56,9 +64,14 @@ export class ModuleHost {
     const enabled = this.enabledSummary();
     if (enabled) this.log('info', `Active modules: ${enabled}.`);
     await this.syncAllCommands();
+    // Giveaways end on time even across restarts, because end times are stored.
+    this.giveawayTimer = setInterval(() => {
+      if (this.store) void endDueGiveaways(this.ctx, this.client).catch((e: Error) => this.log('error', `Giveaways: ${e.message}`));
+    }, 15_000);
   }
 
   close(): void {
+    if (this.giveawayTimer) clearInterval(this.giveawayTimer);
     this.store?.close();
     this.store = null;
   }
@@ -85,9 +98,13 @@ export class ModuleHost {
     for (const guild of this.client.guilds.cache.values()) await this.syncGuildCommands(guild);
   }
 
-  /** Creates, updates and removes only the commands DelyForge itself manages in this server. */
+  /** Brings a server in line with its settings: slash commands (only DelyForge's own) and posted panels. */
   private async syncGuildCommands(guild: Guild): Promise<void> {
-    if (!this.store || this.syncing.has(guild.id)) return;
+    if (!this.store) return;
+    if (this.syncing.has(guild.id)) {
+      this.resync.add(guild.id);
+      return;
+    }
     this.syncing.add(guild.id);
     try {
       const desired = desiredCommands(this.config(guild.id));
@@ -117,10 +134,13 @@ export class ModuleHost {
       if (changes) {
         this.log('info', `Updated slash commands in “${guild.name}”: +${plan.create.length} ~${plan.update.length} −${plan.remove.length}.`);
       }
+      const panelChanges = await syncPanels(this.ctx, guild);
+      if (panelChanges) this.log('info', `Updated ${panelChanges} panel message(s) in “${guild.name}”.`);
     } catch (e) {
-      this.log('warn', `Could not update slash commands in “${guild.name}”: ${(e as Error).message}`);
+      this.log('warn', `Could not update “${guild.name}” to the new settings: ${(e as Error).message}`);
     } finally {
       this.syncing.delete(guild.id);
+      if (this.resync.delete(guild.id)) void this.syncGuildCommands(guild);
     }
   }
 
@@ -155,6 +175,7 @@ export class ModuleHost {
     );
     c.on(Events.GuildMemberUpdate, safe('Member update', (a, b) => logging.onMemberUpdateLog(ctx, a, b)));
     c.on(Events.MessageCreate, safe('Auto-moderation', (m) => automodCheck(ctx, m)));
+    c.on(Events.MessageCreate, safe('Leveling', (m) => onMessageXp(ctx, m)));
     c.on(Events.MessageDelete, safe('Message delete log', (m) => logging.onMessageDelete(ctx, m)));
     c.on(Events.MessageUpdate, safe('Message edit log', (a, b) => logging.onMessageEdit(ctx, a, b)));
     c.on(Events.ChannelCreate, safe('Channel log', (ch) => logging.onChannelChange(ctx, ch, 'created')));
@@ -169,22 +190,64 @@ export class ModuleHost {
     c.on(Events.VoiceStateUpdate, safe('Voice log', (a, b) => logging.onVoice(ctx, a, b)));
 
     c.on(Events.InteractionCreate, async (i) => {
-      if (!i.isChatInputCommand() || !this.store) return;
-      const isMod = MODERATION_COMMANDS.has(i.commandName);
-      const isUtil = UTILITY_COMMANDS.has(i.commandName);
-      if (!isMod && !isUtil) return;
-      const started = Date.now();
-      try {
-        if (isMod) await handleModerationCommand(ctx, i);
-        else await handleUtilityCommand(ctx, i);
-        ctx.command(i.commandName, true, Date.now() - started);
-      } catch (e) {
-        ctx.command(i.commandName, false, Date.now() - started);
-        this.log('error', `/${i.commandName} failed: ${(e as Error).message}`);
-        const content = 'Something went wrong running that command. The error was written to the bot’s console in DelyForge.';
-        if (i.deferred || i.replied) await i.editReply({ content }).catch(() => null);
-        else await i.reply({ content, flags: MessageFlags.Ephemeral }).catch(() => null);
-      }
+      if (!this.store) return;
+      if (i.isChatInputCommand()) return this.runCommand(i);
+      if (i.isButton() || i.isStringSelectMenu()) return this.runComponent(i);
     });
+  }
+
+  private async runCommand(i: ChatInputCommandInteraction): Promise<void> {
+    const n = i.commandName;
+    const handler = MODERATION_COMMANDS.has(n)
+      ? handleModerationCommand
+      : UTILITY_COMMANDS.has(n)
+        ? handleUtilityCommand
+        : LEVELING_COMMANDS.has(n)
+          ? handleLevelingCommand
+          : TICKET_COMMANDS.has(n)
+            ? handleTicketCommand
+            : n === 'suggest'
+              ? handleSuggest
+              : n === 'giveaway'
+                ? handleGiveaway
+                : null;
+    if (!handler) return; // e.g. /ping, handled elsewhere
+    const started = Date.now();
+    try {
+      await handler(this.ctx, i);
+      this.ctx.command(n, true, Date.now() - started);
+    } catch (e) {
+      this.ctx.command(n, false, Date.now() - started);
+      this.log('error', `/${n} failed: ${(e as Error).message}`);
+      await this.replyError(i);
+    }
+  }
+
+  /** Buttons and menus on messages the bot posted. Custom IDs look like `df:<module>:<action>[:<args>]`. */
+  private async runComponent(i: ButtonInteraction | StringSelectMenuInteraction): Promise<void> {
+    const [prefix, kind, a, b] = i.customId.split(':');
+    if (prefix !== 'df') return;
+    try {
+      if (i.isStringSelectMenu()) {
+        if (kind === 'rrm' && a) await onRoleMenu(this.ctx, i, a);
+        return;
+      }
+      if (i.customId === CID.ticketOpen) await onTicketOpen(this.ctx, i);
+      else if (i.customId === CID.ticketClose) await onTicketClose(this.ctx, i);
+      else if (i.customId === CID.ticketCloseConfirm) await onTicketCloseConfirm(this.ctx, i);
+      else if (i.customId === CID.verify) await onVerify(this.ctx, i);
+      else if (kind === 'rr' && a && b) await onRoleButton(this.ctx, i, a, b);
+      else if (kind === 'sug' && a && b) await onSuggestionButton(this.ctx, i, a, Number(b));
+      else if (kind === 'gw' && a === 'enter' && b) await onGiveawayEnter(this.ctx, i, Number(b));
+    } catch (e) {
+      this.log('error', `Button “${i.customId}” failed: ${(e as Error).message}`);
+      await this.replyError(i);
+    }
+  }
+
+  private async replyError(i: ChatInputCommandInteraction | ButtonInteraction | StringSelectMenuInteraction): Promise<void> {
+    const content = 'Something went wrong. The error was written to the bot’s console in DelyForge.';
+    if (i.deferred || i.replied) await i.editReply({ content }).catch(() => null);
+    else await i.reply({ content, flags: MessageFlags.Ephemeral }).catch(() => null);
   }
 }

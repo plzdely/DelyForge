@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { ModuleConfigs } from '@delyforge/shared';
 import {
+  ChannelType,
   PermissionFlagsBits,
   type RESTPostAPIChatInputApplicationCommandsJSONBody,
   SlashCommandBuilder,
@@ -117,6 +118,64 @@ export function commandHash(c: CommandJSON): string {
 }
 
 /** The slash commands a server should have for its module settings. */
+const LEVELING: CommandJSON[] = [
+  new SlashCommandBuilder()
+    .setName('rank')
+    .setDescription('Show your level and XP')
+    .setDMPermission(false)
+    .addUserOption((o) => o.setName('member').setDescription('Whose rank (defaults to you)'))
+    .toJSON(),
+  new SlashCommandBuilder().setName('leaderboard').setDescription('Top members by XP').setDMPermission(false).toJSON(),
+];
+
+const TICKET: CommandJSON = new SlashCommandBuilder()
+  .setName('ticket')
+  .setDescription('Manage the ticket in this channel')
+  .setDMPermission(false)
+  .addSubcommand((s) =>
+    s
+      .setName('add')
+      .setDescription('Let another member see this ticket')
+      .addUserOption((o) => o.setName('member').setDescription('Who to add').setRequired(true)),
+  )
+  .addSubcommand((s) => s.setName('close').setDescription('Close this ticket'))
+  .toJSON();
+
+const SUGGEST: CommandJSON = new SlashCommandBuilder()
+  .setName('suggest')
+  .setDescription('Share an idea for the server')
+  .setDMPermission(false)
+  .addStringOption((o) => o.setName('idea').setDescription('Your suggestion').setRequired(true).setMinLength(5).setMaxLength(1500))
+  .toJSON();
+
+/** Visible to everyone; the bot checks Manage Server or the configured manager roles when it runs. */
+const GIVEAWAY: CommandJSON = new SlashCommandBuilder()
+  .setName('giveaway')
+  .setDescription('Run giveaways')
+  .setDMPermission(false)
+  .addSubcommand((s) =>
+    s
+      .setName('start')
+      .setDescription('Start a giveaway')
+      .addStringOption((o) => o.setName('prize').setDescription('What can be won').setRequired(true).setMaxLength(200))
+      .addStringOption((o) => o.setName('duration').setDescription('How long, e.g. 30m, 2h, 1d, 1h30m').setRequired(true).setMaxLength(20))
+      .addIntegerOption((o) => o.setName('winners').setDescription('Number of winners (default 1)').setMinValue(1).setMaxValue(20))
+      .addChannelOption((o) => o.setName('channel').setDescription('Where to post it (default: here)').addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)),
+  )
+  .addSubcommand((s) =>
+    s
+      .setName('end')
+      .setDescription('End a giveaway now')
+      .addIntegerOption((o) => o.setName('id').setDescription('Giveaway number (shown at the bottom of it)').setRequired(true).setMinValue(1)),
+  )
+  .addSubcommand((s) =>
+    s
+      .setName('reroll')
+      .setDescription('Pick another winner')
+      .addIntegerOption((o) => o.setName('id').setDescription('Giveaway number').setRequired(true).setMinValue(1)),
+  )
+  .toJSON();
+
 export function desiredCommands(config: ModuleConfigs): CommandJSON[] {
   const out: CommandJSON[] = [];
   if (config.moderation.enabled) out.push(...MODERATION);
@@ -125,5 +184,9 @@ export function desiredCommands(config: ModuleConfigs): CommandJSON[] {
       if (enabled) out.push(UTILITY[key as keyof typeof UTILITY]);
     }
   }
+  if (config.leveling.enabled) out.push(...LEVELING);
+  if (config.tickets.enabled) out.push(TICKET);
+  if (config.suggestions.enabled) out.push(SUGGEST);
+  if (config.giveaways.enabled) out.push(GIVEAWAY);
   return out;
 }

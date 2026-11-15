@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { DEFAULT_MODULE_CONFIGS } from '@delyforge/shared';
 import { afterEach, describe, expect, it } from 'vitest';
 import { commandHash, desiredCommands } from '../src/modules/commands.js';
+import { hierarchyProblem } from '../src/modules/moderation.js';
 import { parsePollOptions } from '../src/modules/utility.js';
 import { BotStore, planCommandSync } from '../src/store.js';
 
@@ -93,5 +94,26 @@ describe('parsePollOptions', () => {
     expect(parsePollOptions('Yes|yes|Yes')).toBeNull();
     expect(parsePollOptions('Only one')).toBeNull();
     expect(parsePollOptions(Array.from({ length: 11 }, (_, i) => `o${i}`).join('|'))).toBeNull();
+  });
+});
+
+describe('hierarchyProblem (who may punish whom)', () => {
+  const m = (id: string, position: number) => ({ id, roles: { highest: { position } } }) as never;
+  const guild = (botPosition: number) => ({ ownerId: 'owner', members: { me: m('bot', botPosition) } });
+
+  it('allows a moderator to act on a lower member when the bot is above them too', () => {
+    expect(hierarchyProblem(guild(10), m('mod', 5), m('member', 1))).toBeNull();
+  });
+
+  it('blocks self, the owner, the bot, equal or higher ranks, and members above the bot', () => {
+    expect(hierarchyProblem(guild(10), m('mod', 5), m('mod', 5))).toMatch(/yourself/);
+    expect(hierarchyProblem(guild(10), m('mod', 5), m('owner', 1))).toMatch(/owner/);
+    expect(hierarchyProblem(guild(10), m('mod', 5), m('bot', 10))).toMatch(/myself/);
+    expect(hierarchyProblem(guild(10), m('mod', 5), m('peer', 5))).toMatch(/same as or above yours/);
+    expect(hierarchyProblem(guild(3), m('mod', 5), m('member', 4))).toMatch(/above mine/);
+  });
+
+  it('lets the owner act on anyone below the bot', () => {
+    expect(hierarchyProblem(guild(10), m('owner', 1), m('admin', 9))).toBeNull();
   });
 });

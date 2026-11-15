@@ -8,6 +8,8 @@ import {
   computeIntents,
   containsInvite,
   disallowedLinks,
+  levelFromXp,
+  xpToNextLevel,
   matchBlockedWord,
   moduleConfigSchemas,
   recordMessageAndCheckSpam,
@@ -140,5 +142,49 @@ describe('auto-moderation checks', () => {
     expect(thresholdFor(t, 3)?.action).toBe('timeout');
     expect(thresholdFor(t, 4)).toBeNull();
     expect(thresholdFor(t, 5)?.action).toBe('ban');
+  });
+});
+
+describe('link filter bypasses (security review)', () => {
+  it('uses the real hostname, not text after it', () => {
+    const allowed = ['youtube.com'];
+    expect(disallowedLinks('https://evil.com?x.youtube.com', allowed)).toEqual(['evil.com']);
+    expect(disallowedLinks('https://evil.com#.youtube.com', allowed)).toEqual(['evil.com']);
+    expect(disallowedLinks('https://youtube.com@evil.com/watch', allowed)).toEqual(['evil.com']);
+    expect(disallowedLinks('https://www.youtube.com./watch', allowed)).toEqual([]);
+  });
+
+  it('never treats an empty allow-list entry as "allow everything"', () => {
+    expect(disallowedLinks('https://evil.com', [''])).toEqual(['evil.com']);
+    expect(moduleConfigSchemas.moderation.safeParse({
+      ...DEFAULT_MODULE_CONFIGS.moderation,
+      automod: { ...DEFAULT_MODULE_CONFIGS.moderation.automod, links: { enabled: true, allowedDomains: [''], action: 'delete' } },
+    }).success).toBe(false);
+  });
+});
+
+describe('leveling maths', () => {
+  it('follows the familiar curve', () => {
+    expect(xpToNextLevel(0)).toBe(100);
+    expect(xpToNextLevel(1)).toBe(155);
+    expect(levelFromXp(0)).toEqual({ level: 0, current: 0, needed: 100 });
+    expect(levelFromXp(99).level).toBe(0);
+    expect(levelFromXp(100)).toEqual({ level: 1, current: 0, needed: 155 });
+    expect(levelFromXp(255)).toEqual({ level: 2, current: 0, needed: 220 });
+  });
+
+  it('rejects min XP above max XP', () => {
+    expect(moduleConfigSchemas.leveling.safeParse({ ...DEFAULT_MODULE_CONFIGS.leveling, xpMin: 50, xpMax: 10 }).success).toBe(false);
+  });
+});
+
+describe('reaction role panels', () => {
+  const panel = { id: 'games', channelId: null, title: 'Games', description: '', color: '#7c5cff', mode: 'buttons' as const, multiple: true, roles: [{ roleId: G, label: 'Minecraft', emoji: '⛏️' }] };
+
+  it('accepts a valid panel and rejects duplicate panel IDs or empty panels', () => {
+    const schema = moduleConfigSchemas.reactionRoles;
+    expect(schema.safeParse({ enabled: true, panels: [panel] }).success).toBe(true);
+    expect(schema.safeParse({ enabled: true, panels: [panel, panel] }).success).toBe(false);
+    expect(schema.safeParse({ enabled: true, panels: [{ ...panel, roles: [] }] }).success).toBe(false);
   });
 });

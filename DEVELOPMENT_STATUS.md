@@ -1,6 +1,6 @@
 # Development Status
 
-_Last updated: 2026-11-15 — Phase 4, batch 1._
+_Last updated: 2026-11-15 — Phase 4 complete._
 
 Legend: ✅ done & verified · 🟡 done, not yet verified end-to-end · ⏳ pending · ⛔ blocked on an external action
 
@@ -85,8 +85,22 @@ Not yet confirmed by hand: Stop → bot goes offline in Discord, and the connect
 | Utility: /serverinfo /userinfo /avatar /poll (native Discord polls) | ✅ / 🟡 | poll parsing tested; commands need Discord |
 | UI: Modules tab with server picker, settings page per module (channel/role pickers, template variables + preview, warnings for missing intents/permissions with fix links), sidebar module pages | ✅ | typecheck + smoke screenshots (configured state needs a real server) |
 
-### Next: verify batch 1 with your bot, then batch 2
-Leveling, Tickets, Reaction Roles, Verification, Suggestions, Giveaways — listed as “Coming soon” in the app.
+### Batch 2
+
+| Item | Status | Verification |
+|---|---|---|
+| Review fixes: link filter uses the real hostname; /clearwarnings and /untimeout check rank; /ban works on members who left; command sync re-runs after mid-sync changes; spam tracker forgets idle members; roadmap pages no longer blank | ✅ | 9 new tests |
+| Module list defined once (types, schemas, defaults, IPC enum derived from it) | ✅ | typecheck |
+| Panels: bot posts ticket / verify / role panels and edits or moves them when settings change | ✅ / 🟡 | panel builder tests; posting needs Discord |
+| Leveling: XP with cooldown, no-XP channels/roles, level-up message, role rewards (stacking or highest only), /rank, /leaderboard | ✅ / 🟡 | maths, cooldown, reward tests |
+| Tickets: panel → private channel with staff access, open limit, close with confirmation, transcript file to channel + DM, /ticket add, /ticket close | ✅ / 🟡 | name, transcript and close-once tests |
+| Verification: verify button, role add/remove, minimum account age | 🟡 | needs Discord |
+| Reaction roles: up to 10 panels, buttons or menu, roles re-checked against current settings on every click | 🟡 | panel tests; clicks need Discord |
+| Suggestions: /suggest, 👍/👎 votes (change or take back), staff approve/reject | ✅ / 🟡 | vote tests |
+| Giveaways: /giveaway start/end/reroll, enter/leave button, fair crypto-random winners, survives restarts | ✅ / 🟡 | duration, winner, end-once tests |
+| Settings forms for all six modules | ✅ | typecheck + smoke |
+
+**Not built (honest):** welcome images, moderation appeals, ticket ratings, suggestion reasons, giveaway role requirements, warnings/XP management screens in the app.
 
 ## Known limitations / honest notes
 - No accounts yet — the desktop app runs on the local Free plan (accounts & Stripe are Phase 7).
@@ -103,7 +117,5 @@ The Free plan allows 1 bot. To test with more, start the app with a simulated pl
 customer builds ignore it). In Git Bash: `DELYFORGE_DEV_PLAN=pro pnpm dev:desktop`. In PowerShell:
 `$env:DELYFORGE_DEV_PLAN='pro'; pnpm dev:desktop`.
 
-## Next up — Phase 4, batch 2
-Leveling, Tickets, Reaction Roles, Verification, Suggestions, Giveaways on the same module system.
-Not in batch 1 (honest): welcome *images* (need an image library), moderation appeals, warning history in the app UI
-(available in Discord via /warnings).
+## Next up — Phase 5 (builders)
+Command Builder, Embed Builder, Automation Studio, Template Library.

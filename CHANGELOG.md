@@ -6,6 +6,8 @@ versions follow [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Phase 4 (batch 2): Leveling, Tickets, Verification, Reaction Roles, Suggestions and Giveaways modules; self-updating
+  panel messages; security fixes to the link filter and moderation rank checks.
 - Phase 4 (batch 1): module system with per-server settings — Welcome (messages, cards, DMs, goodbye, auto-roles),
   Moderation (9 staff commands, warning thresholds, auto-moderation for invites/links/words/spam), Logging (8 event
   types), Utility (/serverinfo, /userinfo, /avatar, /poll). Settings apply live; channel and role pickers load from

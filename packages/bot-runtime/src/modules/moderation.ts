@@ -26,7 +26,11 @@ const reply = (i: ChatInputCommandInteraction, content: string) =>
  * Can `actor` act on `target`? Mirrors Discord's own rules so we fail with a clear message instead of an API error:
  * nobody can act on the owner or themselves, and both the moderator and the bot must be above the target.
  */
-export function hierarchyProblem(guild: Guild, actor: GuildMember, target: GuildMember): string | null {
+export function hierarchyProblem(
+  guild: Pick<Guild, 'ownerId'> & { members: { me: Pick<GuildMember, 'id' | 'roles'> | null } },
+  actor: Pick<GuildMember, 'id' | 'roles'>,
+  target: Pick<GuildMember, 'id' | 'roles'>,
+): string | null {
   if (target.id === actor.id) return 'You can’t do that to yourself.';
   if (target.id === guild.ownerId) return 'You can’t do that to the server owner.';
   if (target.id === guild.members.me?.id) return 'I can’t do that to myself.';
@@ -103,6 +107,10 @@ export async function handleModerationCommand(ctx: ModuleContext, i: ChatInputCo
     }
     case 'clearwarnings': {
       const user = i.options.getUser('member', true);
+      if (user.id === actor.id) return void (await reply(i, 'You can’t clear your own warnings.'));
+      const member = await guild.members.fetch(user.id).catch(() => null);
+      const problem = member ? hierarchyProblem(guild, actor, member) : null;
+      if (problem) return void (await reply(i, problem));
       const removed = ctx.store.clearWarnings(guild.id, user.id);
       await modLog(ctx, guild, { title: 'Warnings cleared', description: `${removed} warning(s) for <@${user.id}> cleared by <@${actor.id}>.`, color: COLORS.info });
       await reply(i, `Cleared ${removed} warning${removed === 1 ? '' : 's'} for **${user.username}**.`);
@@ -112,6 +120,19 @@ export async function handleModerationCommand(ctx: ModuleContext, i: ChatInputCo
     case 'kick':
     case 'ban': {
       const target = await fetchTarget();
+      if (!target && i.commandName === 'ban') {
+        // They already left (e.g. a raider) — Discord still allows banning by user ID; no roles to compare.
+        const user = i.options.getUser('member', true);
+        if (user.id === actor.id) return void (await reply(i, 'You can’t do that to yourself.'));
+        try {
+          await guild.bans.create(user.id, { reason: `${reason} (by ${actor.user.tag})`, deleteMessageSeconds: i.options.getInteger('delete_messages') ?? 0 });
+        } catch (e) {
+          return void (await reply(i, `Couldn’t ban: ${(e as Error).message}`));
+        }
+        await modLog(ctx, guild, { title: 'Member banned', description: `<@${user.id}> (${user.tag}, not in the server) by <@${actor.id}>
+**Reason:** ${reason}`, color: COLORS.danger });
+        return void (await reply(i, `✅ **${user.username}** was banned.`));
+      }
       if (!target) return void (await reply(i, 'That person isn’t in this server.'));
       const problem = hierarchyProblem(guild, actor, target);
       if (problem) return void (await reply(i, problem));
@@ -139,6 +160,8 @@ export async function handleModerationCommand(ctx: ModuleContext, i: ChatInputCo
     case 'untimeout': {
       const target = await fetchTarget();
       if (!target) return void (await reply(i, 'That person isn’t in this server.'));
+      const problem = hierarchyProblem(guild, actor, target);
+      if (problem) return void (await reply(i, problem));
       await target.timeout(null, `Timeout removed by ${actor.user.tag}`).catch(() => null);
       await modLog(ctx, guild, { title: 'Timeout removed', description: `<@${target.id}> by <@${actor.id}>`, color: COLORS.info });
       await reply(i, `✅ Removed the timeout for **${target.displayName}**.`);
@@ -178,6 +201,11 @@ export async function handleModerationCommand(ctx: ModuleContext, i: ChatInputCo
 
 const recent = new Map<string, number[]>();
 
+/** Forgets members with no messages inside the spam window, so memory doesn't grow with every member ever seen. */
+function pruneSpamTracker(now: number, perSeconds: number): void {
+  for (const [key, ts] of recent) if (!ts.length || ts[ts.length - 1]! < now - perSeconds * 1000) recent.delete(key);
+}
+
 /** Checks a message against the auto-moderation rules and acts on the first one it breaks. */
 export async function automodCheck(ctx: ModuleContext, message: Message): Promise<void> {
   if (!message.inGuild() || message.author.bot || !message.member) return;
@@ -202,6 +230,7 @@ export async function automodCheck(ctx: ModuleContext, message: Message): Promis
       rule = { label: 'sending messages too fast', action: a.spam.action };
       ts.length = 0;
     }
+    if (recent.size > 5000) pruneSpamTracker(Date.now(), a.spam.perSeconds);
   }
   if (!rule) return;
 

@@ -10,7 +10,6 @@ import {
   type ModerationConfig,
   type ModuleConfigs,
   PERMISSIONS,
-  TEMPLATE_VARIABLES,
   type UtilityConfig,
   type WelcomeConfig,
   hasFeature,
@@ -20,7 +19,6 @@ import {
   moduleInfo,
   moduleIntents,
   modulePermissions,
-  renderTemplate,
   resolveGuildModules,
 } from '@delyforge/shared';
 import { ArrowLeft, ExternalLink, Lock, Plus, RotateCcw, Trash2, TriangleAlert } from 'lucide-react';
@@ -28,6 +26,8 @@ import { type ReactNode, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { toast } from 'sonner';
 import { InviteLink } from '@/components/bots/permissions-editor';
+import { Section, TemplateField } from '@/components/modules/fields';
+import { GiveawaysForm, LevelingForm, ReactionRolesForm, SuggestionsForm, TicketsForm, VerificationForm } from '@/components/modules/forms';
 import {
   ChannelChecklist,
   ChannelSelect,
@@ -51,39 +51,6 @@ import { useRuntimeControls, useRuntimeState } from '@/lib/runtime';
 import { ModuleWorkspaceGate, useModuleWorkspace } from './modules';
 
 type Draft = ModuleConfigs[ImplementedModuleId];
-
-function Section({ title, description, children }: { title: string; description?: ReactNode; children: ReactNode }) {
-  return (
-    <Card>
-      <CardHeader title={title} description={description} />
-      <CardBody className="space-y-4">{children}</CardBody>
-    </Card>
-  );
-}
-
-/** Message box with clickable {variables} and a live preview. */
-function TemplateField({ id, label, value, onChange, max = 2000 }: { id: string; label: string; value: string; onChange: (v: string) => void; max?: number }) {
-  const preview = renderTemplate(value, { user: '@NewMember', 'user.name': 'NewMember', 'user.id': '123456789012345678', server: 'Your Server', memberCount: 128 });
-  return (
-    <Field label={label} htmlFor={id} counter={{ value: value.length, max }}>
-      <Textarea id={id} value={value} onChange={(e) => onChange(e.target.value)} className="min-h-24" />
-      <div className="flex flex-wrap gap-1.5">
-        {TEMPLATE_VARIABLES.map((v) => (
-          <button
-            key={v.key}
-            type="button"
-            title={v.description}
-            onClick={() => onChange(`${value}${v.key}`)}
-            className="rounded border border-border bg-surface-hover px-1.5 py-0.5 font-mono text-2xs text-fg-muted hover:text-fg"
-          >
-            {v.key}
-          </button>
-        ))}
-      </div>
-      {value ? <div className="rounded-md border border-border bg-bg-subtle px-3 py-2 text-xs whitespace-pre-wrap text-fg-muted">Preview: {preview}</div> : null}
-    </Field>
-  );
-}
 
 const ACTION_LABELS = { delete: 'Delete message', warn: 'Delete + warn', timeout: 'Delete + timeout' } as const;
 
@@ -418,6 +385,12 @@ export function ModuleSettings() {
             {id === 'moderation' ? <ModerationForm c={draft as ModerationConfig} set={setDraft} guild={guild} automodLocked={automodLocked} /> : null}
             {id === 'logging' ? <LoggingForm c={draft as LoggingConfig} set={setDraft} guild={guild} /> : null}
             {id === 'utility' ? <UtilityForm c={draft as UtilityConfig} set={setDraft} /> : null}
+            {id === 'leveling' ? <LevelingForm c={draft as ModuleConfigs['leveling']} set={setDraft} guild={guild} /> : null}
+            {id === 'tickets' ? <TicketsForm c={draft as ModuleConfigs['tickets']} set={setDraft} guild={guild} /> : null}
+            {id === 'verification' ? <VerificationForm c={draft as ModuleConfigs['verification']} set={setDraft} guild={guild} /> : null}
+            {id === 'reactionRoles' ? <ReactionRolesForm c={draft as ModuleConfigs['reactionRoles']} set={setDraft} guild={guild} /> : null}
+            {id === 'suggestions' ? <SuggestionsForm c={draft as ModuleConfigs['suggestions']} set={setDraft} guild={guild} /> : null}
+            {id === 'giveaways' ? <GiveawaysForm c={draft as ModuleConfigs['giveaways']} set={setDraft} guild={guild} /> : null}
           </fieldset>
 
           <div className="sticky bottom-0 -mx-1 flex items-center justify-end gap-2 rounded-xl border border-border bg-surface-raised/95 px-4 py-3 shadow-pop backdrop-blur">

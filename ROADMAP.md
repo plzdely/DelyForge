@@ -25,11 +25,11 @@ and has tests. Progress is tracked in [DEVELOPMENT_STATUS.md](DEVELOPMENT_STATUS
 - `packages/bot-runtime`, BotSupervisor (start/stop/restart/auto-restart/start-on-launch/start-all)
 - Live console (stream, search, filter, download, clear, retention), monitoring (latency, CPU, memory, uptime)
 
-## Phase 4 — Bot modules ← in progress (batch 1 done: Welcome, Moderation, Logging, Utility)
+## Phase 4 — Bot modules ✅
 Moderation, Welcome, Tickets, Leveling, Logging, Utility, Verification, Reaction Roles, Suggestions, Giveaways — each with
 config schema, config page, runtime implementation, required intents/permissions declaration and tests.
 
-## Phase 5 — Builders
+## Phase 5 — Builders ← next
 Command Builder (slash/user/message commands, components, modals, live preview, publish), Embed Builder (Discord-accurate
 preview, limit validation, reusable templates), Automation Studio (node editor + execution engine with limits, history,
 test mode, versioning), Template Library (built-in templates, import/export/share).

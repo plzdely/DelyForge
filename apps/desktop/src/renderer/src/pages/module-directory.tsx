@@ -10,6 +10,7 @@ import { EmptyState } from '@/components/ui/misc';
 import { useEntitlements } from '@/lib/entitlements';
 import { useBotModules } from '@/lib/modules';
 import { useBots } from '@/lib/queries';
+import { RoadmapPage } from './roadmap';
 
 /** How many servers have this module switched on for one bot. */
 function EnabledCount({ botId, moduleId }: { botId: string; moduleId: string }) {
@@ -24,7 +25,7 @@ export function ModuleDirectoryPage() {
   const { moduleId = '' } = useParams();
   const bots = useBots();
   const entitlements = useEntitlements();
-  if (!isImplementedModule(moduleId)) return null;
+  if (!isImplementedModule(moduleId)) return <RoadmapPage />; // planned modules keep their roadmap page
   const info = moduleInfo(moduleId);
   const locked = !hasFeature(entitlements, info.feature);
   const list = bots.data ?? [];
