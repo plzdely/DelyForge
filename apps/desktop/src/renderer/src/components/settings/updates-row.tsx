@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { call } from '@/lib/bridge';
 
 const TEXT: Record<UpdateStatus['state'], string> = {
-  disabled: 'Automatic updates are on in the installed app.',
+  disabled: 'Automatic updates aren’t set up for this copy (development or test build).',
   idle: 'You have the latest version.',
   checking: 'Checking for updates…',
   downloading: 'Downloading an update…',
