@@ -6,6 +6,8 @@ versions follow [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Discord account linking (required in customer builds), bans that block the email and Discord account, and staff
+  roles managed from the Admin dashboard.
 - Phase 10: one-click Windows installer with app icon, automatic updates (customer chooses when to restart), release
   builds with the production API and signing key baked in, packaged-app smoke test.
 - Phase 9: analytics with CSV export, automatic daily backups, team workspaces with invites, and an internal admin

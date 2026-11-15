@@ -1,5 +1,5 @@
 import { Body, Controller, Delete, Get, HttpCode, Inject, Param, Post, Query, UseGuards } from '@nestjs/common';
-import { adminListingStatusSchema, adminOverrideSchema, adminReviewHiddenSchema, adminUserStatusSchema } from '@delyforge/shared';
+import { adminListingStatusSchema, adminOverrideSchema, adminReviewHiddenSchema, adminRoleSchema, adminUserStatusSchema } from '@delyforge/shared';
 import { z } from 'zod';
 import { Auth, AuthGuard, parse } from '../auth/auth.guard';
 import type { AccessClaims } from '../auth/crypto';
@@ -34,6 +34,13 @@ export class AdminController {
     await this.admin.require(a.sub, 'admin');
     const input = parse(adminUserStatusSchema, body);
     await this.admin.setUserStatus(a.sub, id, input.status, input.reason);
+  }
+
+  @Post('users/:id/role')
+  @HttpCode(204)
+  async role(@Auth() a: AccessClaims, @Param('id') id: string, @Body() body: unknown) {
+    await this.admin.require(a.sub, 'admin');
+    await this.admin.setRole(a.sub, id, parse(adminRoleSchema, body).role);
   }
 
   @Post('workspaces/:id/overrides')

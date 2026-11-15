@@ -47,6 +47,8 @@ export interface AccountProfile {
   role: 'USER' | 'SUPPORT' | 'ADMIN';
   createdAt: string;
   workspace: { id: string; name: string };
+  /** The linked Discord account (required to use DelyForge when the server has Discord linking set up). */
+  discord: { id: string; username: string; avatarUrl: string | null } | null;
 }
 
 export interface SessionInfo {
@@ -96,6 +98,8 @@ export const entitlementClaimsSchema = z
       })
       .strict(),
     graceEndsAt: z.string().nullable(),
+    /** False when the server requires a linked Discord account and this user has none (older certificates omit it). */
+    discordOk: z.boolean().optional(),
     /** Issued-at and expiry, seconds since epoch. */
     iat: z.number().int(),
     exp: z.number().int(),
@@ -115,6 +119,8 @@ export interface AccountStatus {
   /** True when the API couldn't be reached and the cached certificate is being used. */
   offline: boolean;
   billingConfigured: boolean;
+  /** Customer builds need a signed-in account with Discord linked before anything else works. */
+  access: { allowed: boolean; needs: 'sign-in' | 'discord' | null };
 }
 
 /** Base64url helpers that work in Node and browsers. */

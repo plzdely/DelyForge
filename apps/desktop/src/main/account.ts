@@ -62,6 +62,8 @@ export class AccountService {
       publicKeyPem: string | null;
       /** Development only: may fetch the key from the API on first use. */
       allowKeyDiscovery: boolean;
+      /** Customer builds: nothing works until signed in with Discord linked (so bans can't be dodged). */
+      requireAccount?: boolean;
       onChange: () => void;
       fetchImpl?: typeof fetch;
       now?: () => number;
@@ -188,15 +190,34 @@ export class AccountService {
     return this.status();
   }
 
+  /** The verified certificate, while current or within the 7-day offline grace window; otherwise null. */
+  private validClaims(): EntitlementClaims | null {
+    const s = this.stored();
+    if (!s.refreshToken || !s.certificate || !s.verifiedAt || !this.publicKeyPem) return null;
+    const claims = verifyCertificate(s.certificate, this.publicKeyPem);
+    if (!claims) return null;
+    const fresh = claims.exp * 1000 > this.now || this.now - Date.parse(s.verifiedAt) < OFFLINE_GRACE_DAYS * DAY;
+    return fresh && isPlanId(claims.effectivePlanId) ? claims : null;
+  }
+
+  /** Whether this installation may be used at all (customer builds need an account with Discord linked). */
+  accessState(): AccountStatus['access'] {
+    if (!this.opts.requireAccount) return { allowed: true, needs: null };
+    const claims = this.validClaims();
+    if (!claims) return { allowed: false, needs: 'sign-in' };
+    if (claims.discordOk === false) return { allowed: false, needs: 'discord' };
+    return { allowed: true, needs: null };
+  }
+
+  /** Starts linking Discord: the Discord page to open in the browser. */
+  async discordLinkUrl(): Promise<string> {
+    return (await this.http<{ url: string }>('POST', '/v1/me/discord', undefined, true)).url;
+  }
+
   /** What this installation may use right now. */
   entitlements(): AccountEntitlements {
-    const s = this.stored();
-    if (!s.refreshToken || !s.certificate || !s.verifiedAt || !this.publicKeyPem) return FREE;
-    const claims = verifyCertificate(s.certificate, this.publicKeyPem);
+    const claims = this.validClaims();
     if (!claims) return FREE;
-    // Valid while the certificate is current, or within the offline grace window after the last successful check.
-    const fresh = claims.exp * 1000 > this.now || this.now - Date.parse(s.verifiedAt) < OFFLINE_GRACE_DAYS * DAY;
-    if (!fresh || !isPlanId(claims.effectivePlanId)) return FREE;
     return {
       subscribedPlanId: claims.subscribedPlanId,
       effectivePlanId: claims.effectivePlanId,
@@ -219,6 +240,7 @@ export class AccountService {
       verifiedAt: signedIn ? s.verifiedAt : null,
       offline: this.offline,
       billingConfigured: this.billingConfigured,
+      access: this.accessState(),
     };
   }
 

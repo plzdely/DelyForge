@@ -34,7 +34,7 @@ import {
   updateProfileSchema,
 } from './account.js';
 import { appSettingsPatchSchema, type AppSettings } from './settings.js';
-import { type AdminAuditEntry, type AdminOverview, type AdminUser, adminListingStatusSchema, adminOverrideSchema, adminReviewHiddenSchema, adminUserStatusSchema } from './admin.js';
+import { type AdminAuditEntry, type AdminOverview, type AdminUser, adminListingStatusSchema, adminOverrideSchema, adminReviewHiddenSchema, adminRoleSchema, adminUserStatusSchema } from './admin.js';
 import type { AiProposalResult, AiTroubleshootAnswer, AiUsageInfo } from './ai.js';
 import { LISTING_TYPES, type ListingDetail, type ListingSummary, type MyListing, type ReviewQueueItem, developerProfileSchema, reviewSchema } from './marketplace.js';
 import type { PlanId } from './plans.js';
@@ -91,6 +91,7 @@ export const IPC_CHANNELS = {
   accountForgotPassword: 'account:forgot-password',
   accountResendVerification: 'account:resend-verification',
   accountUpdateProfile: 'account:update-profile',
+  accountLinkDiscord: 'account:link-discord',
   billingCheckout: 'billing:checkout',
   billingPortal: 'billing:portal',
   billingInvoices: 'billing:invoices',
@@ -129,6 +130,7 @@ export const IPC_CHANNELS = {
   adminRevoke: 'admin:revoke',
   adminListingStatus: 'admin:listing-status',
   adminReviewHidden: 'admin:review-hidden',
+  adminRole: 'admin:role',
   updatesStatus: 'updates:status',
   updatesCheck: 'updates:check',
   updatesInstall: 'updates:install',
@@ -211,6 +213,7 @@ export const ipcInputSchemas = {
   [IPC_CHANNELS.accountForgotPassword]: forgotPasswordSchema,
   [IPC_CHANNELS.accountResendVerification]: noInput,
   [IPC_CHANNELS.accountUpdateProfile]: updateProfileSchema,
+  [IPC_CHANNELS.accountLinkDiscord]: noInput,
   [IPC_CHANNELS.billingCheckout]: checkoutSchema,
   [IPC_CHANNELS.billingPortal]: noInput,
   [IPC_CHANNELS.billingInvoices]: noInput,
@@ -257,6 +260,7 @@ export const ipcInputSchemas = {
   [IPC_CHANNELS.adminUserStatus]: adminUserStatusSchema.extend({ id: z.string().min(1).max(40) }).strict(),
   [IPC_CHANNELS.adminGrant]: adminOverrideSchema.extend({ workspaceId: z.string().min(1).max(40) }).strict(),
   [IPC_CHANNELS.adminRevoke]: z.object({ id: z.string().min(1).max(40) }).strict(),
+  [IPC_CHANNELS.adminRole]: adminRoleSchema.extend({ id: z.string().min(1).max(40) }).strict(),
   [IPC_CHANNELS.adminListingStatus]: adminListingStatusSchema.extend({ slug: z.string().regex(/^[a-z0-9-]{3,48}$/) }).strict(),
   [IPC_CHANNELS.adminReviewHidden]: adminReviewHiddenSchema.extend({ id: z.string().min(1).max(40) }).strict(),
   [IPC_CHANNELS.teamInfo]: noInput,
@@ -359,6 +363,8 @@ export interface DelyForgeBridge {
     forgotPassword(email: string): Promise<IpcResult<null>>;
     resendVerification(): Promise<IpcResult<null>>;
     updateProfile(displayName: string): Promise<IpcResult<AccountStatus>>;
+    /** Opens Discord's sign-in page in the browser to link this account. */
+    linkDiscord(): Promise<IpcResult<null>>;
   };
   billing: {
     /** Opens Stripe Checkout in the browser. */
@@ -439,6 +445,8 @@ export interface DelyForgeBridge {
     setUserStatus(input: z.input<(typeof ipcInputSchemas)['admin:user-status']>): Promise<IpcResult<null>>;
     grant(input: z.input<(typeof ipcInputSchemas)['admin:grant']>): Promise<IpcResult<null>>;
     revoke(id: string): Promise<IpcResult<null>>;
+    /** Gives or removes staff access (admins only; not your own). */
+    setRole(input: { id: string; role: 'USER' | 'SUPPORT' | 'ADMIN' }): Promise<IpcResult<null>>;
     setListingStatus(input: z.input<(typeof ipcInputSchemas)['admin:listing-status']>): Promise<IpcResult<null>>;
     setReviewHidden(input: { id: string; hidden: boolean }): Promise<IpcResult<null>>;
   };

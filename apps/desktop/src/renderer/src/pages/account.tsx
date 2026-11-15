@@ -2,6 +2,7 @@ import { DEFAULT_PLANS, loginSchema, registerSchema } from '@delyforge/shared';
 import { CircleCheck, CloudOff, LogOut, Mail, RefreshCw, UserRound } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { Link } from 'react-router';
+import { DiscordConnect } from '@/components/account/discord-connect';
 import { Page, PageHeader } from '@/components/layout/page';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -13,7 +14,7 @@ import { useAccount, useAccountAction } from '@/lib/account';
 import { call } from '@/lib/bridge';
 import { timeAgo } from '@/lib/format';
 
-function SignInForm() {
+export function SignInForm() {
   const [mode, setMode] = useState<'login' | 'register' | 'forgot'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -159,6 +160,7 @@ export function AccountPage() {
               </div>
             </CardBody>
           </Card>
+          <DiscordConnect />
           <Card>
             <CardHeader
               title="Plan"

@@ -78,11 +78,14 @@ export class BillingService {
 
   /** The signed plan certificate for a user's workspace, plus the decoded claims for display. */
   async entitlements(userId: string, workspaceId: string, now = new Date()): Promise<{ token: string; claims: EntitlementClaims }> {
-    const [sub, overrides, catalogue] = await Promise.all([
+    const [sub, overrides, catalogue, user] = await Promise.all([
       this.prisma.subscription.findUnique({ where: { workspaceId } }),
       this.prisma.entitlementOverride.findMany({ where: { workspaceId, OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] } }),
       this.catalogue(),
+      this.prisma.user.findUnique({ where: { id: userId }, select: { discordId: true } }),
     ]);
+    // Discord linking is mandatory once the server has it set up; the app refuses to run without it (signed claim).
+    const discordOk = !(this.env.DISCORD_CLIENT_ID && this.env.DISCORD_CLIENT_SECRET) || Boolean(user?.discordId);
     const merged: EntitlementOverrides = {
       grantFeatures: overrides.flatMap((o) => o.grantFeatures as unknown as FeatureKey[]),
       limits: Object.assign({}, ...overrides.map((o) => o.limits as object)),
@@ -109,6 +112,7 @@ export class BillingService {
       features: resolved.features,
       limits: resolved.limits,
       graceEndsAt: resolved.graceEndsAt?.toISOString() ?? null,
+      discordOk,
       iat,
       exp: iat + TOKEN_TTL_SECONDS,
     };

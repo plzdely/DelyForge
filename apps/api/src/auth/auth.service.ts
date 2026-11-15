@@ -23,6 +23,9 @@ export class AuthService {
   ) {}
 
   async register(input: { email: string; password: string; displayName: string }, meta: { deviceName?: string; userAgent?: string; ip?: string }): Promise<AuthTokens> {
+    if (await this.prisma.ban.findUnique({ where: { kind_value: { kind: 'EMAIL', value: input.email } } })) {
+      throw new ForbiddenException('This email address can’t be used for DelyForge.');
+    }
     const existing = await this.prisma.user.findUnique({ where: { email: input.email } });
     if (existing) throw new ConflictException('An account with this email already exists. Sign in instead.');
     const passwordHash = await hashPassword(input.password);
@@ -159,6 +162,7 @@ export class AuthService {
       role: user.role,
       createdAt: user.createdAt.toISOString(),
       workspace: { id: ws.id, name: ws.name },
+      discord: user.discordId ? { id: user.discordId, username: user.discordUsername ?? '', avatarUrl: user.discordAvatarUrl } : null,
     };
   }
 

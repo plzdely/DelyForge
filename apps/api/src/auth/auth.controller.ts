@@ -13,6 +13,7 @@ import type { Request } from 'express';
 import { z } from 'zod';
 import { Auth, AuthGuard, clientMeta, parse } from './auth.guard';
 import { AuthService } from './auth.service';
+import { DiscordLinkService } from './discord.service';
 import type { AccessClaims } from './crypto';
 
 /** Strict limits on endpoints attackers would brute-force. */
@@ -20,7 +21,20 @@ const STRICT = { default: { limit: 10, ttl: 60_000 } };
 
 @Controller('v1/auth')
 export class AuthController {
-  constructor(@Inject(AuthService) private readonly auth: AuthService) {}
+  constructor(
+    @Inject(AuthService) private readonly auth: AuthService,
+    @Inject(DiscordLinkService) private readonly discord: DiscordLinkService,
+  ) {}
+
+  /** Discord sends the browser back here after the person approves (or cancels) linking. */
+  @Get('discord/callback')
+  @Header('content-type', 'text/html; charset=utf-8')
+  @Header('content-security-policy', "default-src 'none'; style-src 'unsafe-inline'")
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  async discordCallback(@Query('code') code?: string, @Query('state') state?: string, @Query('error') error?: string) {
+    const r = await this.discord.callback({ code, state, error });
+    return page(r.title, r.message);
+  }
 
   @Post('register')
   @Throttle(STRICT)
@@ -108,7 +122,18 @@ export class AuthController {
 @Controller('v1/me')
 @UseGuards(AuthGuard)
 export class MeController {
-  constructor(@Inject(AuthService) private readonly auth: AuthService) {}
+  constructor(
+    @Inject(AuthService) private readonly auth: AuthService,
+    @Inject(DiscordLinkService) private readonly discord: DiscordLinkService,
+  ) {}
+
+  /** Starts linking: returns the Discord page to open in the browser. */
+  @Post('discord')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  linkDiscord(@Auth() a: AccessClaims) {
+    return this.discord.start(a.sub);
+  }
 
   @Get()
   me(@Auth() a: AccessClaims) {
@@ -144,7 +169,7 @@ export function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 }
 
-function page(title: string, body: string, raw = false): string {
+export function page(title: string, body: string, raw = false): string {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)} — DelyForge</title>
 <style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#09090d;color:#ededf3;font:15px/1.5 system-ui,sans-serif}
 main{max-width:420px;padding:32px;border:1px solid #21212b;border-radius:14px;background:#121219}h1{font-size:20px;margin:0 0 8px}p{color:#a1a1b5}

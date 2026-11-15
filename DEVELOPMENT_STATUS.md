@@ -219,13 +219,40 @@ See "Making yourself staff" under Phase 8: set your `role` to `ADMIN` in Prisma 
 2. **Stripe** (Phase 7 list): products, prices, webhook to `https://<api>/v1/billing/webhook`.
 3. **Email provider** behind `apps/api/src/mail/mailer.ts` (Postmark, SES, Resend…). Until then no emails are sent in
    production (the API refuses rather than pretending).
-4. **Anthropic API key** for the AI features (`ANTHROPIC_API_KEY` on the server).
-5. **Update hosting:** any HTTPS static folder (S3/R2 bucket, your website) for installers + `latest.yml`.
-6. **Code-signing certificate** (OV or EV) so Windows doesn't warn customers. Then set `publisherName` in
+4. **Discord application** for account linking (steps under "Setting up Discord linking").
+5. **Anthropic API key** for the AI features (`ANTHROPIC_API_KEY` on the server).
+6. **Update hosting:** any HTTPS static folder (S3/R2 bucket, your website) for installers + `latest.yml`.
+7. **Code-signing certificate** (OV or EV) so Windows doesn't warn customers. Then set `publisherName` in
    `apps/desktop/electron-builder.yml` so updates must carry your signature.
-7. **Make yourself staff:** set your user's role to `ADMIN` (Prisma Studio) to review marketplace submissions.
-8. Real-world checks no test can do: a Stripe test-mode purchase, a real AI proposal, a teammate invite end-to-end,
+8. **Make yourself staff:** set your own role to `ADMIN` once in Prisma Studio; after that, give or remove staff access from the Admin dashboard.
+9. Real-world checks no test can do: a real Discord link, a Stripe test-mode purchase, a real AI proposal, a teammate invite end-to-end,
    and installing + updating on a second PC.
+
+## Discord linking, bans and staff access (after Phase 10)
+
+| Item | Status | Verification |
+|---|---|---|
+| Customers link their Discord account through Discord's own sign-in page (name + picture only, no Discord token kept) | ✅ / 🟡 | integration tests with a fake Discord; **real Discord needs your app's client ID + secret** |
+| Customer builds can't be used until signed in **and** Discord is linked; bots stop if access is lost | ✅ | desktop tests; the gate is part of the signed plan certificate, so it can't be faked by editing local files |
+| Ban (Admin dashboard): signs out everywhere, blocks the email from signing up and the Discord account from being linked again; Unban lifts all of it | ✅ | integration test |
+| Give or remove staff access (Customer / Support / Admin) from the Admin dashboard; nobody can change their own role | ✅ | integration test |
+| Admin search finds people by Discord name or ID | ✅ | integration test |
+
+### Setting up Discord linking (you, once)
+1. Go to <https://discord.com/developers/applications> → **New Application** → name it "DelyForge" → Create.
+   (Use a different application from any bot you run.)
+2. Left menu **OAuth2** → under **Redirects** click **Add Redirect** and enter
+   `http://localhost:4000/v1/auth/discord/callback` for testing (later also `https://<your API>/v1/auth/discord/callback`)
+   → **Save Changes**.
+3. Same page: copy **Client ID**; click **Reset Secret** → copy the secret.
+4. Put them in `apps/api/.env` as `DISCORD_CLIENT_ID=...` and `DISCORD_CLIENT_SECRET=...`, then restart the API.
+   Never share the secret or commit it.
+5. To try the sign-in gate in development: start the app with `DELYFORGE_REQUIRE_ACCOUNT=1 pnpm dev:desktop`
+   (PowerShell: `$env:DELYFORGE_REQUIRE_ACCOUNT='1'; pnpm dev:desktop`).
+
+### Not built
+- Banning someone from **your own Discord server** when they're banned in DelyForge (needs a bot with ban permission in
+  that server). Unlinking/changing the linked Discord account (staff can unban + the person relinks; ask if needed).
 
 ## Known limitations / honest notes
 - No accounts yet — the desktop app runs on the local Free plan (accounts & Stripe are Phase 7).

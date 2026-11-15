@@ -64,6 +64,6 @@ describe.skipIf(!enabled)('admin dashboard (PostgreSQL)', () => {
     await http().post(`/v1/admin/users/${u.id}/status`).set('authorization', staff).send({ status: 'ACTIVE', reason: 'Resolved' }).expect(204);
     await http().post('/v1/auth/login').send({ email: email('customer'), password }).expect(200);
     const audit = await http().get('/v1/admin/audit').set('authorization', staff).expect(200);
-    expect(audit.body.map((e: { action: string }) => e.action)).toEqual(expect.arrayContaining(['admin.user_suspended', 'admin.user_active', 'admin.override_granted']));
+    expect(audit.body.map((e: { action: string }) => e.action)).toEqual(expect.arrayContaining(['admin.user_banned', 'admin.user_unbanned', 'admin.override_granted']));
   });
 });

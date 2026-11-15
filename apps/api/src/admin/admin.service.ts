@@ -45,7 +45,9 @@ export class AdminService {
 
   async users(q: string): Promise<AdminUser[]> {
     const rows = await this.prisma.user.findMany({
-      where: q ? { OR: [{ email: { contains: q, mode: 'insensitive' } }, { displayName: { contains: q, mode: 'insensitive' } }, { id: q }] } : {},
+      where: q
+        ? { OR: [{ email: { contains: q, mode: 'insensitive' } }, { displayName: { contains: q, mode: 'insensitive' } }, { discordUsername: { contains: q, mode: 'insensitive' } }, { id: q }, { discordId: q }] }
+        : {},
       include: { ownedWorkspaces: { where: { isPersonal: true }, include: { subscription: true, entitlementOverrides: { orderBy: { createdAt: 'desc' } } } } },
       orderBy: { createdAt: 'desc' },
       take: 50,
@@ -60,6 +62,7 @@ export class AdminService {
         status: u.status,
         emailVerified: u.emailVerifiedAt !== null,
         createdAt: u.createdAt.toISOString(),
+        discord: u.discordId ? { id: u.discordId, username: u.discordUsername ?? '' } : null,
         workspace: { id: ws?.id ?? '', name: ws?.name ?? '', planId: ws?.subscription?.planId ?? 'free', subscriptionStatus: ws?.subscription?.status ?? null },
         overrides: (ws?.entitlementOverrides ?? []).map((o) => ({
           id: o.id,
@@ -77,9 +80,29 @@ export class AdminService {
     if (actorId === userId) throw new BadRequestException('You can’t change your own account status.');
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user || user.status === 'DELETED') throw new NotFoundException('That user doesn’t exist.');
-    await this.prisma.user.update({ where: { id: userId }, data: { status } });
-    if (status === 'SUSPENDED') await this.prisma.session.updateMany({ where: { userId, revokedAt: null }, data: { revokedAt: new Date() } });
-    await this.audit(actorId, `admin.user_${status.toLowerCase()}`, { type: 'user', id: userId }, { reason });
+    // A ban also blocks the person's email and Discord account, so a fresh account can't get them back in.
+    const identities = [{ kind: 'EMAIL' as const, value: user.email }, ...(user.discordId ? [{ kind: 'DISCORD' as const, value: user.discordId }] : [])];
+    await this.prisma.$transaction([
+      this.prisma.user.update({ where: { id: userId }, data: { status } }),
+      ...(status === 'SUSPENDED'
+        ? [
+            this.prisma.session.updateMany({ where: { userId, revokedAt: null }, data: { revokedAt: new Date() } }),
+            ...identities.map((b) =>
+              this.prisma.ban.upsert({ where: { kind_value: b }, create: { ...b, reason, bannedById: actorId, userId }, update: { reason, bannedById: actorId, userId } }),
+            ),
+          ]
+        : [this.prisma.ban.deleteMany({ where: { OR: identities } })]),
+    ]);
+    await this.audit(actorId, status === 'SUSPENDED' ? 'admin.user_banned' : 'admin.user_unbanned', { type: 'user', id: userId }, { reason, discordId: user.discordId });
+  }
+
+  /** Gives or removes staff access. Only admins; nobody changes their own role (so there is always another admin). */
+  async setRole(actorId: string, userId: string, role: 'USER' | 'SUPPORT' | 'ADMIN'): Promise<void> {
+    if (actorId === userId) throw new BadRequestException('You can’t change your own role.');
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user || user.status === 'DELETED') throw new NotFoundException('That user doesn’t exist.');
+    await this.prisma.user.update({ where: { id: userId }, data: { role } });
+    await this.audit(actorId, 'admin.role_changed', { type: 'user', id: userId }, { from: user.role, to: role });
   }
 
   async grantOverride(actorId: string, workspaceId: string, input: z.infer<typeof adminOverrideSchema>): Promise<void> {

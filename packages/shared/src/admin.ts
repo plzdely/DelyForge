@@ -25,6 +25,7 @@ export interface AdminUser {
   status: 'ACTIVE' | 'SUSPENDED' | 'DELETED';
   emailVerified: boolean;
   createdAt: string;
+  discord: { id: string; username: string } | null;
   workspace: { id: string; name: string; planId: string; subscriptionStatus: string | null };
   overrides: { id: string; grantFeatures: string[]; limits: Record<string, number | null>; reason: string; expiresAt: string | null }[];
 }
@@ -38,6 +39,7 @@ export interface AdminAuditEntry {
   createdAt: string;
 }
 
+/** SUSPENDED is a ban: the account is signed out everywhere and its email and Discord account can't be used again. */
 export const adminUserStatusSchema = z.object({ status: z.enum(['ACTIVE', 'SUSPENDED']), reason: z.string().trim().min(3).max(300) }).strict();
 
 export const adminOverrideSchema = z
@@ -57,6 +59,8 @@ export const adminOverrideSchema = z
     expiresAt: z.iso.datetime().nullable(),
   })
   .strict();
+
+export const adminRoleSchema = z.object({ role: z.enum(['USER', 'SUPPORT', 'ADMIN']) }).strict();
 
 export const adminListingStatusSchema = z.object({ status: z.enum(['PUBLISHED', 'SUSPENDED']), reason: z.string().trim().min(3).max(300) }).strict();
 export const adminReviewHiddenSchema = z.object({ hidden: z.boolean() }).strict();

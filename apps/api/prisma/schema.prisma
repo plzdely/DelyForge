@@ -44,6 +44,11 @@ model User {
   role            UserRole   @default(USER)
   status          UserStatus @default(ACTIVE)
   stripeCustomerId String?   @unique
+  /// Linked Discord account (required to use DelyForge when Discord linking is configured). Never a Discord token.
+  discordId        String?   @unique
+  discordUsername  String?
+  discordAvatarUrl String?
+  discordLinkedAt  DateTime?
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt
   lastLoginAt     DateTime?
@@ -90,6 +95,8 @@ enum EmailTokenPurpose {
   VERIFY_EMAIL
   RESET_PASSWORD
   CHANGE_EMAIL
+  /// One-time `state` for the Discord sign-in round trip.
+  DISCORD_LINK
 }
 
 model EmailToken {
@@ -573,6 +580,26 @@ model Favorite {
 // ─────────────────────────────────────────────────────────────────────────────
 // Operations
 // ─────────────────────────────────────────────────────────────────────────────
+
+enum BanKind {
+  EMAIL
+  DISCORD
+}
+
+/// Identities that may never be used for DelyForge again (set when staff ban an account).
+model Ban {
+  id         String   @id @default(cuid())
+  kind       BanKind
+  /// Lower-case email address or Discord user ID.
+  value      String
+  reason     String
+  bannedById String
+  /// The account that was banned (kept for reference; the identity stays banned even if it is deleted).
+  userId     String?
+  createdAt  DateTime @default(now())
+
+  @@unique([kind, value])
+}
 
 /// Append-only audit trail. Admin and privileged team actions MUST write here.
 model AuditLog {

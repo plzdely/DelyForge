@@ -13,7 +13,7 @@ const DAY = 86_400_000;
 const T0 = Date.parse('2026-11-15T12:00:00Z');
 const REFRESH = 'refresh-token-abcdefghijklmnopqrstuvwxyz';
 
-function certificate(plan: 'free' | 'pro', iatMs: number, key = privateKey): string {
+function certificate(plan: 'free' | 'pro', iatMs: number, key = privateKey, discordOk?: boolean): string {
   const iat = Math.floor(iatMs / 1000);
   const claims: EntitlementClaims = {
     v: 1,
@@ -26,6 +26,7 @@ function certificate(plan: 'free' | 'pro', iatMs: number, key = privateKey): str
     features: plan === 'pro' ? ['ai.builder', 'modules.standard'] : ['modules.basic'],
     limits: { maxBotProjects: plan === 'pro' ? 5 : 1, maxWorkflows: plan === 'pro' ? null : 3, maxTeamMembers: 1, aiCreditsPerMonth: 300, logRetentionDays: 14 },
     graceEndsAt: null,
+    ...(discordOk === undefined ? {} : { discordOk }),
     iat,
     exp: iat + 86_400,
   };
@@ -34,7 +35,7 @@ function certificate(plan: 'free' | 'pro', iatMs: number, key = privateKey): str
 }
 
 /** A tiny fake of the DelyForge API. */
-function fakeApi(opts: { plan: 'free' | 'pro'; now: () => number; online: () => boolean }) {
+function fakeApi(opts: { plan: 'free' | 'pro'; now: () => number; online: () => boolean; discordOk?: () => boolean | undefined }) {
   const fetchImpl = (async (url: string) => {
     if (!opts.online()) throw new TypeError('fetch failed');
     const path = new URL(url).pathname;
@@ -45,27 +46,29 @@ function fakeApi(opts: { plan: 'free' | 'pro'; now: () => number; online: () => 
     if (path === '/v1/me') {
       return json(200, { id: 'u1', email: 'a@b.c', emailVerified: true, displayName: 'Dely', avatarUrl: null, role: 'USER', createdAt: '', workspace: { id: 'w1', name: 'W' } });
     }
-    if (path === '/v1/entitlements') return json(200, { token: certificate(opts.plan, opts.now()), billingConfigured: true });
+    if (path === '/v1/entitlements') return json(200, { token: certificate(opts.plan, opts.now(), privateKey, opts.discordOk?.()), billingConfigured: true });
     return json(404, { error: { message: 'not found' } });
   }) as typeof fetch;
   return { fetchImpl };
 }
 
-function setup(plan: 'free' | 'pro' = 'pro') {
+function setup(plan: 'free' | 'pro' = 'pro', requireAccount = false) {
   let now = T0;
   let online = true;
   let changes = 0;
+  let discordOk: boolean | undefined;
   const db = openDatabase(':memory:');
-  const api = fakeApi({ plan, now: () => now, online: () => online });
+  const api = fakeApi({ plan, now: () => now, online: () => online, discordOk: () => discordOk });
   const service = new AccountService(db, cipher, {
     apiUrl: 'http://api.test',
     publicKeyPem: PUB,
     allowKeyDiscovery: false,
+    requireAccount,
     onChange: () => changes++,
     fetchImpl: api.fetchImpl,
     now: () => now,
   });
-  return { db, service, setNow: (t: number) => (now = t), setOnline: (v: boolean) => (online = v), changes: () => changes };
+  return { db, service, setNow: (t: number) => (now = t), setOnline: (v: boolean) => (online = v), setDiscordOk: (v: boolean) => (discordOk = v), changes: () => changes };
 }
 
 const login = (s: AccountService) => s.login({ email: 'a@b.c', password: 'long enough password' });
@@ -120,5 +123,24 @@ describe('AccountService', () => {
     await login(service);
     const row = db.prepare("SELECT value FROM settings WHERE key = 'account.refreshToken'").get() as { value: string };
     expect(row.value).not.toContain(REFRESH);
+  });
+});
+
+describe('access gate (customer builds)', () => {
+  it('needs sign-in, then a linked Discord account', async () => {
+    const { service, setDiscordOk } = setup('pro', true);
+    expect(service.status().access).toEqual({ allowed: false, needs: 'sign-in' });
+    setDiscordOk(false);
+    await login(service);
+    expect(service.status().access).toEqual({ allowed: false, needs: 'discord' });
+    setDiscordOk(true);
+    await service.refreshPlan();
+    expect(service.status().access).toEqual({ allowed: true, needs: null });
+    await service.logout();
+    expect(service.status().access.allowed).toBe(false);
+  });
+
+  it('never blocks development builds', () => {
+    expect(setup('pro', false).service.status().access).toEqual({ allowed: true, needs: null });
   });
 });

@@ -123,8 +123,19 @@ async function main(): Promise<void> {
     apiUrl: fromEnv('DELYFORGE_API_URL') ?? (__DELYFORGE_API_URL__ || 'http://localhost:4000'),
     publicKeyPem: publicKeyB64 ? Buffer.from(publicKeyB64, 'base64').toString('utf8') : null,
     allowKeyDiscovery: !app.isPackaged,
-    onChange: () => emit({ type: 'account-updated' }),
+    // Customer builds (with a real server baked in) can't be used without an account that has Discord linked.
+    requireAccount: app.isPackaged ? Boolean(__DELYFORGE_API_URL__) : process.env['DELYFORGE_REQUIRE_ACCOUNT'] === '1',
+    onChange: () => {
+      emit({ type: 'account-updated' });
+      onAccountChange();
+    },
   });
+  /** Set once the supervisor exists: stops all bots when access is lost (signed out, banned, Discord unlinked). */
+  let onAccountChange = () => {};
+  const assertAccess = () => {
+    const a = account.accessState();
+    if (!a.allowed) throw new AppError('FORBIDDEN', a.needs === 'discord' ? 'Connect your Discord account first (Account page).' : 'Sign in to DelyForge first.');
+  };
   /** Server-certified plan, or the development override. */
   const entitlements = () => (devEntitlements().source === 'dev-override' ? devEntitlements() : account.entitlements());
   const bots = new BotRepository(db, activity, entitlements);
@@ -250,6 +261,12 @@ async function main(): Promise<void> {
   handle(IPC_CHANNELS.accountRegister, (input) => account.register(input));
   handle(IPC_CHANNELS.accountLogin, (input) => account.login(input));
   handle(IPC_CHANNELS.accountLogout, () => account.logout());
+  handle(IPC_CHANNELS.accountLinkDiscord, async () => {
+    const url = await account.discordLinkUrl();
+    if (!isAllowedExternalUrl(url)) throw new AppError('INTERNAL', 'Unexpected sign-in address from the server.');
+    await shell.openExternal(url);
+    return null;
+  });
   handle(IPC_CHANNELS.accountRefresh, () => account.refreshPlan());
   handle(IPC_CHANNELS.accountForgotPassword, async ({ email }) => {
     await account.forgotPassword(email);
@@ -327,10 +344,13 @@ async function main(): Promise<void> {
 
   // Runtime control
   handle(IPC_CHANNELS.runtimeStates, () => supervisor.states());
-  handle(IPC_CHANNELS.runtimeStart, ({ id }) => supervisor.start(id));
+  onAccountChange = () => {
+    if (!account.accessState().allowed) void supervisor.stopAll();
+  };
+  handle(IPC_CHANNELS.runtimeStart, ({ id }) => (assertAccess(), supervisor.start(id)));
   handle(IPC_CHANNELS.runtimeStop, ({ id }) => supervisor.stop(id));
-  handle(IPC_CHANNELS.runtimeRestart, ({ id }) => supervisor.restart(id));
-  handle(IPC_CHANNELS.runtimeStartAll, () => supervisor.startAll());
+  handle(IPC_CHANNELS.runtimeRestart, ({ id }) => (assertAccess(), supervisor.restart(id)));
+  handle(IPC_CHANNELS.runtimeStartAll, () => (assertAccess(), supervisor.startAll()));
   handle(IPC_CHANNELS.runtimeStopAll, () => supervisor.stopAll());
 
   // Modules
@@ -390,6 +410,7 @@ async function main(): Promise<void> {
   handle(IPC_CHANNELS.adminAudit, () => account.authed<AdminAuditEntry[]>('GET', '/v1/admin/audit'));
   handle(IPC_CHANNELS.adminUserStatus, ({ id, ...body }) => account.authed<null>('POST', `/v1/admin/users/${encodeURIComponent(id)}/status`, body));
   handle(IPC_CHANNELS.adminGrant, ({ workspaceId, ...body }) => account.authed<null>('POST', `/v1/admin/workspaces/${encodeURIComponent(workspaceId)}/overrides`, body));
+  handle(IPC_CHANNELS.adminRole, ({ id, role }) => account.authed<null>('POST', `/v1/admin/users/${encodeURIComponent(id)}/role`, { role }));
   handle(IPC_CHANNELS.adminRevoke, ({ id }) => account.authed<null>('DELETE', `/v1/admin/overrides/${encodeURIComponent(id)}`));
   handle(IPC_CHANNELS.adminListingStatus, ({ slug, ...body }) => account.authed<null>('POST', `/v1/admin/listings/${encodeURIComponent(slug)}/status`, body));
   handle(IPC_CHANNELS.adminReviewHidden, ({ id, hidden }) => account.authed<null>('POST', `/v1/admin/reviews/${encodeURIComponent(id)}/hidden`, { hidden }));
@@ -506,7 +527,7 @@ async function main(): Promise<void> {
   // The smoke test creates and changes bots, so it only runs on a throw-away profile (always the case in development
   // via scripts/smoke.mjs; an installed copy needs DELYFORGE_USER_DATA too, so customer data can never be touched).
   const smokeDir = process.env['DELYFORGE_SMOKE_DIR'] && (!app.isPackaged || process.env['DELYFORGE_USER_DATA']) ? process.env['DELYFORGE_SMOKE_DIR'] : null;
-  if (!smokeDir) supervisor.startOnLaunch();
+  if (!smokeDir && account.accessState().allowed) supervisor.startOnLaunch();
 
   if (smokeDir) {
     void runSmokeTest(win, smokeDir, logger, {

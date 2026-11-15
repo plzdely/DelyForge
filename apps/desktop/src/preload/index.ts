@@ -31,6 +31,7 @@ const bridge: DelyForgeBridge = {
     forgotPassword: (email) => invoke(IPC_CHANNELS.accountForgotPassword, { email }),
     resendVerification: () => invoke(IPC_CHANNELS.accountResendVerification),
     updateProfile: (displayName) => invoke(IPC_CHANNELS.accountUpdateProfile, { displayName }),
+    linkDiscord: () => invoke(IPC_CHANNELS.accountLinkDiscord),
   },
   updates: {
     status: () => invoke(IPC_CHANNELS.updatesStatus),
@@ -44,6 +45,7 @@ const bridge: DelyForgeBridge = {
     setUserStatus: (input) => invoke(IPC_CHANNELS.adminUserStatus, input),
     grant: (input) => invoke(IPC_CHANNELS.adminGrant, input),
     revoke: (id) => invoke(IPC_CHANNELS.adminRevoke, { id }),
+    setRole: (input) => invoke(IPC_CHANNELS.adminRole, input),
     setListingStatus: (input) => invoke(IPC_CHANNELS.adminListingStatus, input),
     setReviewHidden: (input) => invoke(IPC_CHANNELS.adminReviewHidden, input),
   },

@@ -34,8 +34,14 @@ const envSchema = z.object({
   BILLING_RETURN_URL: z.url().optional(),
   /** Anthropic API key for the AI features. Without it the AI routes answer "not set up" instead of failing. */
   ANTHROPIC_API_KEY: z.string().optional().default(''),
+  /** Discord application (Developer Portal → OAuth2) used to link accounts. Required in production. */
+  DISCORD_CLIENT_ID: z.string().optional().default(''),
+  DISCORD_CLIENT_SECRET: z.string().optional().default(''),
 }).superRefine((env, ctx) => {
   if (env.NODE_ENV !== 'production') return;
+  for (const key of ['DISCORD_CLIENT_ID', 'DISCORD_CLIENT_SECRET'] as const) {
+    if (!env[key]) ctx.addIssue({ code: 'custom', path: [key], message: 'required in production (Discord linking is mandatory)' });
+  }
   if (!env.ENTITLEMENT_PRIVATE_KEY) ctx.addIssue({ code: 'custom', path: ['ENTITLEMENT_PRIVATE_KEY'], message: 'required in production' });
   if (env.JWT_SECRET.includes('dev-only')) ctx.addIssue({ code: 'custom', path: ['JWT_SECRET'], message: 'replace the development value in production' });
 });

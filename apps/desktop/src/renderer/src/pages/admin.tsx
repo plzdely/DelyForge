@@ -49,17 +49,30 @@ function UserRow({ user, isAdmin, onChanged }: { user: AdminUser; isAdmin: boole
     onError: fail('Couldn’t grant'),
   });
   const revoke = useMutation({ mutationFn: (id: string) => call((b) => b.admin.revoke(id)), onSuccess: onChanged, onError: fail('Couldn’t revoke') });
+  const setRole = useMutation({
+    mutationFn: (role: AdminUser['role']) => call((b) => b.admin.setRole({ id: user.id, role })),
+    onSuccess: (_d, role) => (onChanged(), toast.success(role === 'USER' ? 'Staff access removed' : `Now ${role === 'ADMIN' ? 'an admin' : 'support staff'}`)),
+    onError: fail('Couldn’t change access'),
+  });
 
   return (
     <li className="space-y-2 border-b border-border py-3 last:border-0">
       <div className="flex flex-wrap items-center gap-2 text-sm">
         <span className="font-medium text-fg">{user.displayName}</span>
         <span className="text-fg-muted">{user.email}</span>
+        {user.discord ? <Badge>Discord: {user.discord.username}</Badge> : <Badge>no Discord</Badge>}
         {!user.emailVerified ? <Badge>unconfirmed</Badge> : null}
         {user.role !== 'USER' ? <Badge tone="primary">{user.role.toLowerCase()}</Badge> : null}
         <Badge tone={user.status === 'ACTIVE' ? 'success' : 'danger'}>{user.status.toLowerCase()}</Badge>
         <Badge>{user.workspace.planId}{user.workspace.subscriptionStatus ? ` · ${user.workspace.subscriptionStatus.toLowerCase()}` : ''}</Badge>
         <span className="ml-auto text-2xs text-fg-subtle">joined {new Date(user.createdAt).toLocaleDateString()}</span>
+        {isAdmin ? (
+          <Select aria-label={`Access for ${user.displayName}`} className="h-7 w-36" value={user.role} disabled={setRole.isPending} onChange={(e) => setRole.mutate(e.target.value as AdminUser['role'])}>
+            <option value="USER">Customer</option>
+            <option value="SUPPORT">Support staff</option>
+            <option value="ADMIN">Admin</option>
+          </Select>
+        ) : null}
       </div>
       {user.overrides.map((o) => (
         <div key={o.id} className="flex items-center gap-2 pl-2 text-xs text-fg-muted">
@@ -79,7 +92,7 @@ function UserRow({ user, isAdmin, onChanged }: { user: AdminUser; isAdmin: boole
           <Field label="Days" htmlFor={`d-${user.id}`}><Input id={`d-${user.id}`} className="w-20" type="number" min={1} max={365} value={days} onChange={(e) => setDays(e.target.value)} /></Field>
           <Button disabled={reason.trim().length < 3 || grant.isPending} onClick={() => grant.mutate()}>Grant</Button>
           <Button variant={user.status === 'SUSPENDED' ? 'secondary' : 'danger'} disabled={reason.trim().length < 3 || status.isPending} onClick={() => status.mutate()}>
-            {user.status === 'SUSPENDED' ? 'Reactivate' : 'Suspend'}
+            {user.status === 'SUSPENDED' ? 'Unban' : 'Ban'}
           </Button>
         </div>
       ) : null}

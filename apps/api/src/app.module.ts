@@ -10,6 +10,7 @@ import { PrismaModule } from './prisma/prisma.module';
 import { AuthController, MeController } from './auth/auth.controller';
 import { AuthGuard } from './auth/auth.guard';
 import { AuthService } from './auth/auth.service';
+import { DiscordLinkService } from './auth/discord.service';
 import { loadEntitlementKeys } from './auth/crypto';
 import { BillingController } from './billing/billing.controller';
 import { BillingService, ENTITLEMENT_KEYS } from './billing/billing.service';
@@ -42,6 +43,7 @@ export class AppModule {
         { provide: ENTITLEMENT_KEYS, useValue: loadEntitlementKeys(env.ENTITLEMENT_PRIVATE_KEY || undefined) },
         PlansService,
         AuthService,
+        DiscordLinkService,
         AuthGuard,
         BillingService,
         {
