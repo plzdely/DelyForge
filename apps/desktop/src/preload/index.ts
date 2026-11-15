@@ -57,6 +57,13 @@ const bridge: DelyForgeBridge = {
   clipboard: {
     writeText: (text) => invoke(IPC_CHANNELS.clipboardWrite, text),
   },
+  discord: {
+    guilds: (id, refresh) => invoke(IPC_CHANNELS.discordGuilds, refresh === undefined ? { id } : { id, refresh }),
+  },
+  modules: {
+    get: (id) => invoke(IPC_CHANNELS.modulesGet, { id }),
+    update: (input) => invoke(IPC_CHANNELS.modulesUpdate, input),
+  },
   events: {
     onBotEvent: (listener) => {
       const wrapped = (_e: IpcRendererEvent, event: BotEvent) => listener(event);

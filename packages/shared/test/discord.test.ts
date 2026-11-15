@@ -91,7 +91,7 @@ describe('presence & runtime protocol', () => {
       toRuntimeSchema.safeParse({
         type: 'start',
         token: FAKE_TOKEN,
-        options: { intents: 1, presence: { status: 'online', activity: null }, builtinPing: true },
+        options: { intents: 1, presence: { status: 'online', activity: null }, builtinPing: true, modules: {}, dataDir: 'C:/data' },
       }).success,
     ).toBe(true);
   });

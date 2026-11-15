@@ -2,8 +2,10 @@ import {
   ActivityType,
   Client,
   Events,
+  Partials,
   type PresenceStatusData,
 } from 'discord.js';
+import { ModuleHost } from './modules/host.js';
 import type { BotPresence, RuntimeOptions } from '@delyforge/shared';
 import type { BotClient, BotClientEvents } from './runtime.js';
 
@@ -17,7 +19,9 @@ const ACTIVITY_TYPES = {
 
 /** The real discord.js-backed client used in production. */
 export function createDiscordClient(options: RuntimeOptions, events: BotClientEvents): BotClient {
-  const client = new Client({ intents: options.intents });
+  // Partials let logging report deletes/edits of messages sent before the bot started.
+  const client = new Client({ intents: options.intents, partials: [Partials.Message, Partials.Channel, Partials.GuildMember] });
+  const modules = new ModuleHost(client, options.modules, options.dataDir, events.log, events.command);
 
   client.once(Events.ClientReady, async (c) => {
     events.ready({
@@ -26,6 +30,11 @@ export function createDiscordClient(options: RuntimeOptions, events: BotClientEv
       avatarUrl: c.user.displayAvatarURL({ size: 128 }),
       guildCount: c.guilds.cache.size,
     });
+    try {
+      await modules.onReady();
+    } catch (err) {
+      events.log('error', `Modules could not start: ${(err as Error).message}`);
+    }
     if (options.builtinPing) {
       try {
         // `create` adds or updates only this one command — it never removes the application's other commands.
@@ -75,7 +84,11 @@ export function createDiscordClient(options: RuntimeOptions, events: BotClientEv
     login: async (token) => {
       await client.login(token);
     },
-    destroy: () => client.destroy(),
+    destroy: async () => {
+      await client.destroy();
+      modules.close();
+    },
+    setModules: (m) => modules.setModules(m),
     setPresence: (presence: BotPresence) => {
       if (!client.user) return;
       const a = presence.activity;

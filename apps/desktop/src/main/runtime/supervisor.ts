@@ -6,7 +6,10 @@ import {
   type Entitlements,
   type FromRuntime,
   type NotificationType,
+  type RuntimeOptions,
   type ToRuntime,
+  applyEntitlementsToModules,
+  computeIntents,
   createRedactor,
   fromRuntimeSchema,
 } from '@delyforge/shared';
@@ -58,7 +61,9 @@ export interface SupervisorDeps {
   logs: LogRepository;
   notifications: NotificationRepository;
   settings: () => AppSettings;
-  entitlements: () => Pick<Entitlements, 'limits' | 'effectivePlanId'>;
+  entitlements: () => Pick<Entitlements, 'limits' | 'effectivePlanId' | 'features'>;
+  /** Folder for each bot's own runtime data (one SQLite file per bot). */
+  dataDir: string;
   emit: (event: BotEvent) => void;
   /** Shows an OS notification (respecting user preferences is done here, not by the caller). */
   desktopNotify?: (title: string, body: string) => void;
@@ -79,6 +84,8 @@ interface Handle {
   killTimer: ReturnType<typeof setTimeout> | null;
   stopWaiters: (() => void)[];
   highMemoryNotified: boolean;
+  /** Gateway intents the running process connected with. */
+  intents: number;
 }
 
 const ACTIVE = new Set(['starting', 'online', 'reconnecting', 'stopping']);
@@ -224,8 +231,26 @@ export class BotSupervisor {
   setPresence(botId: string): void {
     const h = this.handles.get(botId);
     if (h?.proc && h.state.status === 'online') {
-      h.proc.postMessage({ type: 'set-presence', presence: this.d.bots.runtimeOptions(botId).presence });
+      h.proc.postMessage({ type: 'set-presence', presence: this.d.bots.runtimeBasics(botId).presence });
     }
+  }
+
+  /** Everything the runtime needs, with modules limited to what the current plan allows. */
+  runtimeOptions(botId: string): RuntimeOptions {
+    const modules = applyEntitlementsToModules(this.d.bots.modules(botId), this.d.entitlements().features);
+    return { ...this.d.bots.runtimeBasics(botId), modules, intents: computeIntents(modules), dataDir: this.d.dataDir };
+  }
+
+  /**
+   * Sends changed module settings to a running bot. Returns true if the change needs gateway intents the bot did not
+   * connect with — those only take effect after a restart.
+   */
+  applyModules(botId: string): boolean {
+    const h = this.handles.get(botId);
+    if (!h?.proc || !(h.state.status === 'online' || h.state.status === 'starting' || h.state.status === 'reconnecting')) return false;
+    const options = this.runtimeOptions(botId);
+    h.proc.postMessage({ type: 'set-modules', modules: options.modules });
+    return (options.intents & ~h.intents) !== 0;
   }
 
   // ─── Process lifecycle ───────────────────────────────────────────────────────────────────────────────────────────
@@ -272,7 +297,9 @@ export class BotSupervisor {
       for (const line of text.split(/\r?\n/).filter(Boolean)) this.log(botId, stream === 'stderr' ? 'error' : 'info', line);
     });
     proc.onExit((code) => this.onExit(botId, h, proc, code));
-    proc.postMessage({ type: 'start', token, options: this.d.bots.runtimeOptions(botId) });
+    const options = this.runtimeOptions(botId);
+    h.intents = options.intents;
+    proc.postMessage({ type: 'start', token, options });
     return h.state;
   }
 
@@ -448,6 +475,7 @@ export class BotSupervisor {
         killTimer: null,
         stopWaiters: [],
         highMemoryNotified: false,
+        intents: 0,
       };
       this.handles.set(botId, h);
     }

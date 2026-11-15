@@ -1,4 +1,5 @@
 import {
+  type BotModules,
   type BotPresence,
   type FromRuntime,
   type LogLevel,
@@ -21,6 +22,7 @@ export interface BotClient {
   login(token: string): Promise<void>;
   destroy(): Promise<void>;
   setPresence(presence: BotPresence): void;
+  setModules(modules: BotModules): void;
   ping(): number | null;
   guildCount(): number;
 }
@@ -121,6 +123,11 @@ export function createBotRuntime(deps: RuntimeDeps) {
 
     if (msg.type === 'set-presence') {
       client?.setPresence(msg.presence);
+      return;
+    }
+
+    if (msg.type === 'set-modules') {
+      client?.setModules(msg.modules);
       return;
     }
 

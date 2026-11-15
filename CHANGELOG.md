@@ -6,6 +6,11 @@ versions follow [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Phase 4 (batch 1): module system with per-server settings — Welcome (messages, cards, DMs, goodbye, auto-roles),
+  Moderation (9 staff commands, warning thresholds, auto-moderation for invites/links/words/spam), Logging (8 event
+  types), Utility (/serverinfo, /userinfo, /avatar, /poll). Settings apply live; channel and role pickers load from
+  Discord; warnings for missing intents and permissions. Slash commands are synced per server and DelyForge only ever
+  removes commands it created.
 - Phase 3: connect bots to Discord — guided 4-step wizard, token verification with Discord, encrypted token storage,
   permission presets and invite links, presence editor. Bot runtime (`@delyforge/bot-runtime`, one process per bot,
   built-in `/ping`). Supervisor with start/stop/restart, start all/stop all, start on launch, automatic restart with

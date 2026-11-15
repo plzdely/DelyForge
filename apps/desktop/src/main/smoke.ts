@@ -89,6 +89,10 @@ export async function runSmokeTest(win: BrowserWindow, outDir: string, logger: L
     const renamed = await js<string | false>(`window.delyforge.bots.get('${botId}').then((r) => r.ok && r.data.name)`);
     if (renamed !== 'Aurora Prime') failures.push(`renaming via the form failed (got ${String(renamed)})`);
 
+    // ── Modules: tab and sidebar pages render (needs a real server to configure) ─────────────────────────────────
+    await visit(`/bots/${botId}/modules`, 'bot-modules-unconnected');
+    await visit('/modules/welcome', 'module-directory');
+
     // ── Connect wizard: friendly error for a common paste mistake (no network needed) ───────────────────────────
     await visit(`/bots/${botId}/connect`, 'connect-step1');
     await js(`[...document.querySelectorAll('button')].find((b) => b.textContent.includes('I have an application')).click()`);

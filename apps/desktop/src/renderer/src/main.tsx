@@ -10,6 +10,9 @@ import { isBridgeAvailable } from '@/lib/bridge';
 import { BotConsole } from '@/pages/bots/console';
 import { ConnectWizard } from '@/pages/bots/connect';
 import { BotLayout } from '@/pages/bots/layout';
+import { ModuleSettings } from '@/pages/bots/module-settings';
+import { BotModules } from '@/pages/bots/modules';
+import { ModuleDirectoryPage } from '@/pages/module-directory';
 import { BotOverview } from '@/pages/bots/overview';
 import { BotSettings } from '@/pages/bots/settings';
 import { MonitoringPage } from '@/pages/monitoring';
@@ -43,6 +46,8 @@ const router = createHashRouter([
         element: <BotLayout />,
         children: [
           { index: true, element: <BotOverview /> },
+          { path: 'modules', element: <BotModules /> },
+          { path: 'modules/:moduleId', element: <ModuleSettings /> },
           { path: 'console', element: <BotConsole /> },
           { path: 'settings', element: <BotSettings /> },
           { path: 'connect', element: <ConnectWizard /> },
@@ -50,6 +55,7 @@ const router = createHashRouter([
       },
       { path: 'monitoring', element: <MonitoringPage /> },
       { path: 'notifications', element: <NotificationsPage /> },
+      { path: 'modules/:moduleId', element: <ModuleDirectoryPage /> },
       { path: '*', element: <RoadmapPage /> },
     ],
   },

@@ -8,8 +8,10 @@ import {
   type BotProjectExport,
   DEFAULT_PLANS,
   DEFAULT_PRESENCE,
+  type BotModules,
   type Entitlements,
   type RuntimeOptions,
+  botModulesSchema,
   botProjectExportSchema,
   type createBotProjectSchema,
   isWithinLimit,
@@ -220,9 +222,23 @@ export class BotRepository {
     return this.get(id);
   }
 
-  runtimeOptions(id: string): RuntimeOptions {
+  /** Presence and built-ins; the supervisor adds modules, intents and the data folder. */
+  runtimeBasics(id: string): Pick<RuntimeOptions, 'presence' | 'builtinPing'> {
     const row = this.getRow(id);
-    return { intents: row.intents, presence: parsePresence(row.presence), builtinPing: row.builtin_ping === 1 };
+    return { presence: parsePresence(row.presence), builtinPing: row.builtin_ping === 1 };
+  }
+
+  /** Module settings per server. Invalid stored data is ignored rather than crashing the bot. */
+  modules(id: string): BotModules {
+    const config = parseConfig(this.getRow(id).config);
+    const parsed = botModulesSchema.safeParse(config['guilds'] ?? {});
+    return parsed.success ? parsed.data : {};
+  }
+
+  setModules(id: string, modules: BotModules): void {
+    const config = parseConfig(this.getRow(id).config);
+    config['guilds'] = botModulesSchema.parse(modules);
+    this.db.prepare(`UPDATE bot_projects SET config = ?, ${TOUCH} WHERE id = ?`).run(JSON.stringify(config), id);
   }
 
   /** Called when the running bot reports in — keeps the stored identity and server count fresh. */

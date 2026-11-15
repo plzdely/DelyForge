@@ -5,7 +5,13 @@ import { describe, expect, it } from 'vitest';
 import { type BotClientEvents, classifyLoginError, createBotRuntime } from '../src/index.js';
 
 const FAKE_TOKEN = 'MTAxMjM0NTY3ODkwMTIzNDU2Nw.GaBcDe.' + 'abcdefghijklmnopqrstuvwxyz0123456789AB';
-const OPTIONS = { intents: 1, presence: { status: 'online', activity: null } as BotPresence, builtinPing: true };
+const OPTIONS = {
+  intents: 1,
+  presence: { status: 'online', activity: null } as BotPresence,
+  builtinPing: true,
+  modules: {},
+  dataDir: 'C:/delyforge-test',
+};
 
 function harness(opts: { loginError?: unknown } = {}) {
   const sent: FromRuntime[] = [];
@@ -27,6 +33,7 @@ function harness(opts: { loginError?: unknown } = {}) {
           destroyed = true;
         },
         setPresence: (p) => presences.push(p),
+        setModules: () => {},
         ping: () => 42,
         guildCount: () => 3,
       };

@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   type BotEvent,
   DEFAULT_APP_SETTINGS,
+  DEFAULT_MODULE_CONFIGS,
+  INTENT_BITS,
   type ToRuntime,
   createBotProjectSchema,
   resolveEntitlements,
@@ -86,6 +88,7 @@ function setup(opts: { plan?: 'free' | 'pro'; autoRestart?: boolean; crashLimit?
     notifications,
     settings: () => DEFAULT_APP_SETTINGS,
     entitlements: () => ent,
+    dataDir: 'C:/delyforge-test',
     emit: (e) => events.push(e),
     desktopNotify: (title) => desktop.push(title),
     timings: {
@@ -121,7 +124,11 @@ describe('BotSupervisor — start & stop', () => {
     const id = addBot('Aurora');
     expect(supervisor.start(id).status).toBe('starting');
     const proc = FakeProcess.all[0]!;
-    expect(proc.received[0]).toMatchObject({ type: 'start', token: TOKEN, options: { intents: 1, builtinPing: true } });
+    expect(proc.received[0]).toMatchObject({
+      type: 'start',
+      token: TOKEN,
+      options: { intents: 1, builtinPing: true, modules: {}, dataDir: 'C:/delyforge-test' },
+    });
     proc.ready();
     expect(supervisor.state(id)).toMatchObject({ status: 'online', pid: proc.pid });
     expect(supervisor.onlineCount()).toBe(1);
@@ -175,6 +182,7 @@ describe('BotSupervisor — start & stop', () => {
       notifications: (supervisor as unknown as { d: { notifications: NotificationRepository } }).d.notifications,
       settings: () => DEFAULT_APP_SETTINGS,
       entitlements: () => free,
+      dataDir: 'C:/delyforge-test',
       emit: () => {},
     });
     supervisors.push(s2);
@@ -307,5 +315,44 @@ describe('BotSupervisor — runtime messages', () => {
     supervisor.start(id);
     FakeProcess.all[0]!.exit(1);
     expect(desktop).toEqual(['Bot crashed']);
+  });
+});
+
+describe('BotSupervisor — modules', () => {
+  const G = '123456789012345678';
+
+  it('sends module settings filtered by plan, and computes intents from them', () => {
+    const { supervisor, addBot, bots } = setup({ plan: 'free' });
+    const id = addBot('Aurora');
+    bots.setModules(id, {
+      [G]: {
+        welcome: { ...DEFAULT_MODULE_CONFIGS.welcome, enabled: true },
+        logging: { ...DEFAULT_MODULE_CONFIGS.logging, enabled: true },
+      },
+    });
+    supervisor.start(id);
+    const start = FakeProcess.all[0]!.received[0] as Extract<ToRuntime, { type: 'start' }>;
+    expect(start.options.modules[G]?.welcome?.enabled).toBe(true);
+    expect(start.options.modules[G]?.logging?.enabled).toBe(false); // Pro module on Free
+    expect(start.options.intents & INTENT_BITS['GuildMembers']!).not.toBe(0);
+  });
+
+  it('applies changes live and reports when new intents need a restart', () => {
+    const { supervisor, addBot, bots } = setup();
+    const id = addBot('Aurora');
+    supervisor.start(id);
+    FakeProcess.all[0]!.ready();
+
+    bots.setModules(id, { [G]: { utility: { ...DEFAULT_MODULE_CONFIGS.utility, enabled: true } } });
+    expect(supervisor.applyModules(id)).toBe(false);
+    expect(FakeProcess.all[0]!.received.at(-1)).toMatchObject({ type: 'set-modules' });
+
+    bots.setModules(id, { [G]: { welcome: { ...DEFAULT_MODULE_CONFIGS.welcome, enabled: true } } });
+    expect(supervisor.applyModules(id)).toBe(true); // needs Server Members intent
+  });
+
+  it('does nothing for bots that are not running', () => {
+    const { supervisor, addBot } = setup();
+    expect(supervisor.applyModules(addBot('Aurora'))).toBe(false);
   });
 });

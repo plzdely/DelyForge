@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { presenceSchema } from './discord.js';
+import { botModulesSchema } from './modules.js';
 
 /**
  * Protocol between the desktop main process (supervisor) and a bot runtime process.
@@ -13,6 +14,10 @@ export const runtimeOptionsSchema = z.object({
   intents: z.number().int().nonnegative(),
   presence: presenceSchema,
   builtinPing: z.boolean(),
+  /** Module settings per server, already filtered to what the plan allows. */
+  modules: botModulesSchema,
+  /** Folder where the runtime keeps this bot's own data (warnings, XP, managed commands…). */
+  dataDir: z.string().min(1).max(1000),
 });
 export type RuntimeOptions = z.infer<typeof runtimeOptionsSchema>;
 
@@ -21,6 +26,8 @@ export const toRuntimeSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('start'), token: z.string().min(1), options: runtimeOptionsSchema }),
   z.object({ type: z.literal('stop') }),
   z.object({ type: z.literal('set-presence'), presence: presenceSchema }),
+  /** Live settings change — applied without a restart (unless new intents are needed). */
+  z.object({ type: z.literal('set-modules'), modules: botModulesSchema }),
 ]);
 export type ToRuntime = z.infer<typeof toRuntimeSchema>;
 

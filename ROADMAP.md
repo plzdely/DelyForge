@@ -25,7 +25,7 @@ and has tests. Progress is tracked in [DEVELOPMENT_STATUS.md](DEVELOPMENT_STATUS
 - `packages/bot-runtime`, BotSupervisor (start/stop/restart/auto-restart/start-on-launch/start-all)
 - Live console (stream, search, filter, download, clear, retention), monitoring (latency, CPU, memory, uptime)
 
-## Phase 4 — Bot modules ← next
+## Phase 4 — Bot modules ← in progress (batch 1 done: Welcome, Moderation, Logging, Utility)
 Moderation, Welcome, Tickets, Leveling, Logging, Utility, Verification, Reaction Roles, Suggestions, Giveaways — each with
 config schema, config page, runtime implementation, required intents/permissions declaration and tests.
 

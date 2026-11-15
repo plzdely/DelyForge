@@ -1,6 +1,6 @@
 # Development Status
 
-_Last updated: 2026-11-14 — end of Phase 3._
+_Last updated: 2026-11-15 — Phase 4, batch 1._
 
 Legend: ✅ done & verified · 🟡 done, not yet verified end-to-end · ⏳ pending · ⛔ blocked on an external action
 
@@ -69,6 +69,25 @@ The owner connected a real Discord bot through the wizard, started it and receiv
 Not yet confirmed by hand: Stop → bot goes offline in Discord, and the connection surviving a DelyForge restart
 (both are covered by automated tests).
 
+## Phase 4 — Bot modules (batch 1 of 2)
+
+| Item | Status | Verification |
+|---|---|---|
+| Module system: per-server settings, Zod schemas, plan tiers, intents/permissions per module, entitlement filtering after downgrade | ✅ | 11 shared tests |
+| Live settings: saved changes reach a running bot without restart; UI says when new intents need a restart | ✅ | supervisor tests |
+| Main: server/channel/role lookup from Discord (works while the bot is offline), privileged-intent recheck | 🟡 | code + types; needs a real bot in a server |
+| Plan checks on save (Logging + auto-moderation = Pro), invalid settings rejected with field path | ✅ | 6 service tests |
+| Runtime module host: per-server dispatch, isolated handlers, slash command sync that only touches DelyForge's own commands | ✅ / 🟡 | planner + store tests; real sync needs Discord |
+| Welcome: message (text or card), DM, goodbye, auto-roles (skips roles above the bot) | 🟡 | needs real verification |
+| Moderation: /warn /warnings /clearwarnings /timeout /untimeout /kick /ban /unban /purge, hierarchy checks, DM reasons, mod log, warning thresholds | 🟡 | threshold + store logic tested; commands need Discord |
+| Auto-moderation: invites, links (allow-list), blocked words (evasion-aware), spam; delete / warn / timeout; staff + exempt roles skipped | ✅ / 🟡 | 5 detection tests; actions need Discord |
+| Logging: deletes, edits, joins, leaves, role changes, channels, bans (with who), voice; ignored channels | 🟡 | needs real verification |
+| Utility: /serverinfo /userinfo /avatar /poll (native Discord polls) | ✅ / 🟡 | poll parsing tested; commands need Discord |
+| UI: Modules tab with server picker, settings page per module (channel/role pickers, template variables + preview, warnings for missing intents/permissions with fix links), sidebar module pages | ✅ | typecheck + smoke screenshots (configured state needs a real server) |
+
+### Next: verify batch 1 with your bot, then batch 2
+Leveling, Tickets, Reaction Roles, Verification, Suggestions, Giveaways — listed as “Coming soon” in the app.
+
 ## Known limitations / honest notes
 - No accounts yet — the desktop app runs on the local Free plan (accounts & Stripe are Phase 7).
 - Bots run only while DelyForge is open on this computer (24/7 cloud hosting is Phase 9).
@@ -84,6 +103,7 @@ The Free plan allows 1 bot. To test with more, start the app with a simulated pl
 customer builds ignore it). In Git Bash: `DELYFORGE_DEV_PLAN=pro pnpm dev:desktop`. In PowerShell:
 `$env:DELYFORGE_DEV_PLAN='pro'; pnpm dev:desktop`.
 
-## Next up — Phase 4 (bot modules)
-Moderation, Welcome, Tickets, Leveling, Logging, Verification, Utility, Reaction Roles, Suggestions, Giveaways — each
-with its own configuration page, runtime implementation and declared intents/permissions.
+## Next up — Phase 4, batch 2
+Leveling, Tickets, Reaction Roles, Verification, Suggestions, Giveaways on the same module system.
+Not in batch 1 (honest): welcome *images* (need an image library), moderation appeals, warning history in the app UI
+(available in Discord via /warnings).

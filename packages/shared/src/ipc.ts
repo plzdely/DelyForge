@@ -15,6 +15,7 @@ import {
   updateBotProjectSchema,
 } from './bots.js';
 import type { Entitlements } from './entitlements.js';
+import { type BotModules, type GuildInfo, type ModuleUpdateResult, updateModuleSchema } from './modules.js';
 import { appSettingsPatchSchema, type AppSettings } from './settings.js';
 import type { PlanId } from './plans.js';
 
@@ -55,6 +56,9 @@ export const IPC_CHANNELS = {
   notificationsMarkRead: 'notifications:mark-read',
   notificationsClear: 'notifications:clear',
   clipboardWrite: 'clipboard:write',
+  discordGuilds: 'discord:guilds',
+  modulesGet: 'modules:get',
+  modulesUpdate: 'modules:update',
 } as const;
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];
 
@@ -114,6 +118,9 @@ export const ipcInputSchemas = {
   [IPC_CHANNELS.notificationsMarkRead]: markNotificationsSchema,
   [IPC_CHANNELS.notificationsClear]: noInput,
   [IPC_CHANNELS.clipboardWrite]: z.string().min(1).max(4000),
+  [IPC_CHANNELS.discordGuilds]: z.object({ id: z.uuid(), refresh: z.boolean().optional() }).strict(),
+  [IPC_CHANNELS.modulesGet]: botIdInputSchema,
+  [IPC_CHANNELS.modulesUpdate]: updateModuleSchema,
 } as const satisfies Record<IpcChannel, z.ZodType>;
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -228,6 +235,14 @@ export interface DelyForgeBridge {
   };
   clipboard: {
     writeText(text: string): Promise<IpcResult<null>>;
+  };
+  discord: {
+    /** The bot's servers with channels and roles (cached for a minute; `refresh` re-checks with Discord). */
+    guilds(id: string, refresh?: boolean): Promise<IpcResult<GuildInfo[]>>;
+  };
+  modules: {
+    get(id: string): Promise<IpcResult<BotModules>>;
+    update(input: z.input<typeof updateModuleSchema>): Promise<IpcResult<ModuleUpdateResult>>;
   };
   events: {
     /** Subscribe to live bot events. Returns an unsubscribe function. */

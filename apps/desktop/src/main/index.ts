@@ -28,6 +28,7 @@ import { SecretRepository } from './db/secrets';
 import { DiscordApi } from './discord-api';
 import { BotConnections } from './runtime/connections';
 import { createElectronLauncher, resolveRuntimeEntry } from './runtime/electron-launcher';
+import { ModulesService } from './runtime/modules-service';
 import { BotSupervisor } from './runtime/supervisor';
 import { ActivityRepository, DashboardRepository, SettingsRepository } from './db/repositories';
 import { createEntitlementsProvider } from './entitlements';
@@ -130,6 +131,7 @@ async function main(): Promise<void> {
     notifications,
     settings: () => settings.get(),
     entitlements,
+    dataDir: join(dataDir, 'bots'),
     emit,
     desktopNotify: (title, body) => {
       if (!Notification.isSupported()) return;
@@ -144,6 +146,15 @@ async function main(): Promise<void> {
       n.show();
     },
   });
+
+  const modulesService = new ModulesService(
+    bots,
+    secrets,
+    new DiscordApi(app.getVersion()),
+    activity,
+    entitlements,
+    (botId) => supervisor.applyModules(botId),
+  );
 
   const dashboard = new DashboardRepository(
     db,
@@ -248,6 +259,7 @@ async function main(): Promise<void> {
   });
   handle(IPC_CHANNELS.botsDisconnect, async ({ id }) => {
     await supervisor.forget(id);
+    modulesService.forget(id);
     return connections.disconnect(id);
   });
 
@@ -258,6 +270,11 @@ async function main(): Promise<void> {
   handle(IPC_CHANNELS.runtimeRestart, ({ id }) => supervisor.restart(id));
   handle(IPC_CHANNELS.runtimeStartAll, () => supervisor.startAll());
   handle(IPC_CHANNELS.runtimeStopAll, () => supervisor.stopAll());
+
+  // Modules
+  handle(IPC_CHANNELS.discordGuilds, ({ id, refresh }) => modulesService.guilds(id, refresh));
+  handle(IPC_CHANNELS.modulesGet, ({ id }) => modulesService.get(id));
+  handle(IPC_CHANNELS.modulesUpdate, ({ id, guildId, moduleId, config }) => modulesService.update(id, guildId, moduleId, config));
 
   // Logs
   handle(IPC_CHANNELS.logsList, ({ id, limit }) => {
