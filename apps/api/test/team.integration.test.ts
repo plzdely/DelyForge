@@ -58,6 +58,8 @@ describe.skipIf(!enabled)('team workspaces (PostgreSQL)', () => {
 
     const switched = await http().post('/v1/team/switch').set('authorization', auth).send({ workspaceId: teamId }).expect(200);
     member = switched.body;
+    // Members share the team plan but can't buy or replace it.
+    await http().post('/v1/billing/checkout').set('authorization', `Bearer ${member.accessToken}`).send({ planId: 'pro', interval: 'month' }).expect(403);
     const me = await http().get('/v1/me').set('authorization', `Bearer ${member.accessToken}`).expect(200);
     expect(me.body.workspace.id).toBe(teamId);
     const ent = await http().get('/v1/entitlements').set('authorization', `Bearer ${member.accessToken}`).expect(200);
@@ -74,6 +76,8 @@ describe.skipIf(!enabled)('team workspaces (PostgreSQL)', () => {
     await http().delete(`/v1/team/members/${ownerUser.id}`).set('authorization', `Bearer ${member.accessToken}`).expect(400);
     await http().post('/v1/team/switch').set('authorization', owner).send({ workspaceId: 'not-mine' }).expect(403);
     await http().delete(`/v1/team/members/${memberUser.id}`).set('authorization', owner).expect(204);
+    // The member's current access token for the team stops working immediately.
+    await http().get('/v1/team').set('authorization', `Bearer ${member.accessToken}`).expect(401);
     const refreshed = await http().post('/v1/auth/refresh').send({ refreshToken: member.refreshToken }).expect(200);
     const me = await http().get('/v1/me').set('authorization', `Bearer ${refreshed.body.accessToken}`).expect(200);
     expect(me.body.workspace.id).not.toBe(teamId);

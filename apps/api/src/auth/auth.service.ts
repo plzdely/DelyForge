@@ -104,6 +104,10 @@ export class AuthService {
     return this.createSession(userId, { deviceName: session.deviceName ?? undefined, userAgent: meta.userAgent, ip: meta.ip }, session.familyId, workspaceId);
   }
 
+  async isMember(userId: string, workspaceId: string): Promise<boolean> {
+    return (await this.memberWorkspace(userId, workspaceId)) !== null;
+  }
+
   private async memberWorkspace(userId: string, workspaceId: string) {
     const m = await this.prisma.workspaceMember.findUnique({ where: { workspaceId_userId: { workspaceId, userId } }, include: { workspace: true } });
     return m?.workspace ?? null;

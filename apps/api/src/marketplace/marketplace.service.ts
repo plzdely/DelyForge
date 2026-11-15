@@ -88,7 +88,7 @@ export class MarketplaceService {
         embeds: content.embeds.length,
         workflows: content.workflows.map((w) => w.name),
       },
-      reviews: l.reviews.map((r) => ({ rating: r.rating, body: r.body, author: r.user.displayName, createdAt: r.createdAt.toISOString() })),
+      reviews: l.reviews.map((r) => ({ id: r.id, rating: r.rating, body: r.body, author: r.user.displayName, createdAt: r.createdAt.toISOString() })),
     };
   }
 

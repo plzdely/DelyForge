@@ -104,8 +104,8 @@ export class TeamService {
     if (!target) throw new NotFoundException('That person isn’t in this workspace.');
     if (target.role === 'OWNER') throw new BadRequestException('The owner can’t be removed.');
     if (targetUserId !== userId) await this.requireManager(userId, workspaceId);
-    // shortcut: a removed member's devices switch back to their personal workspace at the next token refresh (≤15 min);
-    // a plan certificate they already hold stays valid until it expires (≤24 h). Revoke their sessions if that matters.
+    // Their requests for this workspace are refused at once (AuthGuard checks membership). A plan certificate already
+    // on their computer stays valid until it expires (≤24 h) — the same offline window every plan change has.
     await this.prisma.workspaceMember.delete({ where: { id: target.id } });
     await this.prisma.auditLog.create({ data: { actorId: userId, workspaceId, action: targetUserId === userId ? 'team.left' : 'team.removed', metadata: { userId: targetUserId } } });
   }

@@ -33,6 +33,7 @@ import {
   updateProfileSchema,
 } from './account.js';
 import { appSettingsPatchSchema, type AppSettings } from './settings.js';
+import { type AdminAuditEntry, type AdminOverview, type AdminUser, adminListingStatusSchema, adminOverrideSchema, adminReviewHiddenSchema, adminUserStatusSchema } from './admin.js';
 import type { AiProposalResult, AiTroubleshootAnswer, AiUsageInfo } from './ai.js';
 import { LISTING_TYPES, type ListingDetail, type ListingSummary, type MyListing, type ReviewQueueItem, developerProfileSchema, reviewSchema } from './marketplace.js';
 import type { PlanId } from './plans.js';
@@ -119,6 +120,14 @@ export const IPC_CHANNELS = {
   teamMyInvites: 'team:my-invites',
   teamAccept: 'team:accept',
   teamSwitch: 'team:switch',
+  adminOverview: 'admin:overview',
+  adminUsers: 'admin:users',
+  adminAudit: 'admin:audit',
+  adminUserStatus: 'admin:user-status',
+  adminGrant: 'admin:grant',
+  adminRevoke: 'admin:revoke',
+  adminListingStatus: 'admin:listing-status',
+  adminReviewHidden: 'admin:review-hidden',
 } as const;
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];
 
@@ -235,6 +244,14 @@ export const ipcInputSchemas = {
   [IPC_CHANNELS.marketQueue]: noInput,
   [IPC_CHANNELS.analyticsReport]: z.object({ id: z.uuid().nullable(), days: z.number().int().min(1).max(90) }).strict(),
   [IPC_CHANNELS.analyticsExport]: noInput,
+  [IPC_CHANNELS.adminOverview]: noInput,
+  [IPC_CHANNELS.adminUsers]: z.object({ q: z.string().trim().max(100) }).strict(),
+  [IPC_CHANNELS.adminAudit]: noInput,
+  [IPC_CHANNELS.adminUserStatus]: adminUserStatusSchema.extend({ id: z.string().min(1).max(40) }).strict(),
+  [IPC_CHANNELS.adminGrant]: adminOverrideSchema.extend({ workspaceId: z.string().min(1).max(40) }).strict(),
+  [IPC_CHANNELS.adminRevoke]: z.object({ id: z.string().min(1).max(40) }).strict(),
+  [IPC_CHANNELS.adminListingStatus]: adminListingStatusSchema.extend({ slug: z.string().regex(/^[a-z0-9-]{3,48}$/) }).strict(),
+  [IPC_CHANNELS.adminReviewHidden]: adminReviewHiddenSchema.extend({ id: z.string().min(1).max(40) }).strict(),
   [IPC_CHANNELS.teamInfo]: noInput,
   [IPC_CHANNELS.teamInvite]: teamInviteSchema,
   [IPC_CHANNELS.teamRevokeInvite]: z.object({ id: z.string().min(1).max(40) }).strict(),
@@ -400,6 +417,17 @@ export interface DelyForgeBridge {
     apply(proposalId: string): Promise<IpcResult<AiApplyResult>>;
     reject(proposalId: string): Promise<IpcResult<null>>;
     troubleshoot(input: { id: string; question: string }): Promise<IpcResult<{ answer: AiTroubleshootAnswer; creditsUsed: number; usage: AiUsageInfo }>>;
+  };
+  /** DelyForge staff only — the server checks the role on every call. */
+  admin: {
+    overview(): Promise<IpcResult<AdminOverview>>;
+    users(q: string): Promise<IpcResult<AdminUser[]>>;
+    audit(): Promise<IpcResult<AdminAuditEntry[]>>;
+    setUserStatus(input: z.input<(typeof ipcInputSchemas)['admin:user-status']>): Promise<IpcResult<null>>;
+    grant(input: z.input<(typeof ipcInputSchemas)['admin:grant']>): Promise<IpcResult<null>>;
+    revoke(id: string): Promise<IpcResult<null>>;
+    setListingStatus(input: z.input<(typeof ipcInputSchemas)['admin:listing-status']>): Promise<IpcResult<null>>;
+    setReviewHidden(input: { id: string; hidden: boolean }): Promise<IpcResult<null>>;
   };
   team: {
     info(): Promise<IpcResult<TeamInfo>>;

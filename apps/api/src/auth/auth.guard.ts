@@ -7,7 +7,11 @@ import { type AccessClaims, verifyAccessToken } from './crypto';
 
 export type AuthedRequest = Request & { auth?: AccessClaims };
 
-/** Requires a valid `Authorization: Bearer <access token>` whose session hasn't been signed out. */
+/**
+ * Requires a valid `Authorization: Bearer <access token>` whose session hasn't been signed out and whose user still
+ * belongs to the token's workspace (so removal from a team takes effect at once; the app then refreshes its tokens
+ * and lands back in the personal workspace).
+ */
 @Injectable()
 export class AuthGuard implements CanActivate {
   constructor(
@@ -19,7 +23,9 @@ export class AuthGuard implements CanActivate {
     const req = ctx.switchToHttp().getRequest<AuthedRequest>();
     const header = req.header('authorization') ?? '';
     const claims = header.startsWith('Bearer ') ? verifyAccessToken(header.slice(7), this.env.JWT_SECRET) : null;
-    if (!claims || !(await this.auth.sessionActive(claims.sid))) throw new UnauthorizedException('Please sign in again.');
+    if (!claims || !(await this.auth.sessionActive(claims.sid)) || !(await this.auth.isMember(claims.sub, claims.ws))) {
+      throw new UnauthorizedException('Please sign in again.');
+    }
     req.auth = claims;
     return true;
   }

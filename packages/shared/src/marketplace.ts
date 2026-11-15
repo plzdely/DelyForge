@@ -112,7 +112,7 @@ export interface ListingDetail extends ListingSummary {
   description: string;
   changelog: string | null;
   contents: { modules: string[]; commands: string[]; embeds: number; workflows: string[] };
-  reviews: { rating: number; body: string | null; author: string; createdAt: string }[];
+  reviews: { id: string; rating: number; body: string | null; author: string; createdAt: string }[];
 }
 
 export interface MyListing {

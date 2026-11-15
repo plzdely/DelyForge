@@ -13,3 +13,4 @@ export * from './templates.js';
 export * from './account.js';
 export * from './ai.js';
 export * from './marketplace.js';
+export * from './admin.js';

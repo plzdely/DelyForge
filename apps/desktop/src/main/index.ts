@@ -22,6 +22,9 @@ import {
   IPC_CHANNELS,
   lowestPlanWithFeature,
   type AppSettings,
+  type AdminAuditEntry,
+  type AdminOverview,
+  type AdminUser,
   type PendingInvite,
   type TeamInfo,
   slugify,
@@ -368,6 +371,16 @@ async function main(): Promise<void> {
     logs.clear(id);
     return null;
   });
+  // Internal admin dashboard (staff only; the API checks the role on every call)
+  handle(IPC_CHANNELS.adminOverview, () => account.authed<AdminOverview>('GET', '/v1/admin/overview'));
+  handle(IPC_CHANNELS.adminUsers, ({ q }) => account.authed<AdminUser[]>('GET', `/v1/admin/users?q=${encodeURIComponent(q)}`));
+  handle(IPC_CHANNELS.adminAudit, () => account.authed<AdminAuditEntry[]>('GET', '/v1/admin/audit'));
+  handle(IPC_CHANNELS.adminUserStatus, ({ id, ...body }) => account.authed<null>('POST', `/v1/admin/users/${encodeURIComponent(id)}/status`, body));
+  handle(IPC_CHANNELS.adminGrant, ({ workspaceId, ...body }) => account.authed<null>('POST', `/v1/admin/workspaces/${encodeURIComponent(workspaceId)}/overrides`, body));
+  handle(IPC_CHANNELS.adminRevoke, ({ id }) => account.authed<null>('DELETE', `/v1/admin/overrides/${encodeURIComponent(id)}`));
+  handle(IPC_CHANNELS.adminListingStatus, ({ slug, ...body }) => account.authed<null>('POST', `/v1/admin/listings/${encodeURIComponent(slug)}/status`, body));
+  handle(IPC_CHANNELS.adminReviewHidden, ({ id, hidden }) => account.authed<null>('POST', `/v1/admin/reviews/${encodeURIComponent(id)}/hidden`, { hidden }));
+
   // Team workspaces (Business): members share the active workspace's plan and AI credits
   const enc = encodeURIComponent;
   handle(IPC_CHANNELS.teamInfo, () => account.authed<TeamInfo>('GET', '/v1/team'));

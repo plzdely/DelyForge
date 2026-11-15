@@ -1,4 +1,4 @@
-import { BadRequestException, Inject, Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Inject, Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import {
   type EntitlementClaims,
   type EntitlementOverrides,
@@ -134,6 +134,9 @@ export class BillingService {
   }
 
   async checkout(userId: string, workspaceId: string, planId: 'pro' | 'business', interval: 'month' | 'year'): Promise<{ url: string }> {
+    // Only the workspace owner buys or changes its plan (team members share it but can't replace it).
+    const member = await this.prisma.workspaceMember.findUnique({ where: { workspaceId_userId: { workspaceId, userId } } });
+    if (member?.role !== 'OWNER') throw new ForbiddenException('Only the workspace owner can change its plan.');
     const stripe = this.requireStripe();
     const price = await this.prisma.planPrice.findFirst({ where: { planId, interval: interval === 'year' ? 'YEAR' : 'MONTH', active: true } });
     if (!price?.stripePriceId) throw new ServiceUnavailableException('This plan isn’t available for purchase yet.');
