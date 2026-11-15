@@ -77,6 +77,8 @@ model Session {
   lastUsedAt       DateTime  @default(now())
   expiresAt        DateTime
   revokedAt        DateTime?
+  /// Active workspace on this device (null = the personal workspace).
+  workspaceId      String?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

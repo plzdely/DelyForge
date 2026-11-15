@@ -22,6 +22,8 @@ import {
   IPC_CHANNELS,
   lowestPlanWithFeature,
   type AppSettings,
+  type PendingInvite,
+  type TeamInfo,
   slugify,
 } from '@delyforge/shared';
 import { AccountService } from './account';
@@ -366,6 +368,25 @@ async function main(): Promise<void> {
     logs.clear(id);
     return null;
   });
+  // Team workspaces (Business): members share the active workspace's plan and AI credits
+  const enc = encodeURIComponent;
+  handle(IPC_CHANNELS.teamInfo, () => account.authed<TeamInfo>('GET', '/v1/team'));
+  handle(IPC_CHANNELS.teamInvite, (input) => account.authed<null>('POST', '/v1/team/invites', input));
+  handle(IPC_CHANNELS.teamRevokeInvite, ({ id }) => account.authed<null>('DELETE', `/v1/team/invites/${enc(id)}`));
+  handle(IPC_CHANNELS.teamRemoveMember, async ({ userId }) => {
+    const leaving = account.status().profile?.id === userId;
+    await account.authed<null>('DELETE', `/v1/team/members/${enc(userId)}`);
+    // Leaving the active team: go back to the personal workspace and its plan.
+    if (leaving) await account.refreshPlan().catch(() => null);
+    return null;
+  });
+  handle(IPC_CHANNELS.teamMyInvites, () => account.authed<PendingInvite[]>('GET', '/v1/team/my-invites'));
+  handle(IPC_CHANNELS.teamAccept, async ({ id }) => {
+    const { workspaceId } = await account.authed<{ workspaceId: string }>('POST', `/v1/team/my-invites/${enc(id)}/accept`);
+    return account.switchWorkspace(workspaceId);
+  });
+  handle(IPC_CHANNELS.teamSwitch, ({ workspaceId }) => account.switchWorkspace(workspaceId));
+
   // Backups (Pro): daily, settings only — tokens are never included
   const backups = new BackupService(join(dataDir, 'backups'), bots, entitlements, app.getVersion(), (botId) => {
     supervisor.applyModules(botId);

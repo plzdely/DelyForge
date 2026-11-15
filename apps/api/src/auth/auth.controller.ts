@@ -112,12 +112,12 @@ export class MeController {
 
   @Get()
   me(@Auth() a: AccessClaims) {
-    return this.auth.profile(a.sub);
+    return this.auth.profile(a.sub, a.ws);
   }
 
   @Patch()
   update(@Auth() a: AccessClaims, @Body() body: unknown) {
-    return this.auth.updateProfile(a.sub, parse(updateProfileSchema, body).displayName);
+    return this.auth.updateProfile(a.sub, parse(updateProfileSchema, body).displayName, a.ws);
   }
 
   @Post('password')

@@ -51,7 +51,14 @@ export class AuthService {
     return this.createSession(user.id, { ...meta, deviceName: input.deviceName });
   }
 
-  private async createSession(userId: string, meta: { deviceName?: string; userAgent?: string; ip?: string }, familyId = randomToken(12)): Promise<AuthTokens> {
+  private async createSession(
+    userId: string,
+    meta: { deviceName?: string; userAgent?: string; ip?: string },
+    familyId = randomToken(12),
+    workspaceId: string | null = null,
+  ): Promise<AuthTokens> {
+    // The device's active workspace (a team it belongs to), or the personal one. Membership is re-checked every time.
+    const ws = (workspaceId && (await this.memberWorkspace(userId, workspaceId))) || (await this.personalWorkspace(userId));
     const refreshToken = randomToken(32);
     const session = await this.prisma.session.create({
       data: {
@@ -61,10 +68,10 @@ export class AuthService {
         deviceName: meta.deviceName?.slice(0, 80),
         userAgent: meta.userAgent?.slice(0, 300),
         ipAddress: meta.ip,
+        workspaceId: ws.id,
         expiresAt: new Date(Date.now() + REFRESH_TTL_MS),
       },
     });
-    const ws = await this.personalWorkspace(userId);
     const access = signAccessToken({ sub: userId, sid: session.id, ws: ws.id }, this.env.JWT_SECRET);
     return { accessToken: access.token, accessTokenExpiresAt: access.expiresAt.toISOString(), refreshToken };
   }
@@ -85,7 +92,21 @@ export class AuthService {
     // Revoke-then-create: only one caller can rotate a given token.
     const rotated = await this.prisma.session.updateMany({ where: { id: session.id, revokedAt: null }, data: { revokedAt: new Date() } });
     if (rotated.count !== 1) throw new UnauthorizedException('Your session has expired. Please sign in again.');
-    return this.createSession(session.userId, { deviceName: session.deviceName ?? undefined, userAgent: meta.userAgent, ip: meta.ip }, session.familyId);
+    return this.createSession(session.userId, { deviceName: session.deviceName ?? undefined, userAgent: meta.userAgent, ip: meta.ip }, session.familyId, session.workspaceId);
+  }
+
+  /** Makes another workspace (personal or a team the user belongs to) active on this device. Rotates the tokens. */
+  async switchWorkspace(userId: string, sessionId: string, workspaceId: string, meta: { userAgent?: string; ip?: string }): Promise<AuthTokens> {
+    if (!(await this.memberWorkspace(userId, workspaceId))) throw new ForbiddenException('You’re not a member of that workspace.');
+    const session = await this.prisma.session.findUnique({ where: { id: sessionId } });
+    if (!session || session.userId !== userId) throw new UnauthorizedException('Please sign in again.');
+    await this.prisma.session.updateMany({ where: { familyId: session.familyId, revokedAt: null }, data: { revokedAt: new Date() } });
+    return this.createSession(userId, { deviceName: session.deviceName ?? undefined, userAgent: meta.userAgent, ip: meta.ip }, session.familyId, workspaceId);
+  }
+
+  private async memberWorkspace(userId: string, workspaceId: string) {
+    const m = await this.prisma.workspaceMember.findUnique({ where: { workspaceId_userId: { workspaceId, userId } }, include: { workspace: true } });
+    return m?.workspace ?? null;
   }
 
   async logout(sessionId: string): Promise<void> {
@@ -122,9 +143,9 @@ export class AuthService {
     return live > 0;
   }
 
-  async profile(userId: string): Promise<AccountProfile> {
+  async profile(userId: string, workspaceId?: string): Promise<AccountProfile> {
     const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
-    const ws = await this.personalWorkspace(userId);
+    const ws = (workspaceId && (await this.memberWorkspace(userId, workspaceId))) || (await this.personalWorkspace(userId));
     return {
       id: user.id,
       email: user.email,
@@ -137,9 +158,9 @@ export class AuthService {
     };
   }
 
-  async updateProfile(userId: string, displayName: string): Promise<AccountProfile> {
+  async updateProfile(userId: string, displayName: string, workspaceId?: string): Promise<AccountProfile> {
     await this.prisma.user.update({ where: { id: userId }, data: { displayName } });
-    return this.profile(userId);
+    return this.profile(userId, workspaceId);
   }
 
   async changePassword(userId: string, sessionId: string, current: string, next: string): Promise<void> {

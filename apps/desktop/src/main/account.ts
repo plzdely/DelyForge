@@ -268,6 +268,12 @@ export class AccountService {
     return (await this.http<{ url: string }>('POST', '/v1/billing/portal', undefined, true)).url;
   }
 
+  /** Makes another workspace active on this computer (its plan applies from now on). */
+  async switchWorkspace(workspaceId: string): Promise<AccountStatus> {
+    this.saveTokens(await this.http<AuthTokens>('POST', '/v1/team/switch', { workspaceId }, true));
+    return this.refreshPlan();
+  }
+
   /** DelyForge's signing key (embedded in release builds); verifies plan certificates and marketplace packages. */
   publicKey(): Promise<string> {
     return this.ensurePublicKey();

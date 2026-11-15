@@ -32,6 +32,15 @@ const bridge: DelyForgeBridge = {
     resendVerification: () => invoke(IPC_CHANNELS.accountResendVerification),
     updateProfile: (displayName) => invoke(IPC_CHANNELS.accountUpdateProfile, { displayName }),
   },
+  team: {
+    info: () => invoke(IPC_CHANNELS.teamInfo),
+    invite: (input) => invoke(IPC_CHANNELS.teamInvite, input),
+    revokeInvite: (id) => invoke(IPC_CHANNELS.teamRevokeInvite, { id }),
+    removeMember: (userId) => invoke(IPC_CHANNELS.teamRemoveMember, { userId }),
+    myInvites: () => invoke(IPC_CHANNELS.teamMyInvites),
+    accept: (id) => invoke(IPC_CHANNELS.teamAccept, { id }),
+    switchTo: (workspaceId) => invoke(IPC_CHANNELS.teamSwitch, { workspaceId }),
+  },
   backups: {
     list: () => invoke(IPC_CHANNELS.backupsList),
     run: () => invoke(IPC_CHANNELS.backupsRun),

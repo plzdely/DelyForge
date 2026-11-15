@@ -22,6 +22,10 @@ import { type Builders, type WorkflowRun, saveBuildersSchema } from './builders.
 import {
   type AccountStatus,
   type InvoiceInfo,
+  type PendingInvite,
+  type TeamInfo,
+  switchWorkspaceSchema,
+  teamInviteSchema,
   checkoutSchema,
   forgotPasswordSchema,
   loginSchema,
@@ -108,6 +112,13 @@ export const IPC_CHANNELS = {
   backupsList: 'backups:list',
   backupsRun: 'backups:run',
   backupsRestore: 'backups:restore',
+  teamInfo: 'team:info',
+  teamInvite: 'team:invite',
+  teamRevokeInvite: 'team:revoke-invite',
+  teamRemoveMember: 'team:remove-member',
+  teamMyInvites: 'team:my-invites',
+  teamAccept: 'team:accept',
+  teamSwitch: 'team:switch',
 } as const;
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];
 
@@ -224,6 +235,13 @@ export const ipcInputSchemas = {
   [IPC_CHANNELS.marketQueue]: noInput,
   [IPC_CHANNELS.analyticsReport]: z.object({ id: z.uuid().nullable(), days: z.number().int().min(1).max(90) }).strict(),
   [IPC_CHANNELS.analyticsExport]: noInput,
+  [IPC_CHANNELS.teamInfo]: noInput,
+  [IPC_CHANNELS.teamInvite]: teamInviteSchema,
+  [IPC_CHANNELS.teamRevokeInvite]: z.object({ id: z.string().min(1).max(40) }).strict(),
+  [IPC_CHANNELS.teamRemoveMember]: z.object({ userId: z.string().min(1).max(40) }).strict(),
+  [IPC_CHANNELS.teamMyInvites]: noInput,
+  [IPC_CHANNELS.teamAccept]: z.object({ id: z.string().min(1).max(40) }).strict(),
+  [IPC_CHANNELS.teamSwitch]: switchWorkspaceSchema,
   [IPC_CHANNELS.backupsList]: noInput,
   [IPC_CHANNELS.backupsRun]: noInput,
   [IPC_CHANNELS.backupsRestore]: z.object({ file: z.string().regex(/^\d{4}-\d{2}-\d{2}\.json$/), id: z.uuid() }).strict(),
@@ -382,6 +400,17 @@ export interface DelyForgeBridge {
     apply(proposalId: string): Promise<IpcResult<AiApplyResult>>;
     reject(proposalId: string): Promise<IpcResult<null>>;
     troubleshoot(input: { id: string; question: string }): Promise<IpcResult<{ answer: AiTroubleshootAnswer; creditsUsed: number; usage: AiUsageInfo }>>;
+  };
+  team: {
+    info(): Promise<IpcResult<TeamInfo>>;
+    invite(input: z.input<typeof teamInviteSchema>): Promise<IpcResult<null>>;
+    revokeInvite(id: string): Promise<IpcResult<null>>;
+    /** Removes someone (owner/admin), or leaves when it's your own ID. */
+    removeMember(userId: string): Promise<IpcResult<null>>;
+    myInvites(): Promise<IpcResult<PendingInvite[]>>;
+    /** Joins the team and makes it active on this computer. */
+    accept(id: string): Promise<IpcResult<AccountStatus>>;
+    switchTo(workspaceId: string): Promise<IpcResult<AccountStatus>>;
   };
   backups: {
     list(): Promise<IpcResult<BackupInfo[]>>;

@@ -16,6 +16,8 @@ import { BillingService, ENTITLEMENT_KEYS } from './billing/billing.service';
 import { ConsoleMailer, MAILER, type Mailer } from './mail/mailer';
 import { AiController } from './ai/ai.controller';
 import { MarketplaceController } from './marketplace/marketplace.controller';
+import { TeamController } from './team/team.controller';
+import { TeamService } from './team/team.service';
 import { MarketplaceService } from './marketplace/marketplace.service';
 import { AiService } from './ai/ai.service';
 import { AI_PROVIDERS, AnthropicProvider, type AiTextProvider } from './ai/provider';
@@ -31,7 +33,7 @@ export class AppModule {
         // Default: 100 requests / minute / IP. Sensitive routes (auth, AI) will set stricter limits.
         ThrottlerModule.forRoot([{ name: 'default', ttl: 60_000, limit: 100 }]),
       ],
-      controllers: [HealthController, PlansController, AuthController, MeController, BillingController, AiController, MarketplaceController],
+      controllers: [HealthController, PlansController, AuthController, MeController, BillingController, AiController, MarketplaceController, TeamController],
       providers: [
         { provide: ENV, useValue: env },
         { provide: MAILER, useValue: overrides.mailer ?? new ConsoleMailer(env.NODE_ENV === 'production') },
@@ -46,6 +48,7 @@ export class AppModule {
         },
         AiService,
         MarketplaceService,
+        TeamService,
         { provide: APP_GUARD, useClass: ThrottlerGuard },
         { provide: APP_FILTER, useClass: AllExceptionsFilter },
       ],

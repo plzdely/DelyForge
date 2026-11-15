@@ -129,3 +129,32 @@ export function base64UrlDecode(text: string): Uint8Array {
   const bin = atob(b64);
   return Uint8Array.from(bin, (c) => c.charCodeAt(0));
 }
+
+// ─── Teams (Phase 9) ──────────────────────────────────────────────────────────────────────────────────────────────
+
+export const TEAM_ROLES = ['ADMIN', 'DEVELOPER', 'VIEWER'] as const;
+export type TeamRole = 'OWNER' | (typeof TEAM_ROLES)[number];
+
+export const teamInviteSchema = z.object({ email: z.email().max(254).transform((e) => e.toLowerCase()), role: z.enum(TEAM_ROLES) }).strict();
+export const switchWorkspaceSchema = z.object({ workspaceId: z.string().min(1).max(40) }).strict();
+
+export interface TeamInfo {
+  workspace: { id: string; name: string; isPersonal: boolean };
+  myRole: TeamRole;
+  /** Owners and admins can invite and remove people. */
+  canManage: boolean;
+  members: { userId: string; displayName: string; email: string; role: TeamRole; joinedAt: string }[];
+  invites: { id: string; email: string; role: TeamRole; expiresAt: string }[];
+  /** Seats used (members + pending invites) and the plan's limit (null = unlimited). */
+  seats: { used: number; limit: number | null };
+  /** Every workspace this person belongs to, for switching. */
+  workspaces: { id: string; name: string; role: TeamRole; active: boolean }[];
+}
+
+export interface PendingInvite {
+  id: string;
+  workspaceName: string;
+  invitedBy: string;
+  role: TeamRole;
+  expiresAt: string;
+}
