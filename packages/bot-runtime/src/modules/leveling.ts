@@ -23,6 +23,7 @@ export async function onMessageXp(ctx: ModuleContext, message: Message): Promise
 
   const gained = ctx.store.addXp(message.guild.id, message.author.id, randomInt(c.xpMin, c.xpMax + 1), Date.now(), c.cooldownSeconds * 1000);
   if (!gained) return; // still on cooldown
+  ctx.store.rememberName(message.guild.id, message.author.id, message.member.displayName);
   const before = levelFromXp(gained.before).level;
   const after = levelFromXp(gained.after).level;
   if (after <= before) return;

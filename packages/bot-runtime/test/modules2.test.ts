@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { DEFAULT_MODULE_CONFIGS, type ModuleConfigs } from '@delyforge/shared';
 import { afterEach, describe, expect, it } from 'vitest';
 import { desiredCommands } from '../src/modules/commands.js';
-import { parseDuration, pickWinners } from '../src/modules/community.js';
+import { drawEligible, parseDuration, pickWinners } from '../src/modules/community.js';
 import { rewardRolesFor } from '../src/modules/leveling.js';
 import { CID, desiredPanels } from '../src/modules/panels.js';
 import { formatTranscript, ticketChannelName } from '../src/modules/tickets.js';
@@ -191,6 +191,45 @@ describe('giveaway role requirement and suggestion reasons', () => {
     old.close();
     const s = BotStore.open(dir, '1');
     expect(s.giveaway(1)).toMatchObject({ prize: 'Old prize', requiredRoleId: null });
+    s.close();
+  });
+});
+
+describe('drawing giveaway winners', () => {
+  it('skips entrants who are no longer eligible and only checks as many as needed', async () => {
+    const asked: string[] = [];
+    const winners = await drawEligible(['a', 'b', 'c', 'd'], 2, [], async (id) => {
+      asked.push(id);
+      return id !== 'b' && id !== 'c';
+    });
+    expect([...winners].sort()).toEqual(['a', 'd']);
+    expect(await drawEligible(['a', 'b'], 1, ['a'], async () => false)).toEqual([]);
+    const one = await drawEligible(['x', 'y', 'z'], 1, [], async () => true);
+    expect(one).toHaveLength(1);
+  });
+});
+
+describe('member data for the app', () => {
+  it('lists, deletes and clears warnings, resets XP and remembers names', () => {
+    const s = store();
+    s.addWarning('g', 'u1', 'm', 'spam');
+    s.addWarning('g', 'u1', 'm', 'rude');
+    s.addWarning('other', 'u1', 'm', 'elsewhere');
+    const list = s.allWarnings('g');
+    expect(list.map((w) => w.reason)).toEqual(['rude', 'spam']);
+    expect(s.deleteWarning('other', list[0]!.id)).toBe(false); // wrong server
+    expect(s.deleteWarning('g', list[0]!.id)).toBe(true);
+    expect(s.warningCount('g', 'u1')).toBe(1);
+
+    s.addXp('g', 'u1', 50, 0, 0);
+    s.addXp('g', 'u2', 30, 0, 0);
+    expect(s.resetXp('g', 'u1')).toBe(1);
+    expect(s.leaderboard('g').map((r) => r.userId)).toEqual(['u2']);
+    expect(s.resetXp('g', null)).toBe(1);
+
+    s.rememberName('g', 'u1', 'Dely');
+    s.rememberName('g', 'u1', 'Dely Renamed');
+    expect(s.names('g').get('u1')).toBe('Dely Renamed');
     s.close();
   });
 });

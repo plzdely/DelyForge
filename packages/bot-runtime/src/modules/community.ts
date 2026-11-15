@@ -5,6 +5,7 @@ import {
   ButtonStyle,
   type ChatInputCommandInteraction,
   type Client,
+  type Guild,
   ComponentType,
   MessageFlags,
   type ModalSubmitInteraction,
@@ -139,6 +140,32 @@ export function pickWinners(entries: readonly string[], count: number, exclude: 
   return winners;
 }
 
+/**
+ * Draws winners in random order, skipping anyone who has since lost the required role or left the server.
+ * `isEligible` is only asked about as many people as needed.
+ */
+export async function drawEligible(
+  entries: readonly string[],
+  count: number,
+  exclude: readonly string[],
+  isEligible: (userId: string) => Promise<boolean>,
+): Promise<string[]> {
+  const winners: string[] = [];
+  for (const id of pickWinners(entries, entries.length, exclude)) {
+    if (winners.length >= count) break;
+    if (await isEligible(id)) winners.push(id);
+  }
+  return winners;
+}
+
+function eligibility(guild: Guild | undefined, g: Giveaway): (userId: string) => Promise<boolean> {
+  return async (userId) => {
+    if (!g.requiredRoleId) return true;
+    const member = await guild?.members.fetch(userId).catch(() => null);
+    return Boolean(member?.roles.cache.has(g.requiredRoleId));
+  };
+}
+
 function giveawayEmbed(g: Giveaway, color: string, entries?: number): APIEmbed {
   const ends = Math.floor(g.endsAt / 1000);
   return {
@@ -174,7 +201,7 @@ async function announceWinners(ctx: ModuleContext, client: Client, g: Giveaway, 
 export async function endDueGiveaways(ctx: ModuleContext, client: Client): Promise<void> {
   for (const g of ctx.store.dueGiveaways(Date.now())) {
     if (!client.guilds.cache.has(g.guildId)) continue;
-    const winners = pickWinners(ctx.store.entries(g.id), g.winners);
+    const winners = await drawEligible(ctx.store.entries(g.id), g.winners, [], eligibility(client.guilds.cache.get(g.guildId), g));
     if (!ctx.store.endGiveaway(g.id, winners)) continue;
     await announceWinners(ctx, client, { ...g, ended: true, winnerIds: winners }, false);
     ctx.log('info', `Giveaway #${g.id} (“${g.prize}”) ended with ${winners.length} winner(s).`);
@@ -216,7 +243,7 @@ export async function handleGiveaway(ctx: ModuleContext, i: ChatInputCommandInte
 
   if (sub === 'end') {
     if (g.ended) return void (await ephemeral(i, 'That giveaway has already ended.'));
-    const winners = pickWinners(ctx.store.entries(id), g.winners);
+    const winners = await drawEligible(ctx.store.entries(id), g.winners, [], eligibility(i.guild, g));
     if (!ctx.store.endGiveaway(id, winners)) return void (await ephemeral(i, 'That giveaway has already ended.'));
     await announceWinners(ctx, i.client, { ...g, ended: true, winnerIds: winners }, false);
     return void (await ephemeral(i, `Giveaway #${id} ended.`));
@@ -224,7 +251,7 @@ export async function handleGiveaway(ctx: ModuleContext, i: ChatInputCommandInte
 
   // reroll
   if (!g.ended) return void (await ephemeral(i, 'That giveaway is still running — end it first.'));
-  const fresh = pickWinners(ctx.store.entries(id), 1, g.winnerIds);
+  const fresh = await drawEligible(ctx.store.entries(id), 1, g.winnerIds, eligibility(i.guild, g));
   if (!fresh.length) return void (await ephemeral(i, 'There’s nobody left to pick.'));
   const winnerIds = [...g.winnerIds, ...fresh];
   ctx.store.setWinners(id, winnerIds);
@@ -237,8 +264,7 @@ export async function onGiveawayEnter(ctx: ModuleContext, i: ButtonInteraction, 
   const g = ctx.store.giveaway(id);
   if (!g || g.guildId !== i.guildId || g.ended || g.endsAt <= Date.now()) return void (await ephemeral(i, 'This giveaway has ended.'));
   if (i.user.bot) return;
-  // Members who lost the role can still leave; only joining needs it.
-  // shortcut: the role is checked when entering, not again when winners are drawn.
+  // Members who lost the role can still leave; only joining needs it (winners are checked again when drawn).
   if (g.requiredRoleId && !i.member.roles.cache.has(g.requiredRoleId) && !ctx.store.entries(id).includes(i.user.id)) {
     return void (await ephemeral(i, `You need the <@&${g.requiredRoleId}> role to enter this giveaway.`));
   }

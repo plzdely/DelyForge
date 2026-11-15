@@ -73,6 +73,8 @@ export class BotStore {
     this.db.exec(`
       PRAGMA journal_mode = WAL;
       PRAGMA foreign_keys = ON;
+      -- The DelyForge app also opens this file (Members tab); wait briefly instead of failing if both write at once.
+      PRAGMA busy_timeout = 3000;
       CREATE TABLE IF NOT EXISTS managed_commands (
         guild_id   TEXT NOT NULL,
         name       TEXT NOT NULL,
@@ -97,6 +99,12 @@ export class BotStore {
         PRIMARY KEY (guild_id, user_id)
       );
       CREATE INDEX IF NOT EXISTS xp_rank_idx ON xp (guild_id, xp DESC);
+      CREATE TABLE IF NOT EXISTS member_names (
+        guild_id TEXT NOT NULL,
+        user_id  TEXT NOT NULL,
+        name     TEXT NOT NULL,
+        PRIMARY KEY (guild_id, user_id)
+      );
       CREATE TABLE IF NOT EXISTS panels (
         guild_id   TEXT NOT NULL,
         key        TEXT NOT NULL,
@@ -184,6 +192,31 @@ export class BotStore {
     return Number(this.db.prepare('DELETE FROM warnings WHERE guild_id = ? AND user_id = ?').run(guildId, userId).changes);
   }
 
+  /** Every warning in a server, newest first (for the app's Members tab). */
+  allWarnings(guildId: string, limit = 500): Warning[] {
+    const rows = this.db
+      .prepare('SELECT * FROM warnings WHERE guild_id = ? ORDER BY id DESC LIMIT ?')
+      .all(guildId, limit) as { id: number; guild_id: string; user_id: string; moderator_id: string; reason: string; created_at: string }[];
+    return rows.map((r) => ({ id: r.id, guildId: r.guild_id, userId: r.user_id, moderatorId: r.moderator_id, reason: r.reason, createdAt: r.created_at }));
+  }
+
+  deleteWarning(guildId: string, id: number): boolean {
+    return Number(this.db.prepare('DELETE FROM warnings WHERE guild_id = ? AND id = ?').run(guildId, id).changes) === 1;
+  }
+
+  // ─── Names (so the app can show people, not ID numbers) ─────────────────────────────────────────────────────────
+
+  rememberName(guildId: string, userId: string, name: string): void {
+    this.db
+      .prepare('INSERT INTO member_names (guild_id, user_id, name) VALUES (?, ?, ?) ON CONFLICT(guild_id, user_id) DO UPDATE SET name = excluded.name')
+      .run(guildId, userId, name.slice(0, 100));
+  }
+
+  names(guildId: string): Map<string, string> {
+    const rows = this.db.prepare('SELECT user_id, name FROM member_names WHERE guild_id = ?').all(guildId) as { user_id: string; name: string }[];
+    return new Map(rows.map((r) => [r.user_id, r.name]));
+  }
+
   // ─── Commands DelyForge created ──────────────────────────────────────────────────────────────────────────────────
 
   managedCommands(guildId: string): ManagedCommand[] {
@@ -232,6 +265,13 @@ export class BotStore {
     const xp = row?.xp ?? 0;
     const above = (this.db.prepare('SELECT COUNT(*) AS n FROM xp WHERE guild_id = ? AND xp > ?').get(guildId, xp) as { n: number }).n;
     return { xp, rank: above + 1 };
+  }
+
+  /** Resets one member's XP, or everyone's in the server when no member is given. Returns how many were reset. */
+  resetXp(guildId: string, userId: string | null): number {
+    return Number(
+      (userId ? this.db.prepare('DELETE FROM xp WHERE guild_id = ? AND user_id = ?').run(guildId, userId) : this.db.prepare('DELETE FROM xp WHERE guild_id = ?').run(guildId)).changes,
+    );
   }
 
   leaderboard(guildId: string, limit = 10): { userId: string; xp: number }[] {

@@ -93,6 +93,8 @@ export async function handleModerationCommand(ctx: ModuleContext, i: ChatInputCo
       const problem = hierarchyProblem(guild, actor, target);
       if (problem) return void (await reply(i, problem));
       const count = ctx.store.addWarning(guild.id, target.id, actor.id, reason);
+      ctx.store.rememberName(guild.id, target.id, target.displayName);
+      ctx.store.rememberName(guild.id, actor.id, actor.displayName);
       if (config.dmMembers) await tryDM(target.user, `You were warned in **${guild.name}**: ${reason}`);
       await modLog(ctx, guild, { title: 'Member warned', description: `<@${target.id}> by <@${actor.id}>\n**Reason:** ${reason}\n**Warnings:** ${count}`, color: COLORS.warn });
       const auto = await applyThreshold(ctx, guild, target, count);
@@ -247,6 +249,7 @@ export async function automodCheck(ctx: ModuleContext, message: Message): Promis
     extra = ` and timed out for ${a.timeoutMinutes} min`;
   } else if (rule.action === 'warn') {
     const count = ctx.store.addWarning(message.guild.id, member.id, ctx.client.user.id, `Auto-moderation: ${rule.label}`);
+    ctx.store.rememberName(message.guild.id, member.id, member.displayName);
     const auto = await applyThreshold(ctx, message.guild, member, count);
     extra = ` and warned (${count})${auto ? `, then ${auto}` : ''}`;
   }
