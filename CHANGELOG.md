@@ -5,6 +5,10 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-11-15
+
+First public release: https://github.com/plzdely/DelyForge/releases/tag/v0.1.0
+
 ### Added
 - README rewritten as a showcase with screenshots, install steps and a first-bot guide; smoke-test screenshots hide
   pop-up notices; clearer Tickets and Verification descriptions.
