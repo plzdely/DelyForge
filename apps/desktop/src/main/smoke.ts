@@ -26,7 +26,16 @@ export async function runSmokeTest(win: BrowserWindow, outDir: string, logger: L
   const js = <T>(code: string) => win.webContents.executeJavaScript(code) as Promise<T>;
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
   const settle = () => sleep(500); // let animations & paint settle
-  const capture = async (name: string) => writeFileSync(join(outDir, `${name}.png`), (await win.webContents.capturePage()).toPNG());
+  // Pop-up notices (toasts) are hidden only while the picture is taken, so screenshots show the screen itself.
+  const capture = async (name: string) => {
+    await js(`(() => { const s = document.createElement('style'); s.id = 'df-shot'; s.textContent = '[data-sonner-toaster]{display:none!important}'; document.head.append(s); })()`);
+    await sleep(120);
+    try {
+      writeFileSync(join(outDir, `${name}.png`), (await win.webContents.capturePage()).toPNG());
+    } finally {
+      await js(`document.getElementById('df-shot')?.remove()`);
+    }
+  };
   const waitForReady = async (route: string) => {
     for (let i = 0; i < 50; i++) {
       if (await js<boolean>(`document.querySelector('[data-route-ready="${route}"]') !== null`)) return true;

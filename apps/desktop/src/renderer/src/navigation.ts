@@ -225,10 +225,10 @@ export const NAV_SECTIONS: NavSection[] = [
 export const MODULE_NAV_ITEMS: NavItem[] = [
   { id: 'moderation', label: 'Moderation', path: '/modules/moderation', icon: Shield, available: true, phase: 4, summary: 'Staff commands, warnings with automatic thresholds, and auto-moderation.' },
   { id: 'welcome', label: 'Welcome', path: '/modules/welcome', icon: DoorOpen, available: true, phase: 4, summary: 'Welcome & goodbye messages, welcome DMs and automatic roles.' },
-  { id: 'tickets', label: 'Tickets', path: '/modules/tickets', icon: Ticket, available: true, phase: 4, feature: 'modules.standard', summary: 'Ticket panels, categories, transcripts and ratings.' },
+  { id: 'tickets', label: 'Tickets', path: '/modules/tickets', icon: Ticket, available: true, phase: 4, feature: 'modules.standard', summary: 'A ticket button that opens private support channels, with transcripts when closed.' },
   { id: 'leveling', label: 'Leveling', path: '/modules/leveling', icon: TrendingUp, available: true, phase: 4, feature: 'modules.standard', summary: 'XP, levels, leaderboards and role rewards.' },
   { id: 'logging', label: 'Logging', path: '/modules/logging', icon: ScrollText, available: true, phase: 4, feature: 'modules.standard', summary: 'Message, member, role, channel and moderation logs.' },
-  { id: 'verification', label: 'Verification', path: '/modules/verification', icon: BadgeCheck, available: true, phase: 4, feature: 'modules.standard', summary: 'Verification buttons, steps and staff review.' },
+  { id: 'verification', label: 'Verification', path: '/modules/verification', icon: BadgeCheck, available: true, phase: 4, feature: 'modules.standard', summary: 'A verify button that gives new members access, with an optional minimum account age.' },
   { id: 'utility', label: 'Utility', path: '/modules/utility', icon: Wrench, available: true, phase: 4, summary: 'Server & user info, avatars and native Discord polls.' },
   { id: 'reaction-roles', label: 'Reaction Roles', path: '/modules/reactionRoles', icon: Smile, available: true, phase: 4, feature: 'modules.standard', summary: 'Button and select-menu role panels.' },
   { id: 'suggestions', label: 'Suggestions', path: '/modules/suggestions', icon: Lightbulb, available: true, phase: 4, feature: 'modules.standard', summary: 'Submissions, voting and staff review.' },
