@@ -275,6 +275,8 @@ See "Making yourself staff" under Phase 8: set your `role` to `ADMIN` in Prisma 
 - "Who did it" needs the bot's **View Audit Log** permission; the settings page warns when it's missing.
 - Invite Tracker needs **Manage Server** (Discord only shows invite links to that permission). Two members joining in
   the same second can be credited to the wrong invite — Discord gives no exact link.
+- Starboard never copies messages from private channels into a public starboard, or age-restricted messages into a
+  normal one (use a private starboard for staff channels).
 - Server Stats renames channels at most every 10 minutes (Discord allows 2 renames per channel per 10 minutes).
 - Birthdays use a UTC hour; the settings page shows what that is in your local time.
 - If a moderator deletes several messages from the same person quickly, Discord merges them into one audit entry,

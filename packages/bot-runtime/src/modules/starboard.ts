@@ -1,5 +1,5 @@
 import type { StarboardConfig } from '@delyforge/shared';
-import type { Message, MessageReaction, PartialMessageReaction } from 'discord.js';
+import { ChannelType, type GuildBasedChannel, type Message, type MessageReaction, type PartialMessageReaction, PermissionFlagsBits } from 'discord.js';
 import { type ModuleContext, sendableChannel, truncate } from './context.js';
 
 /** Does a reaction's emoji match the configured one (a normal emoji like ⭐, or a server emoji written <:name:id>)? */
@@ -7,6 +7,20 @@ export function emojiMatches(configured: string, emoji: { id: string | null; nam
   const custom = /^<a?:\w+:(\d+)>$/.exec(configured.trim());
   return custom ? emoji.id === custom[1] : emoji.id === null && emoji.name === configured.trim();
 }
+
+/**
+ * Never copy a message somewhere more people can see it: a private (staff) channel's messages may only go to a
+ * starboard that is private too, and age-restricted messages only to an age-restricted starboard.
+ */
+export function mayShowcase(source: { public: boolean; nsfw: boolean }, board: { public: boolean; nsfw: boolean }): boolean {
+  return (source.public || !board.public) && (!source.nsfw || board.nsfw);
+}
+
+const visibility = (ch: GuildBasedChannel) => ({
+  // A private thread inherits its parent's permissions but is invite-only, so it never counts as public.
+  public: ch.type !== ChannelType.PrivateThread && (ch.permissionsFor(ch.guild.roles.everyone)?.has(PermissionFlagsBits.ViewChannel) ?? false),
+  nsfw: 'nsfw' in ch ? Boolean(ch.nsfw) : false,
+});
 
 /** One update at a time per message, so a burst of reactions can't post it twice. */
 const queues = new Map<string, Promise<void>>();
@@ -25,6 +39,8 @@ export async function onReaction(ctx: ModuleContext, reaction: MessageReaction |
   const config = ctx.config(message.guild.id).starboard;
   if (!config.enabled || !config.channelId || !emojiMatches(config.emoji, r.emoji)) return;
   if (message.channelId === config.channelId || config.ignoredChannelIds.includes(message.channelId)) return;
+  const board = message.guild.channels.cache.get(config.channelId);
+  if (!board || !mayShowcase(visibility(message.channel), visibility(board))) return;
   await serial(message.id, () => sync(ctx, message, config));
 }
 

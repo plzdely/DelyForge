@@ -7,7 +7,7 @@ import { recordJoin } from '../src/modules/antiraid.js';
 import { daysUntil, dueBirthdays, isBirthdayToday, validBirthday } from '../src/modules/birthdays.js';
 import { desiredCommands } from '../src/modules/commands.js';
 import { findUsedInvite } from '../src/modules/invites.js';
-import { emojiMatches } from '../src/modules/starboard.js';
+import { emojiMatches, mayShowcase } from '../src/modules/starboard.js';
 import { statName } from '../src/modules/stats.js';
 import { tempChannelName } from '../src/modules/tempvoice.js';
 import { BotStore } from '../src/store.js';
@@ -43,6 +43,17 @@ describe('starboard', () => {
     expect(emojiMatches('⭐', { id: null, name: '🔥' })).toBe(false);
     expect(emojiMatches('<:pog:123456789012345678>', { id: '123456789012345678', name: 'pog' })).toBe(true);
     expect(emojiMatches('<:pog:123456789012345678>', { id: '999', name: 'pog' })).toBe(false);
+  });
+
+  it('never copies private or age-restricted messages somewhere more people can see them', () => {
+    const pub = { public: true, nsfw: false };
+    const priv = { public: false, nsfw: false };
+    const nsfw = { public: true, nsfw: true };
+    expect(mayShowcase(pub, pub)).toBe(true);
+    expect(mayShowcase(priv, pub)).toBe(false);
+    expect(mayShowcase(priv, priv)).toBe(true);
+    expect(mayShowcase(nsfw, pub)).toBe(false);
+    expect(mayShowcase(nsfw, nsfw)).toBe(true);
   });
 });
 

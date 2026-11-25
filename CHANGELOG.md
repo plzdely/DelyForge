@@ -5,6 +5,8 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-25
+
 ### Added
 - Logging now records **who did what**, live from Discord's audit log: channels and permission changes, roles,
   nicknames, timeouts, kicks, bans, voice moves, server settings, invites, pins, bulk deletes, emojis, webhooks and
