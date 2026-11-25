@@ -180,6 +180,7 @@ export function NumberField({
   min,
   max,
   suffix,
+  hint,
 }: {
   id: string;
   label: string;
@@ -188,9 +189,10 @@ export function NumberField({
   min: number;
   max: number;
   suffix?: string;
+  hint?: ReactNode;
 }) {
   return (
-    <Field label={label} htmlFor={id}>
+    <Field label={label} htmlFor={id} hint={hint}>
       <div className="flex items-center gap-2">
         <input
           id={id}

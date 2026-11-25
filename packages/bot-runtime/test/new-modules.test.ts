@@ -232,3 +232,20 @@ describe('temporary voice ownership', () => {
     store.close();
   });
 });
+
+describe('kick members who never verify', () => {
+  it('only removes old-enough joins with no roles (besides “unverified”), never bots or staff', async () => {
+    const { pickUnverified } = await import('../src/modules/roles.js');
+    const now = Date.UTC(2026, 10, 25, 12);
+    const H = 3_600_000;
+    const members = [
+      { id: 'late', bot: false, joinedAt: now - 30 * H, roleIds: ['G'] },
+      { id: 'lateUnverifiedRole', bot: false, joinedAt: now - 30 * H, roleIds: ['G', 'UNV'] },
+      { id: 'fresh', bot: false, joinedAt: now - 2 * H, roleIds: ['G'] },
+      { id: 'staff', bot: false, joinedAt: now - 300 * H, roleIds: ['G', 'MOD'] },
+      { id: 'verified', bot: false, joinedAt: now - 30 * H, roleIds: ['G', 'VER'] },
+      { id: 'robot', bot: true, joinedAt: now - 30 * H, roleIds: ['G'] },
+    ];
+    expect(pickUnverified(members, { roleId: 'VER', removeRoleId: 'UNV', kickAfterHours: 24 }, 'G', now)).toEqual(['late', 'lateUnverifiedRole']);
+  });
+});

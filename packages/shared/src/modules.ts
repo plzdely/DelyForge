@@ -37,6 +37,11 @@ const channel = snowflakeSchema.nullable();
 const roles = z.array(snowflakeSchema).max(25);
 const hexColor = z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Use a colour like #7c5cff');
 const template = (max = 2000) => z.string().max(max, `At most ${max} characters`);
+/** An https:// image or page link, or '' for none. */
+const optionalHttps = z.union([z.literal(''), z.url({ protocol: /^https$/, message: 'Use a full https:// link' }).max(2048)]);
+/** A button that opens a web page (e.g. "Read the rules"). */
+const linkButton = z.object({ label: z.string().trim().min(1, 'Give the button a label').max(80), url: z.url({ protocol: /^https$/, message: 'Use a full https:// link' }).max(2048) }).strict();
+export type LinkButton = z.infer<typeof linkButton>;
 
 export const messageStyleSchema = z
   .object({
@@ -44,6 +49,8 @@ export const messageStyleSchema = z
     embed: z.boolean(),
     color: hexColor,
     title: z.string().max(256),
+    /** Big picture under the card (e.g. a banner). */
+    imageUrl: optionalHttps.default(''),
   })
   .strict();
 
@@ -60,11 +67,32 @@ export const welcomeConfigSchema = z
         channelId: channel,
         message: template(),
         style: messageStyleSchema,
+        /** Up to 3 link buttons under the welcome message (e.g. Rules, Website). */
+        buttons: z.array(linkButton).max(3).default([]),
       })
       .strict(),
     dm: z.object({ enabled: z.boolean(), message: template() }).strict(),
-    goodbye: z.object({ enabled: z.boolean(), channelId: channel, message: template() }).strict(),
-    autoRoles: z.object({ roleIds: roles }).strict(),
+    goodbye: z
+      .object({
+        enabled: z.boolean(),
+        channelId: channel,
+        message: template(),
+        /** Show as a card with the member's avatar. */
+        embed: z.boolean().default(false),
+        color: hexColor.default('#f04d5e'),
+      })
+      .strict(),
+    autoRoles: z
+      .object({
+        roleIds: roles,
+        /** Roles for bots that join (instead of the member roles). */
+        botRoleIds: roles.default([]),
+        /** Wait this long before giving roles (0 = straight away). Helps with raids and Discord's rules screening. */
+        delayMinutes: z.number().int().min(0).max(60).default(0),
+      })
+      .strict(),
+    /** Channels where new members are pinged once (the ping is deleted after a few seconds) so they notice them. */
+    pingChannelIds: z.array(snowflakeSchema).max(5).default([]),
   })
   .strict();
 export type WelcomeConfig = z.infer<typeof welcomeConfigSchema>;
@@ -266,6 +294,12 @@ export const verificationConfigSchema = z
     minAccountAgeDays: z.number().int().min(0).max(365),
     /** Where every verify attempt is logged (who, account age, result). Default keeps older settings valid. */
     logChannelId: snowflakeSchema.nullable().default(null),
+    /** "math": members answer a small sum in a pop-up before they're verified (stops simple bots). */
+    challenge: z.enum(['none', 'math']).default('none'),
+    /** Kick members who haven't verified after this many hours (0 = never). */
+    kickAfterHours: z.number().int().min(0).max(168).default(0),
+    /** DM sent after verifying (empty = none). */
+    dmMessage: template(1000).default(''),
   })
   .strict();
 export type VerificationConfig = z.infer<typeof verificationConfigSchema>;
@@ -290,9 +324,13 @@ export const rolePanelSchema = z
     description: template(2000),
     color: hexColor,
     mode: z.enum(['buttons', 'menu']),
-    /** Menu mode: allow picking several roles from this panel. Buttons always toggle independently. */
+    /** Menu mode: allow picking several roles from this panel. */
     multiple: z.boolean(),
+    /** Buttons mode: a member can have only one role from this panel — clicking another swaps it. */
+    oneRoleOnly: z.boolean().default(false),
     roles: z.array(roleOptionSchema).min(1, 'Add at least one role').max(25),
+    /** Only members with this role can use the panel (null = everyone). */
+    requiredRoleId: snowflakeSchema.nullable().default(null),
   })
   .strict();
 export type RolePanelConfig = z.infer<typeof rolePanelSchema>;
@@ -555,11 +593,13 @@ export const DEFAULT_MODULE_CONFIGS: ModuleConfigs = {
       enabled: true,
       channelId: null,
       message: 'Welcome to **{server}**, {user}! You are member #{memberCount}. 🎉',
-      style: { embed: true, color: '#7c5cff', title: 'Welcome!' },
+      style: { embed: true, color: '#7c5cff', title: 'Welcome!', imageUrl: '' },
+      buttons: [],
     },
     dm: { enabled: false, message: 'Hi {user.name}, welcome to {server}! Make sure to read the rules.' },
-    goodbye: { enabled: false, channelId: null, message: '**{user.name}** has left the server. 👋' },
-    autoRoles: { roleIds: [] },
+    goodbye: { enabled: false, channelId: null, message: '**{user.name}** has left the server. 👋', embed: false, color: '#f04d5e' },
+    autoRoles: { roleIds: [], botRoleIds: [], delayMinutes: 0 },
+    pingChannelIds: [],
   },
   moderation: {
     enabled: false,
@@ -620,6 +660,9 @@ export const DEFAULT_MODULE_CONFIGS: ModuleConfigs = {
     panel: panel('Verify to get access', 'Click the button below to unlock the rest of the server.', 'Verify', '#3dd68c'),
     minAccountAgeDays: 0,
     logChannelId: null,
+    challenge: 'none',
+    kickAfterHours: 0,
+    dmMessage: '',
   },
   reactionRoles: { enabled: false, panels: [] },
   suggestions: { enabled: false, channelId: null, staffRoleIds: [] },
@@ -722,6 +765,9 @@ export function moduleIntents<K extends ImplementedModuleId>(id: K, config: Modu
       return I('GuildVoiceStates');
     case 'antiRaid':
       return I('GuildMembers');
+    case 'verification':
+      // Finding members who never verified needs the member list.
+      return (config as VerificationConfig).kickAfterHours ? I('GuildMembers') : 0;
     case 'sticky':
       return I('GuildMessages');
     case 'serverStats':
@@ -968,6 +1014,7 @@ export function modulePermissions<K extends ImplementedModuleId>(id: K, config: 
     case 'tickets':
       return base | HISTORY | ROLES | P(4n) | P(15n); // manage channels + attach transcripts
     case 'verification':
+      return base | ROLES | ((config as VerificationConfig).kickAfterHours ? P(1n) : 0n);
     case 'reactionRoles':
       return base | ROLES;
     case 'giveaways':

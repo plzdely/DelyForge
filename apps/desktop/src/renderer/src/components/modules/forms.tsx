@@ -164,6 +164,25 @@ export function VerificationForm({ c, set, guild }: Props<'verification'>) {
         <RoleSelect id="vf-remove" label="Remove this role when verified (optional)" guild={guild} assignableOnly value={c.removeRoleId} onChange={(v) => set({ ...c, removeRoleId: v })} />
         <NumberField id="vf-age" label="Minimum account age" suffix="days (0 = off)" value={c.minAccountAgeDays} min={0} max={365} onChange={(v) => set({ ...c, minAccountAgeDays: v })} />
       </Section>
+      <Section title="Extra checks">
+        <Field label="Check question" htmlFor="vf-challenge" hint="A small sum in a pop-up stops simple bots that just click the button.">
+          <Select id="vf-challenge" value={c.challenge} onChange={(e) => set({ ...c, challenge: e.target.value as typeof c.challenge })}>
+            <option value="none">None — the button is enough</option>
+            <option value="math">Ask a small sum (e.g. 4 + 7)</option>
+          </Select>
+        </Field>
+        <NumberField
+          id="vf-kick"
+          label="Remove members who don’t verify within"
+          suffix="hours (0 = never)"
+          hint="Only members with no roles at all (apart from the “remove” role above) are removed, so staff are never kicked. Checked every 10 minutes; needs the Server Members intent."
+          value={c.kickAfterHours}
+          min={0}
+          max={168}
+          onChange={(v) => set({ ...c, kickAfterHours: v })}
+        />
+        <TemplateField id="vf-dm" label="DM after verifying (optional)" max={1000} value={c.dmMessage} onChange={(v) => set({ ...c, dmMessage: v })} />
+      </Section>
       <Section title="Log" description="Every verify attempt is posted here: who, how old their account is, when they joined, and whether it worked. Make this channel staff-only.">
         <ChannelSelect id="vf-log" label="Verification log channel" emptyLabel="— Don’t log —" guild={guild} value={c.logChannelId} onChange={(v) => set({ ...c, logChannelId: v })} />
       </Section>
@@ -208,8 +227,13 @@ export function ReactionRolesForm({ c, set, guild }: Props<'reactionRoles'>) {
                 <option value="menu">Drop-down menu</option>
               </Select>
             </Field>
-            {p.mode === 'menu' ? <ToggleRow title="Allow several roles" checked={p.multiple} onChange={(v) => update(i, { ...p, multiple: v })} /> : null}
+            {p.mode === 'menu' ? (
+              <ToggleRow title="Allow several roles" checked={p.multiple} onChange={(v) => update(i, { ...p, multiple: v })} />
+            ) : (
+              <ToggleRow title="One role only" description="Clicking a role swaps out the one they had from this panel (e.g. colours)." checked={p.oneRoleOnly} onChange={(v) => update(i, { ...p, oneRoleOnly: v })} />
+            )}
           </div>
+          <RoleSelect id={`rr-${p.id}-req`} label="Only members with this role can use it (optional)" guild={guild} value={p.requiredRoleId} onChange={(v) => update(i, { ...p, requiredRoleId: v })} />
           <div className="space-y-2">
             {p.roles.map((r, k) => (
               <div key={k} className="grid grid-cols-[1fr_1fr_80px_auto] items-end gap-2">
@@ -240,7 +264,7 @@ export function ReactionRolesForm({ c, set, guild }: Props<'reactionRoles'>) {
             firstRole &&
             set({
               ...c,
-              panels: [...c.panels, { id: newPanelId(c.panels), channelId: null, title: 'Pick your roles', description: 'Click a button to add or remove a role.', color: '#7c5cff', mode: 'buttons', multiple: true, roles: [{ roleId: firstRole.id, label: firstRole.name, emoji: '' }] }],
+              panels: [...c.panels, { id: newPanelId(c.panels), channelId: null, title: 'Pick your roles', description: 'Click a button to add or remove a role.', color: '#7c5cff', mode: 'buttons', multiple: true, oneRoleOnly: false, requiredRoleId: null, roles: [{ roleId: firstRole.id, label: firstRole.name, emoji: '' }] }],
             })
           }
         >

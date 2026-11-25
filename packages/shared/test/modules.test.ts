@@ -220,3 +220,22 @@ describe('more auto-moderation checks (0.3)', () => {
     expect(parsed.moderation?.automod).toMatchObject({ scams: { enabled: true }, mentions: { max: 5 } });
   });
 });
+
+describe('settings saved by older versions keep loading (v0.4 options)', () => {
+  it('fills in the new welcome, verification and role-panel options', () => {
+    const old = JSON.parse(JSON.stringify(DEFAULT_MODULE_CONFIGS));
+    delete old.welcome.welcome.buttons;
+    delete old.welcome.welcome.style.imageUrl;
+    delete old.welcome.goodbye.embed;
+    delete old.welcome.goodbye.color;
+    old.welcome.autoRoles = { roleIds: [] };
+    delete old.welcome.pingChannelIds;
+    for (const k of ['logChannelId', 'challenge', 'kickAfterHours', 'dmMessage']) delete old.verification[k];
+    const welcome = moduleConfigSchemas.welcome.parse(old.welcome);
+    expect(welcome.autoRoles).toEqual({ roleIds: [], botRoleIds: [], delayMinutes: 0 });
+    expect(welcome.welcome.buttons).toEqual([]);
+    expect(moduleConfigSchemas.verification.parse(old.verification)).toMatchObject({ challenge: 'none', kickAfterHours: 0, dmMessage: '', logChannelId: null });
+    const panel = { id: 'p1', channelId: null, title: 'Roles', description: '', color: '#7c5cff', mode: 'buttons', multiple: true, roles: [{ roleId: '123456789012345678', label: 'A', emoji: '' }] };
+    expect(moduleConfigSchemas.reactionRoles.parse({ enabled: true, panels: [panel] }).panels[0]).toMatchObject({ oneRoleOnly: false, requiredRoleId: null });
+  });
+});

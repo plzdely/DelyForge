@@ -24,7 +24,7 @@ describe('Setup Doctor', () => {
 
   it('explains deleted channels, missing channels, roles the bot can’t give and missing rights', () => {
     const configs = resolveGuildModules({
-      welcome: { ...DEFAULT_MODULE_CONFIGS.welcome, enabled: true, welcome: { ...DEFAULT_MODULE_CONFIGS.welcome.welcome, channelId: GONE }, autoRoles: { roleIds: [LOW, HIGH] } },
+      welcome: { ...DEFAULT_MODULE_CONFIGS.welcome, enabled: true, welcome: { ...DEFAULT_MODULE_CONFIGS.welcome.welcome, channelId: GONE }, autoRoles: { ...DEFAULT_MODULE_CONFIGS.welcome.autoRoles, roleIds: [LOW, HIGH] } },
       starboard: { ...DEFAULT_MODULE_CONFIGS.starboard, enabled: true },
       leveling: { ...DEFAULT_MODULE_CONFIGS.leveling, enabled: true, noXpRoleIds: [HIGH] },
     });

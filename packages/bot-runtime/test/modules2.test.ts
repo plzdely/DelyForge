@@ -138,7 +138,7 @@ describe('panels and commands', () => {
         verification: { ...base.verification, enabled: true, roleId: R1, panel: { ...base.verification.panel, channelId: C } },
         reactionRoles: {
           enabled: true,
-          panels: [{ id: 'games', channelId: C, title: 'Games', description: '', color: '#7c5cff', mode: 'buttons', multiple: true, roles: [{ roleId: R2, label: 'Minecraft', emoji: '⛏️' }] }],
+          panels: [{ id: 'games', channelId: C, title: 'Games', description: '', color: '#7c5cff', mode: 'buttons', multiple: true, oneRoleOnly: false, requiredRoleId: null, roles: [{ roleId: R2, label: 'Minecraft', emoji: '⛏️' }] }],
         },
       }),
     );

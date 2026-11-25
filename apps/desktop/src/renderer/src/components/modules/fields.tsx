@@ -1,8 +1,10 @@
 import { DiscordMessage } from '@/components/builders/discord-preview';
-import { type GuildInfo, TEMPLATE_VARIABLES, renderTemplate } from '@delyforge/shared';
+import { type GuildInfo, type LinkButton, TEMPLATE_VARIABLES, renderTemplate } from '@delyforge/shared';
+import { Plus, Trash2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import type { ReactNode } from 'react';
 import { Card, CardBody, CardHeader } from '@/components/ui/card';
-import { Field, Textarea } from '@/components/ui/input';
+import { Field, Input, Textarea } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 
 export function Section({ title, description, children }: { title: string; description?: ReactNode; children: ReactNode }) {
@@ -121,5 +123,32 @@ export function CategorySelect({ id, label, hint, guild, value, onChange }: { id
           ))}
       </Select>
     </Field>
+  );
+}
+
+/** Link buttons shown under a message (e.g. "Read the rules" → a web page). */
+export function LinkButtonsEditor({ id, value, onChange, max = 3 }: { id: string; value: LinkButton[]; onChange: (v: LinkButton[]) => void; max?: number }) {
+  const update = (n: number, patch: Partial<LinkButton>) => onChange(value.map((b, i) => (i === n ? { ...b, ...patch } : b)));
+  return (
+    <div className="space-y-2">
+      {value.map((b, n) => (
+        <div key={n} className="grid grid-cols-[1fr_2fr_auto] items-end gap-2">
+          <Field label="Button label" htmlFor={`${id}-label-${n}`}>
+            <Input id={`${id}-label-${n}`} maxLength={80} value={b.label} onChange={(e) => update(n, { label: e.target.value })} />
+          </Field>
+          <Field label="Opens this link" htmlFor={`${id}-url-${n}`}>
+            <Input id={`${id}-url-${n}`} maxLength={2048} placeholder="https://" value={b.url} onChange={(e) => update(n, { url: e.target.value })} />
+          </Field>
+          <Button size="icon" variant="ghost" aria-label="Remove button" onClick={() => onChange(value.filter((_, i) => i !== n))}>
+            <Trash2 />
+          </Button>
+        </div>
+      ))}
+      {value.length < max ? (
+        <Button size="sm" onClick={() => onChange([...value, { label: 'Read the rules', url: 'https://' }])}>
+          <Plus /> Add a link button
+        </Button>
+      ) : null}
+    </div>
   );
 }

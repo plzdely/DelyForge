@@ -10,7 +10,7 @@ import { UTILITY_COMMANDS, handleUtilityCommand } from './utility.js';
 import { endDueGiveaways, handleGiveaway, handleSuggest, onGiveawayEnter, onSuggestionButton, onSuggestionDecision } from './community.js';
 import { LEVELING_COMMANDS, handleLevelingCommand, onMessageXp } from './leveling.js';
 import { CID, syncPanels } from './panels.js';
-import { onRoleButton, onRoleMenu, onVerify } from './roles.js';
+import { kickUnverified, onRoleButton, onRoleMenu, onVerify, onVerifyAnswer } from './roles.js';
 import { TICKET_COMMANDS, handleTicketCommand, onTicketClose, onTicketCloseConfirm, onTicketOpen } from './tickets.js';
 import * as welcome from './welcome.js';
 import * as antiRaid from './antiraid.js';
@@ -113,6 +113,7 @@ export class ModuleHost {
       if (slowDue) {
         await updateStats(this.ctx, guild).catch((e: Error) => this.log('error', `Server stats: ${e.message}`));
         await pollFeeds(this.ctx, guild).catch((e: Error) => this.log('error', `Social alerts: ${e.message}`));
+        await kickUnverified(this.ctx, guild).catch((e: Error) => this.log('error', `Verification: ${e.message}`));
       }
     }
   }
@@ -381,6 +382,7 @@ export class ModuleHost {
     if (prefix !== 'df') return;
     try {
       if (kind === 'sug' && action === 'decide' && a && b) await onSuggestionDecision(this.ctx, i, a, Number(b));
+      else if (kind === 'vq' && action === 'answer') await onVerifyAnswer(this.ctx, i);
     } catch (e) {
       this.log('error', `Form “${i.customId}” failed: ${(e as Error).message}`);
       await this.replyError(i);

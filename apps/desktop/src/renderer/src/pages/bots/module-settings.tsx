@@ -26,7 +26,7 @@ import { type ReactNode, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { toast } from 'sonner';
 import { InviteLink } from '@/components/bots/permissions-editor';
-import { Section, TemplateField } from '@/components/modules/fields';
+import { LinkButtonsEditor, Section, TemplateField } from '@/components/modules/fields';
 import { GiveawaysForm, LevelingForm, ReactionRolesForm, SuggestionsForm, TicketsForm, VerificationForm } from '@/components/modules/forms';
 import { AntiRaidForm, BirthdaysForm, FeedsForm, InvitesForm, ScheduledForm, ServerStatsForm, StarboardForm, StickyForm, TempVoiceForm } from '@/components/modules/forms-more';
 import {
@@ -113,8 +113,17 @@ function WelcomeForm({ c, set, guild }: { c: WelcomeConfig; set: (c: WelcomeConf
                 </Field>
               </div>
             ) : null}
+            {c.welcome.style.embed ? (
+              <Field label="Banner image (optional)" htmlFor="welcome-image" hint="A picture shown under the card — paste an https:// image link.">
+                <Input id="welcome-image" maxLength={2048} placeholder="https://…/banner.png" value={c.welcome.style.imageUrl} onChange={(e) => set({ ...c, welcome: { ...c.welcome, style: { ...c.welcome.style, imageUrl: e.target.value } } })} />
+              </Field>
+            ) : null}
+            <LinkButtonsEditor id="welcome-btn" value={c.welcome.buttons} onChange={(buttons) => set({ ...c, welcome: { ...c.welcome, buttons } })} />
           </>
         ) : null}
+      </Section>
+      <Section title="Point new members to channels" description="The bot pings new members once in these channels (e.g. #rules) and deletes the ping a few seconds later, so the channel lights up for them.">
+        <ChannelChecklist guild={guild} value={c.pingChannelIds} onChange={(ids) => set({ ...c, pingChannelIds: ids.slice(0, 5) })} />
       </Section>
       <Section title="Direct message" description="A private message to the new member. Some members block DMs from servers.">
         <ToggleRow title="Send a DM" checked={c.dm.enabled} onChange={(v) => set({ ...c, dm: { ...c.dm, enabled: v } })} />
@@ -126,11 +135,23 @@ function WelcomeForm({ c, set, guild }: { c: WelcomeConfig; set: (c: WelcomeConf
           <>
             <ChannelSelect id="goodbye-channel" label="Channel" guild={guild} value={c.goodbye.channelId} onChange={(v) => set({ ...c, goodbye: { ...c.goodbye, channelId: v } })} />
             <TemplateField id="goodbye-message" label="Message" value={c.goodbye.message} onChange={(v) => set({ ...c, goodbye: { ...c.goodbye, message: v } })} />
+            <div className="grid grid-cols-[1fr_140px] items-end gap-3">
+              <ToggleRow title="Show as a card (embed)" description="With the member’s avatar." checked={c.goodbye.embed} onChange={(v) => set({ ...c, goodbye: { ...c.goodbye, embed: v } })} />
+              {c.goodbye.embed ? (
+                <Field label="Colour" htmlFor="goodbye-color">
+                  <input id="goodbye-color" type="color" value={c.goodbye.color} onChange={(e) => set({ ...c, goodbye: { ...c.goodbye, color: e.target.value } })} className="h-9 w-full cursor-pointer rounded-md border border-border-strong bg-bg-subtle p-1" />
+                </Field>
+              ) : null}
+            </div>
           </>
         ) : null}
       </Section>
       <Section title="Automatic roles" description="Given to every new member. The bot can only give roles below its own role.">
-        <RoleChecklist guild={guild} assignableOnly value={c.autoRoles.roleIds} onChange={(ids) => set({ ...c, autoRoles: { roleIds: ids } })} />
+        <RoleChecklist guild={guild} assignableOnly value={c.autoRoles.roleIds} onChange={(ids) => set({ ...c, autoRoles: { ...c.autoRoles, roleIds: ids } })} />
+        <NumberField id="welcome-delay" label="Give them after" suffix="minutes (0 = straight away)" min={0} max={60} value={c.autoRoles.delayMinutes} onChange={(v) => set({ ...c, autoRoles: { ...c.autoRoles, delayMinutes: v } })} />
+      </Section>
+      <Section title="Roles for bots" description="Given to bots that are added to the server, instead of the member roles above.">
+        <RoleChecklist guild={guild} assignableOnly value={c.autoRoles.botRoleIds} onChange={(ids) => set({ ...c, autoRoles: { ...c.autoRoles, botRoleIds: ids } })} />
       </Section>
     </>
   );
