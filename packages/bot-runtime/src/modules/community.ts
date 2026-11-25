@@ -13,7 +13,7 @@ import {
   TextInputStyle,
 } from 'discord.js';
 import type { Giveaway } from '../store.js';
-import { COLORS, type ModuleContext, hexToInt, sendableChannel, truncate } from './context.js';
+import { COLORS, type ModuleContext, hexToInt, sendableChannel, truncate, tryDM } from './context.js';
 import { isStaff } from './roles.js';
 
 const ephemeral = (i: ButtonInteraction | ChatInputCommandInteraction | ModalSubmitInteraction, content: string) =>
@@ -29,7 +29,7 @@ const STATUS = {
   rejected: { label: '❌ Rejected', color: COLORS.danger },
 } as const;
 
-function suggestionMessage(s: { id: number; userId: string; content: string; status: string; reason?: string | null }, votes: { up: number; down: number }, decidedBy?: string) {
+function suggestionMessage(s: { id: number; userId: string; content: string; status: string; reason?: string | null }, votes: { up: number; down: number }, decidedBy?: string, anonymous = false) {
   const status = STATUS[s.status as keyof typeof STATUS] ?? STATUS.open;
   const open = s.status === 'open';
   const btn = (label: string, id: string, style: ButtonStyle, disabled = !open) => ({ type: ComponentType.Button as const, style, label, custom_id: id, disabled });
@@ -42,7 +42,7 @@ function suggestionMessage(s: { id: number; userId: string; content: string; sta
         fields: [
           { name: 'Votes', value: `👍 ${votes.up}   👎 ${votes.down}`, inline: true },
           { name: 'Status', value: decidedBy ? `${status.label} by <@${decidedBy}>` : status.label, inline: true },
-          { name: 'Suggested by', value: `<@${s.userId}>`, inline: true },
+          { name: 'Suggested by', value: anonymous ? 'Anonymous' : `<@${s.userId}>`, inline: true },
           ...(s.reason ? [{ name: 'Reason', value: truncate(s.reason, 1000) }] : []),
         ],
       } satisfies APIEmbed,
@@ -70,12 +70,13 @@ export async function handleSuggest(ctx: ModuleContext, i: ChatInputCommandInter
   if (!channel) return void (await ephemeral(i, 'The suggestions channel isn’t available right now.'));
   const content = truncate(i.options.getString('idea', true).trim(), 1500);
   const id = ctx.store.addSuggestion(i.guildId, channel.id, i.user.id, content);
-  const msg = await channel.send(suggestionMessage({ id, userId: i.user.id, content, status: 'open' }, { up: 0, down: 0 })).catch((e: Error) => {
+  const msg = await channel.send(suggestionMessage({ id, userId: i.user.id, content, status: 'open' }, { up: 0, down: 0 }, undefined, c.anonymous)).catch((e: Error) => {
     ctx.log('warn', `Suggestions: could not post: ${e.message}`);
     return null;
   });
   if (!msg) return void (await ephemeral(i, 'I couldn’t post your suggestion — please tell a server admin (the bot can’t send embeds there).'));
   ctx.store.setSuggestionMessage(id, msg.id);
+  if (c.threads) await msg.startThread({ name: truncate(`Suggestion #${id}: ${content}`, 100) }).catch((e: Error) => ctx.log('warn', `Suggestions: could not open a thread: ${e.message}`));
   await ephemeral(i, `Thanks! Your suggestion was posted: ${msg.url}`);
 }
 
@@ -87,7 +88,7 @@ export async function onSuggestionButton(ctx: ModuleContext, i: ButtonInteractio
 
   if (action === 'up' || action === 'down') {
     const votes = ctx.store.vote(id, i.user.id, action === 'up' ? 1 : -1);
-    await i.update(suggestionMessage(s, votes));
+    await i.update(suggestionMessage(s, votes, undefined, ctx.config(i.guildId).suggestions.anonymous));
     return;
   }
   if (!isStaff(i.member, ctx.config(i.guildId).suggestions.staffRoleIds)) {
@@ -115,9 +116,15 @@ export async function onSuggestionDecision(ctx: ModuleContext, i: ModalSubmitInt
   const status = action === 'approve' ? 'approved' : 'rejected';
   const reason = i.fields.getTextInputValue('reason').trim() || null;
   if (!ctx.store.setSuggestionStatus(id, status, reason)) return void (await ephemeral(i, 'This suggestion has already been decided.'));
-  const message = suggestionMessage({ ...s, status, reason }, ctx.store.votes(id), i.user.id);
+  const config = ctx.config(i.guildId).suggestions;
+  const message = suggestionMessage({ ...s, status, reason }, ctx.store.votes(id), i.user.id, config.anonymous);
   if (i.isFromMessage()) await i.update(message);
   else await ephemeral(i, `Suggestion #${id} ${status}.`);
+  if (config.dmOnDecision) {
+    const author = await i.client.users.fetch(s.userId).catch(() => null);
+    const link = i.isFromMessage() ? `\n${i.message.url}` : '';
+    if (author) await tryDM(author, `Your suggestion #${id} in **${i.guild.name}** was **${status}**.${reason ? `\n> ${truncate(reason, 500)}` : ''}${link}`);
+  }
 }
 
 // ─── Giveaways ────────────────────────────────────────────────────────────────────────────────────────────────────

@@ -13,7 +13,7 @@ export function InvitesForm({ c, set, guild }: Props<'invites'>) {
     <Section title="Announcements" description="Members can always check counts with /invites and /inviteboard. The bot needs the Manage Server permission to see invite links.">
       <ChannelSelect id="inv-channel" label="Announce new members in" emptyLabel="Don’t announce (logs and /invites only)" guild={guild} value={c.channelId} onChange={(v) => set({ ...c, channelId: v })} />
       {c.channelId ? <TemplateField id="inv-message" label="Message" max={500} value={c.message} onChange={(v) => set({ ...c, message: v })} variables={INVITE_VARIABLES} /> : null}
-      <Field label="Invite rewards" htmlFor="inv-rewards" hint="A role for members who bring in enough people. Only invited members who are still in the server count.">
+      <Field label="Invite rewards" htmlFor="inv-rewards" hint="A role for members who bring in enough people. Only invited members who are still in the server count, and the role is taken back if the count drops.">
         <RoleValueRows
           id="inv-rewards"
           guild={guild}
@@ -63,6 +63,7 @@ export function TempVoiceForm({ c, set, guild }: Props<'tempVoice'>) {
         </Field>
         <NumberField id="tv-limit" label="User limit (0 = none)" min={0} max={99} value={c.userLimit} onChange={(v) => set({ ...c, userLimit: v })} />
       </div>
+      <ToggleRow title="Owner commands" description="Owners can use /voice lock, unlock, limit and rename; anyone can /voice claim a channel whose owner left." checked={c.ownerCommands} onChange={(v) => set({ ...c, ownerCommands: v })} />
     </Section>
   );
 }

@@ -292,6 +292,12 @@ export const ticketsConfigSchema = z
     transcriptChannelId: channel,
     /** Also DM the transcript to the member who opened the ticket. */
     dmTranscript: z.boolean(),
+    /** Ask "What do you need help with?" in a pop-up before opening. */
+    askReason: z.boolean().default(false),
+    /** Show a Claim button so a staff member can take the ticket. */
+    claimButton: z.boolean().default(true),
+    /** Close tickets with no new messages for this many hours (0 = never). A transcript is saved as usual. */
+    autoCloseHours: z.number().int().min(0).max(336).default(0),
   })
   .strict();
 export type TicketsConfig = z.infer<typeof ticketsConfigSchema>;
@@ -370,6 +376,12 @@ export const suggestionsConfigSchema = z
     channelId: channel,
     /** Who may approve or reject (anyone with Manage Server can too). */
     staffRoleIds: roles,
+    /** Open a discussion thread on every suggestion. */
+    threads: z.boolean().default(false),
+    /** Hide who made the suggestion (staff can still see it in the bot's data). */
+    anonymous: z.boolean().default(false),
+    /** DM the author when their suggestion is approved or rejected. */
+    dmOnDecision: z.boolean().default(true),
   })
   .strict();
 export type SuggestionsConfig = z.infer<typeof suggestionsConfigSchema>;
@@ -436,6 +448,8 @@ export const tempVoiceConfigSchema = z
     nameTemplate: z.string().trim().min(1, 'Give the channels a name').max(90),
     /** 0 = no limit. */
     userLimit: z.number().int().min(0).max(99),
+    /** Owners can use /voice lock, unlock, limit, rename and claim. */
+    ownerCommands: z.boolean().default(true),
   })
   .strict();
 export type TempVoiceConfig = z.infer<typeof tempVoiceConfigSchema>;
@@ -681,6 +695,9 @@ export const DEFAULT_MODULE_CONFIGS: ModuleConfigs = {
     maxOpenPerUser: 1,
     transcriptChannelId: null,
     dmTranscript: true,
+    askReason: false,
+    claimButton: true,
+    autoCloseHours: 0,
   },
   verification: {
     enabled: false,
@@ -694,11 +711,11 @@ export const DEFAULT_MODULE_CONFIGS: ModuleConfigs = {
     dmMessage: '',
   },
   reactionRoles: { enabled: false, panels: [] },
-  suggestions: { enabled: false, channelId: null, staffRoleIds: [] },
+  suggestions: { enabled: false, channelId: null, staffRoleIds: [], threads: false, anonymous: false, dmOnDecision: true },
   giveaways: { enabled: false, managerRoleIds: [], color: '#f5a524', bonusRoles: [] },
   invites: { enabled: false, channelId: null, message: '{user} joined using {inviter}’s invite — that’s {invites} so far.', rewards: [] },
   starboard: { enabled: false, channelId: null, emoji: '⭐', threshold: 3, selfStar: false, ignoredChannelIds: [] },
-  tempVoice: { enabled: false, hubChannelId: null, categoryId: null, nameTemplate: '{user}’s channel', userLimit: 0 },
+  tempVoice: { enabled: false, hubChannelId: null, categoryId: null, nameTemplate: '{user}’s channel', userLimit: 0, ownerCommands: true },
   antiRaid: { enabled: false, alertChannelId: null, joinThreshold: 10, perSeconds: 30, raidAction: 'alert', raidMinutes: 10, minAccountAgeDays: 0, lockdown: false },
   sticky: { enabled: false, messages: [] },
   serverStats: { enabled: false, counters: [] },
@@ -751,7 +768,7 @@ export const MODULES: readonly ModuleInfo[] = [
   { id: 'giveaways', name: 'Giveaways', summary: 'Timed giveaways with a join button and automatic, fair winner picking.', feature: 'modules.standard', available: true, commands: ['/giveaway start', '/giveaway end', '/giveaway reroll'] },
   { id: 'invites', name: 'Invite Tracker', summary: 'See who invited each new member, invite counts and a leaderboard.', feature: 'modules.standard', available: true, commands: ['/invites', '/inviteboard'] },
   { id: 'starboard', name: 'Starboard', summary: 'Messages that get enough ⭐ reactions are showcased in a starboard channel.', feature: 'modules.standard', available: true, commands: ['/stars'] },
-  { id: 'tempVoice', name: 'Temporary Voice', summary: 'Join a “create channel” voice channel to get your own room; it disappears when empty.', feature: 'modules.standard', available: true, commands: [] },
+  { id: 'tempVoice', name: 'Temporary Voice', summary: 'Join a “create channel” voice channel to get your own room; it disappears when empty.', feature: 'modules.standard', available: true, commands: ['/voice'] },
   { id: 'antiRaid', name: 'Raid Protection', summary: 'Spots join floods, alerts staff and keeps brand-new accounts out.', feature: 'modules.standard', available: true, commands: [] },
   { id: 'sticky', name: 'Sticky Messages', summary: 'Keep a message pinned to the bottom of a busy channel.', feature: 'modules.standard', available: true, commands: [] },
   { id: 'serverStats', name: 'Server Stats', summary: 'Channel names that show live member, bot and boost counts.', feature: 'modules.standard', available: true, commands: [] },
@@ -1049,6 +1066,8 @@ export function modulePermissions<K extends ImplementedModuleId>(id: K, config: 
       return base | ROLES | ((config as VerificationConfig).kickAfterHours ? P(1n) : 0n);
     case 'reactionRoles':
       return base | ROLES;
+    case 'suggestions':
+      return base | ((config as SuggestionsConfig).threads ? P(35n) | P(38n) : 0n); // create threads + talk in them
     case 'giveaways':
     case 'starboard':
     case 'sticky':
@@ -1056,7 +1075,7 @@ export function modulePermissions<K extends ImplementedModuleId>(id: K, config: 
     case 'invites':
       return base | P(5n) | ((config as InvitesConfig).rewards.length ? ROLES : 0n); // Manage Server: needed to read invite links
     case 'tempVoice':
-      return VIEW | P(4n) | P(20n) | P(24n); // manage channels, connect, move members
+      return VIEW | P(4n) | P(20n) | P(24n) | ((config as TempVoiceConfig).ownerCommands ? P(28n) : 0n); // manage channels, connect, move members (+ permissions for /voice lock)
     case 'antiRaid':
       return base | P(1n) | P(2n) | ((config as AntiRaidConfig).lockdown ? P(5n) : 0n); // kick, ban (+ Manage Server for lockdown)
     case 'serverStats':

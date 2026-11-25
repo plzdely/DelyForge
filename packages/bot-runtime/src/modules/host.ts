@@ -11,7 +11,7 @@ import { endDueGiveaways, handleGiveaway, handleSuggest, onGiveawayEnter, onSugg
 import { LEVELING_COMMANDS, handleLevelingCommand, onMemberLeaveXp, onMessageXp, voiceXp } from './leveling.js';
 import { CID, syncPanels } from './panels.js';
 import { kickUnverified, onRoleButton, onRoleMenu, onVerify, onVerifyAnswer } from './roles.js';
-import { TICKET_COMMANDS, handleTicketCommand, onTicketClose, onTicketCloseConfirm, onTicketOpen } from './tickets.js';
+import { autoCloseTickets, handleTicketCommand, onTicketClaim, onTicketClose, onTicketCloseConfirm, onTicketOpen, onTicketReason, TICKET_COMMANDS } from './tickets.js';
 import * as welcome from './welcome.js';
 import * as antiRaid from './antiraid.js';
 import { checkBirthdays, handleBirthdayCommand } from './birthdays.js';
@@ -115,6 +115,7 @@ export class ModuleHost {
         await updateStats(this.ctx, guild).catch((e: Error) => this.log('error', `Server stats: ${e.message}`));
         await pollFeeds(this.ctx, guild).catch((e: Error) => this.log('error', `Social alerts: ${e.message}`));
         await kickUnverified(this.ctx, guild).catch((e: Error) => this.log('error', `Verification: ${e.message}`));
+        await autoCloseTickets(this.ctx, guild).catch((e: Error) => this.log('error', `Tickets: ${e.message}`));
       }
     }
   }
@@ -248,7 +249,7 @@ export class ModuleHost {
       Events.GuildMemberRemove,
       safe('Member leave', async (m) => {
         await welcome.onMemberLeave(ctx, m);
-        invites.onMemberLeave(ctx, m.guild.id, m.id);
+        await invites.onMemberLeave(ctx, m.guild, m.id);
         onMemberLeaveXp(ctx, m.guild.id, m.id);
         await logging.onMemberLeaveLog(ctx, m);
       }),
@@ -345,7 +346,9 @@ export class ModuleHost {
                     ? handleBirthdayCommand
                     : n === 'stars'
                       ? starboard.handleStarsCommand
-                      : null;
+                      : n === 'voice'
+                        ? tempVoice.handleVoiceCommand
+                        : null;
     if (!handler) return this.runCustom(i); // custom command, or e.g. /ping (handled elsewhere)
     const started = Date.now();
     try {
@@ -370,6 +373,7 @@ export class ModuleHost {
       if (i.customId === CID.ticketOpen) await onTicketOpen(this.ctx, i);
       else if (i.customId === CID.ticketClose) await onTicketClose(this.ctx, i);
       else if (i.customId === CID.ticketCloseConfirm) await onTicketCloseConfirm(this.ctx, i);
+      else if (i.customId === CID.ticketClaim) await onTicketClaim(this.ctx, i);
       else if (i.customId === CID.verify) await onVerify(this.ctx, i);
       else if (kind === 'rr' && a && b) await onRoleButton(this.ctx, i, a, b);
       else if (kind === 'sug' && a && b) await onSuggestionButton(this.ctx, i, a, Number(b));
@@ -387,6 +391,7 @@ export class ModuleHost {
     try {
       if (kind === 'sug' && action === 'decide' && a && b) await onSuggestionDecision(this.ctx, i, a, Number(b));
       else if (kind === 'vq' && action === 'answer') await onVerifyAnswer(this.ctx, i);
+      else if (i.customId === CID.ticketReason) await onTicketReason(this.ctx, i);
     } catch (e) {
       this.log('error', `Form “${i.customId}” failed: ${(e as Error).message}`);
       await this.replyError(i);

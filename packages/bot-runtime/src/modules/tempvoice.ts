@@ -1,5 +1,5 @@
 import { renderTemplate } from '@delyforge/shared';
-import { ChannelType, type Guild, type VoiceState } from 'discord.js';
+import { ChannelType, type ChatInputCommandInteraction, type Guild, MessageFlags, type VoiceState } from 'discord.js';
 import type { ModuleContext } from './context.js';
 
 /** The new channel's name for a member (Discord allows up to 100 characters). */
@@ -65,4 +65,46 @@ export async function onVoiceState(ctx: ModuleContext, before: VoiceState, after
 /** After a restart: removes temporary channels that emptied while the bot was offline. */
 export async function cleanupTempChannels(ctx: ModuleContext, guild: Guild): Promise<void> {
   for (const id of ctx.store.tempChannels(guild.id)) await removeIfEmpty(ctx, guild, id);
+}
+
+/** /voice lock | unlock | limit | rename | claim — only for the owner of the temporary channel they're in. */
+export async function handleVoiceCommand(ctx: ModuleContext, i: ChatInputCommandInteraction): Promise<void> {
+  if (!i.inCachedGuild()) return;
+  const say = (content: string) => i.reply({ content, flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] } });
+  const config = ctx.config(i.guildId).tempVoice;
+  if (!config.enabled || !config.ownerCommands) return void (await say('Temporary voice channels aren’t enabled here.'));
+  const channel = i.member.voice.channel;
+  if (!channel || !ctx.store.isTempChannel(channel.id)) return void (await say('Join your temporary voice channel first.'));
+  const owner = ctx.store.tempChannelOwner(channel.id);
+  const sub = i.options.getSubcommand();
+
+  if (sub === 'claim') {
+    if (owner === i.user.id) return void (await say('This channel is already yours.'));
+    if (owner && channel.members.has(owner)) return void (await say(`<@${owner}> is still here — only an empty owner seat can be claimed.`));
+    ctx.store.setTempChannelOwner(channel.id, i.user.id);
+    await channel.permissionOverwrites.edit(i.user.id, { ViewChannel: true, Connect: true, MoveMembers: true, ManageChannels: true }).catch(() => null);
+    return void (await say('🎙️ The channel is yours now.'));
+  }
+  if (owner !== i.user.id) return void (await say('Only the channel’s owner can do that. If they left, use /voice claim.'));
+
+  const ok = (p: Promise<unknown>) => p.then(() => true, () => false);
+  if (sub === 'lock' || sub === 'unlock') {
+    const locking = sub === 'lock';
+    // Locking keeps everyone who's already inside able to come back.
+    const done = await ok(
+      Promise.all([
+        channel.permissionOverwrites.edit(i.guild.roles.everyone, { Connect: locking ? false : null }),
+        ...(locking ? [...channel.members.values()].map((m) => channel.permissionOverwrites.edit(m.id, { Connect: true })) : []),
+      ]),
+    );
+    return void (await say(done ? (locking ? '🔒 Locked — nobody new can join.' : '🔓 Unlocked.') : 'I couldn’t change the channel (I need Manage Permissions).'));
+  }
+  if (sub === 'limit') {
+    const people = i.options.getInteger('people', true);
+    const done = await ok(channel.setUserLimit(people));
+    return void (await say(done ? (people ? `Limit set to ${people}.` : 'No limit.') : 'I couldn’t change the limit.'));
+  }
+  const name = i.options.getString('name', true).trim().slice(0, 90) || 'Voice';
+  const done = await ok(channel.setName(name));
+  await say(done ? `Renamed to **${name}**.` : 'Couldn’t rename — Discord allows 2 renames every 10 minutes. Try again later.');
 }

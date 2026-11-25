@@ -251,7 +251,30 @@ const TICKET: CommandJSON = new SlashCommandBuilder()
       .setDescription('Let another member see this ticket')
       .addUserOption((o) => o.setName('member').setDescription('Who to add').setRequired(true)),
   )
+  .addSubcommand((s) =>
+    s
+      .setName('remove')
+      .setDescription('Take someone out of this ticket')
+      .addUserOption((o) => o.setName('member').setDescription('Who to remove').setRequired(true)),
+  )
+  .addSubcommand((s) =>
+    s
+      .setName('rename')
+      .setDescription('Rename this ticket channel')
+      .addStringOption((o) => o.setName('name').setDescription('New name').setRequired(true).setMaxLength(90)),
+  )
   .addSubcommand((s) => s.setName('close').setDescription('Close this ticket'))
+  .toJSON();
+
+const VOICE: CommandJSON = new SlashCommandBuilder()
+  .setName('voice')
+  .setDescription('Control your temporary voice channel')
+  .setDMPermission(false)
+  .addSubcommand((s) => s.setName('lock').setDescription('Stop new people from joining'))
+  .addSubcommand((s) => s.setName('unlock').setDescription('Let people join again'))
+  .addSubcommand((s) => s.setName('limit').setDescription('Set how many people can join').addIntegerOption((o) => o.setName('people').setDescription('0 = no limit').setRequired(true).setMinValue(0).setMaxValue(99)))
+  .addSubcommand((s) => s.setName('rename').setDescription('Rename your channel').addStringOption((o) => o.setName('name').setDescription('New name').setRequired(true).setMaxLength(90)))
+  .addSubcommand((s) => s.setName('claim').setDescription('Take over the channel if its owner left'))
   .toJSON();
 
 const SUGGEST: CommandJSON = new SlashCommandBuilder()
@@ -304,6 +327,7 @@ export function desiredCommands(config: ModuleConfigs): CommandJSON[] {
   if (config.giveaways.enabled) out.push(GIVEAWAY);
   if (config.invites.enabled) out.push(...INVITES);
   if (config.starboard.enabled) out.push(STARS);
+  if (config.tempVoice.enabled && config.tempVoice.ownerCommands) out.push(VOICE);
   if (config.birthdays.enabled) out.push(BIRTHDAY);
   return out;
 }

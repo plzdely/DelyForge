@@ -237,6 +237,8 @@ export class BotStore {
     this.addColumnIfMissing('giveaways', 'required_role_id', 'TEXT');
     this.addColumnIfMissing('suggestions', 'reason', 'TEXT');
     this.addColumnIfMissing('giveaway_entries', 'weight', 'INTEGER NOT NULL DEFAULT 1');
+    this.addColumnIfMissing('tickets', 'reason', 'TEXT');
+    this.addColumnIfMissing('tickets', 'claimed_by', 'TEXT');
     this.addColumnIfMissing('starboard', 'author_id', 'TEXT');
     this.addColumnIfMissing('starboard', 'stars', 'INTEGER NOT NULL DEFAULT 0');
   }
@@ -403,15 +405,26 @@ export class BotStore {
     return (this.db.prepare('SELECT COUNT(*) + 1 AS n FROM tickets WHERE guild_id = ?').get(guildId) as { n: number }).n;
   }
 
-  addTicket(guildId: string, channelId: string, userId: string): void {
-    this.db.prepare('INSERT INTO tickets (guild_id, channel_id, user_id) VALUES (?, ?, ?)').run(guildId, channelId, userId);
+  addTicket(guildId: string, channelId: string, userId: string, reason: string | null = null): void {
+    this.db.prepare('INSERT INTO tickets (guild_id, channel_id, user_id, reason) VALUES (?, ?, ?, ?)').run(guildId, channelId, userId, reason);
   }
 
-  ticketByChannel(channelId: string): { id: number; userId: string; openedAt: string; closed: boolean } | null {
+  ticketByChannel(channelId: string): { id: number; userId: string; openedAt: string; closed: boolean; reason: string | null; claimedBy: string | null } | null {
     const r = this.db.prepare('SELECT * FROM tickets WHERE channel_id = ?').get(channelId) as
-      | { id: number; user_id: string; opened_at: string; closed_at: string | null }
+      | { id: number; user_id: string; opened_at: string; closed_at: string | null; reason: string | null; claimed_by: string | null }
       | undefined;
-    return r ? { id: r.id, userId: r.user_id, openedAt: r.opened_at, closed: r.closed_at !== null } : null;
+    return r ? { id: r.id, userId: r.user_id, openedAt: r.opened_at, closed: r.closed_at !== null, reason: r.reason, claimedBy: r.claimed_by } : null;
+  }
+
+  /** Every open ticket in a server (for closing idle ones). */
+  openTicketsInGuild(guildId: string): { channelId: string; userId: string; openedAt: string; reason: string | null; claimedBy: string | null }[] {
+    const rows = this.db.prepare('SELECT * FROM tickets WHERE guild_id = ? AND closed_at IS NULL').all(guildId) as { channel_id: string; user_id: string; opened_at: string; reason: string | null; claimed_by: string | null }[];
+    return rows.map((r) => ({ channelId: r.channel_id, userId: r.user_id, openedAt: r.opened_at, reason: r.reason, claimedBy: r.claimed_by }));
+  }
+
+  /** A staff member takes the ticket; false if someone already did. */
+  claimTicket(channelId: string, staffId: string): boolean {
+    return Number(this.db.prepare('UPDATE tickets SET claimed_by = ? WHERE channel_id = ? AND claimed_by IS NULL AND closed_at IS NULL').run(staffId, channelId).changes) === 1;
   }
 
   /** Marks a ticket closed; false if it was already closed (two staff clicking Close don't both run it). */
@@ -675,6 +688,15 @@ export class BotStore {
 
   tempChannels(guildId: string): string[] {
     return (this.db.prepare('SELECT channel_id FROM temp_channels WHERE guild_id = ?').all(guildId) as { channel_id: string }[]).map((r) => r.channel_id);
+  }
+
+  tempChannelOwner(channelId: string): string | null {
+    const r = this.db.prepare('SELECT owner_id FROM temp_channels WHERE channel_id = ?').get(channelId) as { owner_id: string } | undefined;
+    return r?.owner_id ?? null;
+  }
+
+  setTempChannelOwner(channelId: string, ownerId: string): void {
+    this.db.prepare('UPDATE temp_channels SET owner_id = ? WHERE channel_id = ?').run(ownerId, channelId);
   }
 
   /** The temporary channel a member owns in a server, if any. */

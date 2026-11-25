@@ -56,7 +56,7 @@ export async function onMemberJoin(ctx: ModuleContext, member: GuildMember): Pro
   let used = findUsedInvite(before, after);
   if (!used && guild.vanityURLCode) used = { code: guild.vanityURLCode, inviterId: null };
   const count = ctx.store.recordInviteJoin(guild.id, member.id, used?.inviterId ?? null, used?.code ?? null);
-  if (used?.inviterId) await giveInviteRewards(ctx, guild, used.inviterId);
+  if (used?.inviterId) await syncInviteRewards(ctx, guild, used.inviterId);
 
   const channel = await sendableChannel(ctx, guild, config.channelId, 'Invite tracker');
   if (channel) {
@@ -69,21 +69,34 @@ export async function onMemberJoin(ctx: ModuleContext, member: GuildMember): Pro
   return used ?? { inviterId: null, code: null };
 }
 
-/** Gives an inviter every reward role they've reached (counting invited members who are still here). */
-export async function giveInviteRewards(ctx: ModuleContext, guild: Guild, inviterId: string): Promise<void> {
+/** Which reward roles an inviter should have at their current count (invited members still in the server). */
+export function inviteRewardRoles(rewards: readonly { invites: number; roleId: string }[], stayed: number): { keep: string[]; drop: string[] } {
+  const keep = rewards.filter((r) => stayed >= r.invites).map((r) => r.roleId);
+  return { keep, drop: rewards.map((r) => r.roleId).filter((id) => !keep.includes(id)) };
+}
+
+/**
+ * Brings an inviter's reward roles in line with their live count: given when reached, taken back when invited members
+ * leave — so inviting throwaway accounts that leave again doesn't keep a reward.
+ */
+export async function syncInviteRewards(ctx: ModuleContext, guild: Guild, inviterId: string): Promise<void> {
   const rewards = ctx.config(guild.id).invites.rewards;
   if (!rewards.length) return;
   const { stayed } = ctx.store.inviteCounts(guild.id, inviterId);
-  const earned = rewards.filter((r) => stayed >= r.invites).map((r) => r.roleId);
-  if (!earned.length) return;
+  const { keep, drop } = inviteRewardRoles(rewards, stayed);
   const inviter = await guild.members.fetch(inviterId).catch(() => null);
   if (!inviter) return;
-  const add = assignable(inviter, earned).filter((r) => !inviter.roles.cache.has(r));
+  const add = assignable(inviter, keep).filter((r) => !inviter.roles.cache.has(r));
+  const remove = assignable(inviter, drop).filter((r) => inviter.roles.cache.has(r));
   if (add.length) await inviter.roles.add(add, `Invited ${stayed} members`).catch((e: Error) => ctx.log('warn', `Invite rewards: ${e.message}`));
+  if (remove.length) await inviter.roles.remove(remove, `Now ${stayed} invited members`).catch((e: Error) => ctx.log('warn', `Invite rewards: ${e.message}`));
 }
 
-export function onMemberLeave(ctx: ModuleContext, guildId: string, userId: string): void {
-  if (ctx.config(guildId).invites.enabled) ctx.store.recordInviteLeave(guildId, userId);
+export async function onMemberLeave(ctx: ModuleContext, guild: Guild, userId: string): Promise<void> {
+  if (!ctx.config(guild.id).invites.enabled) return;
+  ctx.store.recordInviteLeave(guild.id, userId);
+  const inviterId = ctx.store.invitedBy(guild.id, userId)?.inviterId;
+  if (inviterId) await syncInviteRewards(ctx, guild, inviterId);
 }
 
 export async function handleInvitesCommand(ctx: ModuleContext, i: ChatInputCommandInteraction): Promise<void> {

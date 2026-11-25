@@ -289,3 +289,31 @@ describe('v0.4 leveling, giveaways and starboard', () => {
     store.close();
   });
 });
+
+describe('v0.4 tickets, invites and voice', () => {
+  it('takes invite rewards back when the count drops', async () => {
+    const { inviteRewardRoles } = await import('../src/modules/invites.js');
+    const rewards = [{ invites: 5, roleId: 'r5' }, { invites: 10, roleId: 'r10' }];
+    expect(inviteRewardRoles(rewards, 10)).toEqual({ keep: ['r5', 'r10'], drop: [] });
+    expect(inviteRewardRoles(rewards, 7)).toEqual({ keep: ['r5'], drop: ['r10'] });
+    expect(inviteRewardRoles(rewards, 0)).toEqual({ keep: [], drop: ['r5', 'r10'] });
+  });
+
+  it('knows when a ticket is idle, lets only one staff member claim it, and tracks voice owners', async () => {
+    const { ticketIsIdle } = await import('../src/modules/tickets.js');
+    const H = 3_600_000;
+    expect(ticketIsIdle(0, 24, 25 * H)).toBe(true);
+    expect(ticketIsIdle(0, 24, 23 * H)).toBe(false);
+    expect(ticketIsIdle(0, 0, 999 * H)).toBe(false); // 0 = never
+    const store = new BotStore(join(mkdtempSync(join(tmpdir(), 'df-tk-')), 'b.db'));
+    store.addTicket('g', 'c1', 'u', 'My order is missing');
+    expect(store.claimTicket('c1', 'staffA')).toBe(true);
+    expect(store.claimTicket('c1', 'staffB')).toBe(false);
+    expect(store.ticketByChannel('c1')).toMatchObject({ reason: 'My order is missing', claimedBy: 'staffA' });
+    expect(store.openTicketsInGuild('g')).toHaveLength(1);
+    store.addTempChannel('g', 'v1', 'owner');
+    store.setTempChannelOwner('v1', 'newOwner');
+    expect(store.tempChannelOwner('v1')).toBe('newOwner');
+    store.close();
+  });
+});

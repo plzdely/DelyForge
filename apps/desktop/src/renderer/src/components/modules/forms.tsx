@@ -163,6 +163,9 @@ export function TicketsForm({ c, set, guild }: Props<'tickets'>) {
         </Field>
         <TemplateField id="tk-open" label="First message in a new ticket" value={c.openMessage} onChange={(v) => set({ ...c, openMessage: v })} />
         <NumberField id="tk-max" label="Open tickets per member" value={c.maxOpenPerUser} min={1} max={10} onChange={(v) => set({ ...c, maxOpenPerUser: v })} />
+        <ToggleRow title="Ask what they need help with" description="A short pop-up before the ticket opens; the answer is shown to staff and kept in the transcript." checked={c.askReason} onChange={(v) => set({ ...c, askReason: v })} />
+        <ToggleRow title="Claim button" description="Lets a staff member take the ticket, so members know who’s helping." checked={c.claimButton} onChange={(v) => set({ ...c, claimButton: v })} />
+        <NumberField id="tk-idle" label="Close tickets with no messages for" suffix="hours (0 = never)" hint="Checked every 10 minutes. The transcript is saved as usual. Staff can also use /ticket add, remove and rename." min={0} max={336} value={c.autoCloseHours} onChange={(v) => set({ ...c, autoCloseHours: v })} />
       </Section>
       <Section title="Transcripts" description="When a ticket closes, the conversation is saved as a text file before the channel is deleted.">
         <ChannelSelect id="tk-tr" label="Transcript channel" hint="Leave empty to not keep transcripts." guild={guild} value={c.transcriptChannelId} onChange={(v) => set({ ...c, transcriptChannelId: v })} />
@@ -303,6 +306,9 @@ export function SuggestionsForm({ c, set, guild }: Props<'suggestions'>) {
       <Field label="Staff roles" htmlFor="sg-staff" hint="Can approve or reject. Members with Manage Server always can.">
         <RoleChecklist guild={guild} value={c.staffRoleIds} onChange={(ids) => set({ ...c, staffRoleIds: ids })} />
       </Field>
+      <ToggleRow title="Discussion threads" description="Opens a thread on every suggestion so people can talk about it." checked={c.threads} onChange={(v) => set({ ...c, threads: v })} />
+      <ToggleRow title="Anonymous" description="Hides who made each suggestion." checked={c.anonymous} onChange={(v) => set({ ...c, anonymous: v })} />
+      <ToggleRow title="Tell the author" description="DM them when their idea is approved or rejected, with the reason." checked={c.dmOnDecision} onChange={(v) => set({ ...c, dmOnDecision: v })} />
     </Section>
   );
 }

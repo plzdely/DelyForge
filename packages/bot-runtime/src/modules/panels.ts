@@ -15,6 +15,8 @@ export const CID = {
   ticketOpen: 'df:ticket:open',
   ticketClose: 'df:ticket:close',
   ticketCloseConfirm: 'df:ticket:closeconfirm',
+  ticketClaim: 'df:ticket:claim',
+  ticketReason: 'df:ticket:reason',
   verify: 'df:verify',
   roleButton: (panelId: string, roleId: string) => `df:rr:${panelId}:${roleId}`,
   roleMenu: (panelId: string) => `df:rrm:${panelId}`,
