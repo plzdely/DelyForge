@@ -88,6 +88,8 @@ export async function onShopForm(ctx: ModuleContext, i: ModalSubmitInteraction, 
     const checked = checkShopCode(c.codes, typed, ctx.store.shopCount(i.guildId, `code:${typed.toUpperCase()}`), now);
     if (!checked.ok) return void (await ephemeral(i, `${checked.message} Nothing was ordered — try again without it, or with another code.`));
     code = checked.code.code;
+    // Reserve the use right away (no await since the check), so two orders at once can't pass a use limit.
+    ctx.store.bumpShopCount(i.guildId, `code:${code}`);
     codeLine = `\n**Code:** ${code} (−${checked.code.percentOff}%) → **${formatPrice(c.currency, found.item, sale?.percentOff ?? 0, checked.code.percentOff)}**`;
   }
   const reason = truncate(
@@ -95,7 +97,7 @@ export async function onShopForm(ctx: ModuleContext, i: ModalSubmitInteraction, 
     1000,
   );
   const opened = await openTicketWith(ctx, i, reason, c.ticketPanelId || null, 'Order');
-  if (opened && code) ctx.store.bumpShopCount(i.guildId, `code:${code}`);
+  if (!opened && code) ctx.store.dropShopCount(i.guildId, `code:${code}`);
   if (opened) ctx.log('info', `Shop: ${i.user.tag} ordered ${found.item.name}${code ? ` with code ${code}` : ''}.`);
 }
 

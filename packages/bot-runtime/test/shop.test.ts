@@ -60,6 +60,8 @@ describe('shop counters', () => {
     expect(s.bumpShopCount('g', 'code:SAVE')).toBe(1);
     expect(s.bumpShopCount('g', 'code:SAVE')).toBe(2);
     expect(s.bumpShopCount('h', 'code:SAVE')).toBe(1);
+    s.dropShopCount('g', 'code:SAVE');
+    expect(s.shopCount('g', 'code:SAVE')).toBe(1);
     s.close();
   });
 });

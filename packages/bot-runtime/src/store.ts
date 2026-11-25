@@ -624,6 +624,11 @@ export class BotStore {
     return this.shopCount(guildId, key);
   }
 
+  /** Takes back one (e.g. a reserved code use when the order didn't go through). */
+  dropShopCount(guildId: string, key: string): void {
+    this.db.prepare('UPDATE shop_counters SET n = MAX(n - 1, 0) WHERE guild_id = ? AND key = ?').run(guildId, key);
+  }
+
   // ─── Scheduled posts (to delete the previous one) ────────────────────────────────────────────────────────────────
 
   lastScheduledPost(key: string): { channelId: string; messageId: string } | null {
