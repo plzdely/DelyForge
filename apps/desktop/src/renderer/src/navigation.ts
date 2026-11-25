@@ -3,8 +3,10 @@ import {
   Activity,
   AudioLines,
   Cake,
+  CalendarClock,
   Gauge,
   Pin,
+  Rss,
   ShieldAlert,
   Star,
   UserPlus,
@@ -247,6 +249,8 @@ export const MODULE_NAV_ITEMS: NavItem[] = [
   { id: 'sticky', label: 'Sticky Messages', path: '/modules/sticky', icon: Pin, available: true, phase: 4, feature: 'modules.standard', summary: 'Keep a message at the bottom of a busy channel.' },
   { id: 'server-stats', label: 'Server Stats', path: '/modules/serverStats', icon: Gauge, available: true, phase: 4, feature: 'modules.standard', summary: 'Channel names showing live member, bot and boost counts.' },
   { id: 'birthdays', label: 'Birthdays', path: '/modules/birthdays', icon: Cake, available: true, phase: 4, feature: 'modules.standard', summary: 'Celebrate members on their birthday with a message and a role.' },
+  { id: 'feeds', label: 'Social Alerts', path: '/modules/feeds', icon: Rss, available: true, phase: 4, feature: 'modules.standard', summary: 'Announce new YouTube videos and posts from news or RSS feeds.' },
+  { id: 'scheduled', label: 'Scheduled Messages', path: '/modules/scheduled', icon: CalendarClock, available: true, phase: 4, feature: 'modules.standard', summary: 'Post announcements automatically on chosen days and times.' },
 ];
 
 export const ALL_NAV_ITEMS: NavItem[] = [...NAV_SECTIONS.flatMap((s) => s.items), ...MODULE_NAV_ITEMS];

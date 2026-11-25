@@ -20,6 +20,8 @@ import * as starboard from './starboard.js';
 import { updateStats } from './stats.js';
 import * as sticky from './sticky.js';
 import * as tempVoice from './tempvoice.js';
+import { pollFeeds } from './feeds.js';
+import { runScheduled } from './scheduled.js';
 
 /**
  * Connects Discord events to the enabled modules, per server, and keeps each server's slash commands in line with
@@ -33,7 +35,7 @@ export class ModuleHost {
   /** Servers whose settings changed during a sync — synced again as soon as it finishes. */
   private resync = new Set<string>();
   private giveawayTimer: ReturnType<typeof setInterval> | null = null;
-  /** Once a minute: birthdays; every 10 minutes: server stats counters (Discord's rename limit). */
+  /** Every 30 s: scheduled messages and birthdays; every 10 minutes: social alerts and stats counters (Discord's rename limit). */
   private minuteTimer: ReturnType<typeof setInterval> | null = null;
   private minutes = 0;
   private readonly ctx: ModuleContext;
@@ -93,15 +95,19 @@ export class ModuleHost {
       if (this.store) void endTempBans(this.ctx, this.client).catch((e: Error) => this.log('error', `Temporary bans: ${e.message}`));
     }, 15_000);
     void this.everyMinute();
-    this.minuteTimer = setInterval(() => void this.everyMinute(), 60_000);
+    this.minuteTimer = setInterval(() => void this.everyMinute(), 30_000);
   }
 
   private async everyMinute(): Promise<void> {
-    const statsDue = this.minutes++ % 10 === 0;
+    const slowDue = this.minutes++ % 20 === 0; // every 10 minutes
     for (const guild of this.client.guilds.cache.values()) {
       if (!this.store) return;
+      await runScheduled(this.ctx, guild).catch((e: Error) => this.log('error', `Scheduled messages: ${e.message}`));
       await checkBirthdays(this.ctx, guild).catch((e: Error) => this.log('error', `Birthdays: ${e.message}`));
-      if (statsDue) await updateStats(this.ctx, guild).catch((e: Error) => this.log('error', `Server stats: ${e.message}`));
+      if (slowDue) {
+        await updateStats(this.ctx, guild).catch((e: Error) => this.log('error', `Server stats: ${e.message}`));
+        await pollFeeds(this.ctx, guild).catch((e: Error) => this.log('error', `Social alerts: ${e.message}`));
+      }
     }
   }
 

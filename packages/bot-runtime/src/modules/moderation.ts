@@ -208,15 +208,28 @@ export async function handleModerationCommand(ctx: ModuleContext, i: ChatInputCo
       const channel = i.options.getChannel('channel') ?? i.channel;
       if (!channel || !('permissionOverwrites' in channel) || channel.isThread()) return void (await reply(i, 'Pick a text channel.'));
       const locking = i.commandName === 'lock';
+      // The moderator needs the rights in *this* channel, not just somewhere in the server.
+      if (!channel.permissionsFor(actor)?.has([PermissionFlagsBits.ManageChannels, PermissionFlagsBits.ManageRoles])) {
+        return void (await reply(i, 'You need Manage Channels and Manage Permissions in that channel.'));
+      }
+      const current = channel.permissionOverwrites.cache.get(guild.id);
+      const saved = ctx.store.channelLock(channel.id);
+      if (locking && saved) return void (await reply(i, `<#${channel.id}> is already locked.`));
+      if (!locking && !saved) return void (await reply(i, `<#${channel.id}> wasn’t locked with /lock, so there’s nothing to undo.`));
+      // /unlock puts back exactly what /lock changed (e.g. an announcements channel stays read-only).
+      const state = (bit: bigint, from: { allow: bigint; deny: bigint }) => ((from.allow & bit) !== 0n ? true : (from.deny & bit) !== 0n ? false : null);
+      const LOCKED = [PermissionFlagsBits.SendMessages, PermissionFlagsBits.SendMessagesInThreads, PermissionFlagsBits.CreatePublicThreads] as const;
+      const previous = saved ?? { allow: current?.allow.bitfield ?? 0n, deny: current?.deny.bitfield ?? 0n };
+      const edits = Object.fromEntries(
+        (['SendMessages', 'SendMessagesInThreads', 'CreatePublicThreads'] as const).map((name, n) => [name, locking ? false : state(LOCKED[n]!, previous)]),
+      );
       try {
-        await channel.permissionOverwrites.edit(
-          guild.roles.everyone,
-          { SendMessages: locking ? false : null, SendMessagesInThreads: locking ? false : null, CreatePublicThreads: locking ? false : null },
-          { reason: `${locking ? 'Locked' : 'Unlocked'} by ${actor.user.tag}: ${reason}` },
-        );
+        await channel.permissionOverwrites.edit(guild.roles.everyone, edits, { reason: `${locking ? 'Locked' : 'Unlocked'} by ${actor.user.tag}: ${reason}` });
       } catch (e) {
         return void (await reply(i, `Couldn’t change the channel: ${(e as Error).message}`));
       }
+      if (locking) ctx.store.saveChannelLock(guild.id, channel.id, previous);
+      else ctx.store.removeChannelLock(channel.id);
       if ('send' in channel) await channel.send({ content: locking ? `🔒 This channel is locked by staff. ${reason}` : '🔓 This channel is open again.', allowedMentions: { parse: [] } }).catch(() => null);
       await modLog(ctx, guild, { title: locking ? 'Channel locked' : 'Channel unlocked', description: `<#${channel.id}> by <@${actor.id}>${locking ? `\n**Reason:** ${reason}` : ''}`, color: locking ? COLORS.warn : COLORS.success });
       await reply(i, `${locking ? '🔒 Locked' : '🔓 Unlocked'} <#${channel.id}>.`);
@@ -225,6 +238,7 @@ export async function handleModerationCommand(ctx: ModuleContext, i: ChatInputCo
     case 'slowmode': {
       const channel = i.options.getChannel('channel') ?? i.channel;
       if (!channel || !('setRateLimitPerUser' in channel)) return void (await reply(i, 'Pick a text channel.'));
+      if (!channel.permissionsFor(actor)?.has(PermissionFlagsBits.ManageChannels)) return void (await reply(i, 'You need Manage Channels in that channel.'));
       const seconds = i.options.getInteger('seconds', true);
       try {
         await channel.setRateLimitPerUser(seconds, `Slowmode set by ${actor.user.tag}`);
@@ -266,7 +280,9 @@ export async function handleModerationCommand(ctx: ModuleContext, i: ChatInputCo
         } catch (e) {
           return void (await reply(i, `Couldn’t ban: ${(e as Error).message}`));
         }
+        // A permanent ban cancels any earlier temporary one, so it isn't lifted later.
         if (until) ctx.store.addTempBan(guild.id, user.id, until);
+        else ctx.store.removeTempBan(guild.id, user.id);
         await logCase(ctx, guild, { type: banType, userId: user.id, moderatorId: actor.id, reason, duration: durationText }, {
           title: until ? 'Member temporarily banned' : 'Member banned',
           description: `<@${user.id}> (${user.tag}, not in the server) by <@${actor.id}>${untilText}\n**Reason:** ${reason}`,
@@ -291,6 +307,7 @@ export async function handleModerationCommand(ctx: ModuleContext, i: ChatInputCo
         return void (await reply(i, `Couldn’t do that: ${(e as Error).message}`));
       }
       if (i.commandName === 'ban' && until) ctx.store.addTempBan(guild.id, target.id, until);
+      else if (i.commandName === 'ban') ctx.store.removeTempBan(guild.id, target.id);
       const type = i.commandName === 'ban' ? banType : i.commandName;
       const n = await logCase(
         ctx,
@@ -445,7 +462,10 @@ export async function onAuditCase(ctx: ModuleContext, e: AuditLike, guild: Guild
   if (!ctx.config(guild.id).moderation.enabled || !e.executorId || !e.targetId || e.executorId === ctx.client.user.id) return;
   let type: string | null = null;
   let duration: string | null = null;
-  if (e.action === AuditLogEvent.MemberBanAdd) type = 'ban';
+  if (e.action === AuditLogEvent.MemberBanAdd) {
+    type = 'ban';
+    ctx.store.removeTempBan(guild.id, e.targetId); // banned again by hand: no automatic unban
+  }
   else if (e.action === AuditLogEvent.MemberBanRemove) {
     type = 'unban';
     ctx.store.removeTempBan(guild.id, e.targetId);

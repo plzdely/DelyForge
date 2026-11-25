@@ -1,4 +1,4 @@
-import { type GuildInfo, INVITE_VARIABLES, type ModuleConfigs, STAT_VARIABLES } from '@delyforge/shared';
+import { FEED_VARIABLES, type GuildInfo, INVITE_VARIABLES, type ModuleConfigs, STAT_VARIABLES } from '@delyforge/shared';
 import { Plus, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Field, Input, Textarea } from '@/components/ui/input';
@@ -181,6 +181,130 @@ export function BirthdaysForm({ c, set, guild }: Props<'birthdays'>) {
         <RoleSelect id="bday-role" label="Birthday role (optional)" assignableOnly guild={guild} value={c.roleId} onChange={(v) => set({ ...c, roleId: v })} />
         <NumberField id="bday-hour" label={`Announce at (UTC hour) — ${localTime(c.hourUtc)} your time`} min={0} max={23} value={c.hourUtc} onChange={(v) => set({ ...c, hourUtc: v })} />
       </div>
+    </Section>
+  );
+}
+
+export function FeedsForm({ c, set, guild }: Props<'feeds'>) {
+  const update = (n: number, patch: Partial<(typeof c.feeds)[number]>) => set({ ...c, feeds: c.feeds.map((f, i) => (i === n ? { ...f, ...patch } : f)) });
+  return (
+    <Section title="Feeds" description="Checked every 10 minutes. The first check only remembers what’s already there, so old videos and posts aren’t announced.">
+      {c.feeds.map((f, n) => (
+        <div key={n} className="space-y-2 rounded-lg border border-border p-3">
+          <div className="grid grid-cols-[10rem_1fr_auto] items-end gap-2">
+            <Field label="Type" htmlFor={`feed-kind-${n}`}>
+              <Select id={`feed-kind-${n}`} value={f.kind} onChange={(e) => update(n, { kind: e.target.value as 'youtube' | 'rss' })}>
+                <option value="youtube">YouTube channel</option>
+                <option value="rss">RSS / news feed</option>
+              </Select>
+            </Field>
+            <Field label={f.kind === 'youtube' ? 'Channel link (youtube.com/@name)' : 'Feed address (https://…)'} htmlFor={`feed-src-${n}`}>
+              <Input
+                id={`feed-src-${n}`}
+                maxLength={300}
+                value={f.source}
+                placeholder={f.kind === 'youtube' ? 'https://youtube.com/@name' : 'https://example.com/feed.xml'}
+                onChange={(e) => update(n, { source: e.target.value })}
+              />
+            </Field>
+            <Button size="icon" variant="ghost" aria-label="Remove feed" onClick={() => set({ ...c, feeds: c.feeds.filter((_, i) => i !== n) })}>
+              <Trash2 />
+            </Button>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <ChannelSelect id={`feed-ch-${n}`} label="Post in" guild={guild} value={f.channelId} onChange={(v) => v && update(n, { channelId: v })} />
+            <RoleSelect id={`feed-role-${n}`} label="Role to ping with {role} (optional)" guild={guild} value={f.roleId} onChange={(v) => update(n, { roleId: v })} />
+          </div>
+          <TemplateField
+            id={`feed-msg-${n}`}
+            label="Message"
+            max={500}
+            value={f.message}
+            onChange={(v) => update(n, { message: v })}
+            variables={FEED_VARIABLES}
+            sample={{ title: 'My newest video', link: 'https://youtu.be/example', author: 'Your Channel', role: '@Notifications' }}
+          />
+        </div>
+      ))}
+      <Button
+        size="sm"
+        disabled={c.feeds.length >= 20 || !guild.channels.some((ch) => ch.kind === 'text' || ch.kind === 'announcement')}
+        onClick={() => {
+          const ch = guild.channels.find((x) => x.kind === 'announcement') ?? guild.channels.find((x) => x.kind === 'text');
+          if (ch) set({ ...c, feeds: [...c.feeds, { kind: 'youtube', source: '', channelId: ch.id, message: '{role} **{author}** posted: {title}\n{link}', roleId: null }] });
+        }}
+      >
+        <Plus /> Add feed
+      </Button>
+    </Section>
+  );
+}
+
+const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const myTimeZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+
+export function ScheduledForm({ c, set, guild }: Props<'scheduled'>) {
+  const update = (n: number, patch: Partial<(typeof c.messages)[number]>) => set({ ...c, messages: c.messages.map((m, i) => (i === n ? { ...m, ...patch } : m)) });
+  return (
+    <Section title="Scheduled messages" description="Posted on the chosen days at the chosen time. No days picked means every day.">
+      <div className="flex items-end gap-2">
+        <div className="flex-1">
+          <Field label="Time zone" htmlFor="sched-tz" hint="For example America/Chicago or Europe/London.">
+            <Input id="sched-tz" maxLength={64} value={c.timezone} onChange={(e) => set({ ...c, timezone: e.target.value })} />
+          </Field>
+        </div>
+        {c.timezone !== myTimeZone() ? (
+          <Button size="sm" variant="secondary" onClick={() => set({ ...c, timezone: myTimeZone() })}>
+            Use my time zone
+          </Button>
+        ) : null}
+      </div>
+      {c.messages.map((m, n) => (
+        <div key={n} className="space-y-2 rounded-lg border border-border p-3">
+          <div className="grid grid-cols-[1fr_8rem_auto] items-end gap-2">
+            <ChannelSelect id={`sched-ch-${n}`} label="Channel" guild={guild} value={m.channelId} onChange={(v) => v && update(n, { channelId: v })} />
+            <Field label="Time" htmlFor={`sched-time-${n}`}>
+              <Input id={`sched-time-${n}`} type="time" value={m.time} onChange={(e) => e.target.value && update(n, { time: e.target.value })} />
+            </Field>
+            <Button size="icon" variant="ghost" aria-label="Remove scheduled message" onClick={() => set({ ...c, messages: c.messages.filter((_, i) => i !== n) })}>
+              <Trash2 />
+            </Button>
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Days">
+            {DAY_NAMES.map((d, day) => {
+              const on = m.days.includes(day);
+              return (
+                <button
+                  key={d}
+                  type="button"
+                  aria-pressed={on}
+                  onClick={() => update(n, { days: on ? m.days.filter((x) => x !== day) : [...m.days, day].sort() })}
+                  className={`rounded-md border px-2 py-1 text-xs ${on ? 'border-primary-border bg-primary-soft text-fg' : 'border-border text-fg-muted hover:text-fg'}`}
+                >
+                  {d}
+                </button>
+              );
+            })}
+            {m.days.length ? null : <span className="text-xs text-fg-muted">Every day</span>}
+          </div>
+          <Field label="Message" htmlFor={`sched-text-${n}`} counter={{ value: m.text.length, max: 2000 }}>
+            <Textarea id={`sched-text-${n}`} rows={3} maxLength={2000} value={m.text} onChange={(e) => update(n, { text: e.target.value })} />
+          </Field>
+          <RoleSelect id={`sched-role-${n}`} label="Ping a role (optional)" guild={guild} value={m.roleId} onChange={(v) => update(n, { roleId: v })} />
+        </div>
+      ))}
+      <Button
+        size="sm"
+        disabled={c.messages.length >= 25 || !guild.channels.some((ch) => ch.kind === 'text')}
+        onClick={() => {
+          const ch = guild.channels.find((x) => x.kind === 'text');
+          // The first message fills in your own time zone instead of the UTC default.
+          const timezone = !c.messages.length && c.timezone === 'UTC' ? myTimeZone() : c.timezone;
+          if (ch) set({ ...c, timezone, messages: [...c.messages, { channelId: ch.id, text: '', days: [], time: '09:00', roleId: null }] });
+        }}
+      >
+        <Plus /> Add scheduled message
+      </Button>
     </Section>
   );
 }

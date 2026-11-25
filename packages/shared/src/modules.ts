@@ -26,6 +26,8 @@ export const MODULE_IDS = [
   'sticky',
   'serverStats',
   'birthdays',
+  'feeds',
+  'scheduled',
 ] as const;
 export type ModuleId = (typeof MODULE_IDS)[number];
 
@@ -448,6 +450,62 @@ export const birthdaysConfigSchema = z
   .strict();
 export type BirthdaysConfig = z.infer<typeof birthdaysConfigSchema>;
 
+// ─── Social alerts (YouTube and news feeds) ───────────────────────────────────────────────────────────────────────
+
+export const FEED_VARIABLES = [
+  { key: '{title}', description: 'Title of the new video or post' },
+  { key: '{link}', description: 'Link to it' },
+  { key: '{author}', description: 'Channel or site name' },
+  { key: '{role}', description: 'Pings the chosen role' },
+] as const;
+
+export const feedsConfigSchema = z
+  .object({
+    enabled: z.boolean(),
+    feeds: z
+      .array(
+        z
+          .object({
+            kind: z.enum(['youtube', 'rss']),
+            /** YouTube: a channel link (youtube.com/@name or /channel/UC…) or channel ID. RSS: the feed's https:// address. */
+            source: z.string().trim().min(2, 'Add the channel or feed address').max(300),
+            channelId: snowflakeSchema,
+            message: template(500),
+            /** Role to ping with {role} (null = no ping). */
+            roleId: snowflakeSchema.nullable(),
+          })
+          .strict(),
+      )
+      .max(20),
+  })
+  .strict();
+export type FeedsConfig = z.infer<typeof feedsConfigSchema>;
+
+// ─── Scheduled messages ───────────────────────────────────────────────────────────────────────────────────────────
+
+export const scheduledConfigSchema = z
+  .object({
+    enabled: z.boolean(),
+    /** IANA time zone the times are in, e.g. "America/Chicago" (the app fills in yours). */
+    timezone: z.string().trim().min(1).max(64),
+    messages: z
+      .array(
+        z
+          .object({
+            channelId: snowflakeSchema,
+            text: z.string().trim().min(1, 'Write the message').max(2000),
+            /** 0 = Sunday … 6 = Saturday. Empty = every day. */
+            days: z.array(z.number().int().min(0).max(6)).max(7),
+            time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Use a time like 09:30'),
+            roleId: snowflakeSchema.nullable(),
+          })
+          .strict(),
+      )
+      .max(25),
+  })
+  .strict();
+export type ScheduledConfig = z.infer<typeof scheduledConfigSchema>;
+
 // ─── Registry — the one list of built modules; everything below is derived from it ────────────────────────────────
 
 export const moduleConfigSchemas = {
@@ -468,6 +526,8 @@ export const moduleConfigSchemas = {
   sticky: stickyConfigSchema,
   serverStats: serverStatsConfigSchema,
   birthdays: birthdaysConfigSchema,
+  feeds: feedsConfigSchema,
+  scheduled: scheduledConfigSchema,
 } as const;
 export type ImplementedModuleId = keyof typeof moduleConfigSchemas;
 export const IMPLEMENTED_MODULES = Object.keys(moduleConfigSchemas) as [ImplementedModuleId, ...ImplementedModuleId[]];
@@ -568,6 +628,8 @@ export const DEFAULT_MODULE_CONFIGS: ModuleConfigs = {
   sticky: { enabled: false, messages: [] },
   serverStats: { enabled: false, counters: [] },
   birthdays: { enabled: false, channelId: null, message: '🎂 Happy birthday {user}! Have a great day.', roleId: null, hourUtc: 9 },
+  feeds: { enabled: false, feeds: [] },
+  scheduled: { enabled: false, timezone: 'UTC', messages: [] },
 };
 
 /** Settings for one server: any subset of modules (missing ones use defaults). */
@@ -618,6 +680,8 @@ export const MODULES: readonly ModuleInfo[] = [
   { id: 'antiRaid', name: 'Raid Protection', summary: 'Spots join floods, alerts staff and keeps brand-new accounts out.', feature: 'modules.standard', available: true, commands: [] },
   { id: 'sticky', name: 'Sticky Messages', summary: 'Keep a message pinned to the bottom of a busy channel.', feature: 'modules.standard', available: true, commands: [] },
   { id: 'serverStats', name: 'Server Stats', summary: 'Channel names that show live member, bot and boost counts.', feature: 'modules.standard', available: true, commands: [] },
+  { id: 'feeds', name: 'Social Alerts', summary: 'Announce new YouTube videos and posts from any news or RSS feed.', feature: 'modules.standard', available: true, commands: [] },
+  { id: 'scheduled', name: 'Scheduled Messages', summary: 'Post announcements automatically on chosen days and times.', feature: 'modules.standard', available: true, commands: [] },
   { id: 'birthdays', name: 'Birthdays', summary: 'Members save their birthday; the bot celebrates them with a message and a role.', feature: 'modules.standard', available: true, commands: ['/birthday set', '/birthday remove', '/birthday upcoming'] },
 ];
 
@@ -916,6 +980,11 @@ export function modulePermissions<K extends ImplementedModuleId>(id: K, config: 
       return VIEW | P(4n) | P(20n); // rename channels
     case 'birthdays':
       return base | ((config as BirthdaysConfig).roleId ? ROLES : 0n);
+    case 'feeds':
+      // Mention Everyone lets the bot ping roles that aren't set to "anyone can mention".
+      return base | ((config as FeedsConfig).feeds.some((f) => f.roleId) ? P(17n) : 0n);
+    case 'scheduled':
+      return base | ((config as ScheduledConfig).messages.some((m) => m.roleId) ? P(17n) : 0n);
     default:
       return base;
   }

@@ -128,3 +128,54 @@ describe('moderation cases and temporary bans', () => {
     store.close();
   });
 });
+
+describe('social alerts', () => {
+  it('reads YouTube (Atom) and normal RSS feeds', async () => {
+    const { parseFeed, youtubeChannelId } = await import('../src/modules/feeds.js');
+    const atom = `<feed><title>Cool Channel</title><entry><id>yt:video:abc</id><yt:videoId>abc</yt:videoId><title>New &amp; shiny</title>
+      <link rel="alternate" href="https://www.youtube.com/watch?v=abc"/><author><name>Cool Channel</name></author></entry></feed>`;
+    expect(parseFeed(atom)).toEqual([{ id: 'abc', title: 'New & shiny', link: 'https://www.youtube.com/watch?v=abc', author: 'Cool Channel' }]);
+    const rss = `<rss><channel><title>Blog</title><item><title><![CDATA[Post 1]]></title><link>https://blog.example/1</link><guid>p1</guid></item></channel></rss>`;
+    expect(parseFeed(rss)).toEqual([{ id: 'p1', title: 'Post 1', link: 'https://blog.example/1', author: 'Blog' }]);
+    expect(youtubeChannelId('https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv')).toBe('UCabcdefghijklmnopqrstuv');
+    expect(youtubeChannelId('https://youtube.com/@someone')).toBeNull();
+  });
+
+  it('remembers a feed’s existing posts on the first check, then only new ones count', () => {
+    const store = new BotStore(join(mkdtempSync(join(tmpdir(), 'df-feed-')), 'b.db'));
+    expect(store.seenFeedItems('g', 'rss:x')).toBeNull();
+    store.markFeedItemsSeen('g', 'rss:x', ['a', 'b']);
+    expect([...store.seenFeedItems('g', 'rss:x')!]).toEqual(['a', 'b']);
+    store.markFeedItemsSeen('g', 'rss:empty', []);
+    expect(store.seenFeedItems('g', 'rss:empty')).not.toBeNull();
+    store.close();
+  });
+});
+
+describe('scheduled messages', () => {
+  it('works out the local day and time in a time zone, with summer time', async () => {
+    const { localParts, dueMessages } = await import('../src/modules/scheduled.js');
+    // 14:30 UTC on Wed 15 July 2026 is 09:30 in Chicago (summer time, UTC-5).
+    expect(localParts(new Date('2026-07-15T14:30:00Z'), 'America/Chicago')).toEqual({ day: 3, time: '09:30', date: '2026-07-15' });
+    // In winter the same UTC time is 08:30 there (UTC-6).
+    expect(localParts(new Date('2026-01-14T14:30:00Z'), 'America/Chicago')?.time).toBe('08:30');
+    expect(localParts(new Date(), 'Not/AZone')).toBeNull();
+    const msgs = [
+      { channelId: '1', text: 'daily', days: [], time: '09:30', roleId: null },
+      { channelId: '1', text: 'mondays', days: [1], time: '09:30', roleId: null },
+    ];
+    expect(dueMessages(msgs, { day: 3, time: '09:30' })).toEqual([0]);
+    expect(dueMessages(msgs, { day: 1, time: '09:30' })).toEqual([0, 1]);
+  });
+});
+
+describe('channel lock memory', () => {
+  it('remembers what /lock changed so /unlock can restore it', () => {
+    const store = new BotStore(join(mkdtempSync(join(tmpdir(), 'df-lock-')), 'b.db'));
+    store.saveChannelLock('g', 'c', { allow: 0n, deny: 2048n });
+    expect(store.channelLock('c')).toEqual({ allow: 0n, deny: 2048n });
+    store.removeChannelLock('c');
+    expect(store.channelLock('c')).toBeNull();
+    store.close();
+  });
+});

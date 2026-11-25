@@ -27,7 +27,7 @@ import { toast } from 'sonner';
 import { InviteLink } from '@/components/bots/permissions-editor';
 import { Section, TemplateField } from '@/components/modules/fields';
 import { GiveawaysForm, LevelingForm, ReactionRolesForm, SuggestionsForm, TicketsForm, VerificationForm } from '@/components/modules/forms';
-import { AntiRaidForm, BirthdaysForm, InvitesForm, ServerStatsForm, StarboardForm, StickyForm, TempVoiceForm } from '@/components/modules/forms-more';
+import { AntiRaidForm, BirthdaysForm, FeedsForm, InvitesForm, ScheduledForm, ServerStatsForm, StarboardForm, StickyForm, TempVoiceForm } from '@/components/modules/forms-more';
 import {
   ChannelChecklist,
   ChannelSelect,
@@ -458,6 +458,8 @@ export function ModuleSettings() {
             {id === 'sticky' ? <StickyForm c={draft as ModuleConfigs['sticky']} set={setDraft} guild={guild} /> : null}
             {id === 'serverStats' ? <ServerStatsForm c={draft as ModuleConfigs['serverStats']} set={setDraft} guild={guild} /> : null}
             {id === 'birthdays' ? <BirthdaysForm c={draft as ModuleConfigs['birthdays']} set={setDraft} guild={guild} /> : null}
+            {id === 'feeds' ? <FeedsForm c={draft as ModuleConfigs['feeds']} set={setDraft} guild={guild} /> : null}
+            {id === 'scheduled' ? <ScheduledForm c={draft as ModuleConfigs['scheduled']} set={setDraft} guild={guild} /> : null}
           </fieldset>
 
           <div className="sticky bottom-0 -mx-1 flex items-center justify-end gap-2 rounded-xl border border-border bg-surface-raised/95 px-4 py-3 shadow-pop backdrop-blur">

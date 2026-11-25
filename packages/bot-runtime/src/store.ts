@@ -205,6 +205,19 @@ export class BotStore {
         unban_at INTEGER NOT NULL,
         PRIMARY KEY (guild_id, user_id)
       );
+      CREATE TABLE IF NOT EXISTS channel_locks (
+        channel_id TEXT PRIMARY KEY,
+        guild_id   TEXT NOT NULL,
+        allow      TEXT NOT NULL,
+        deny       TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS feed_seen (
+        guild_id TEXT NOT NULL,
+        feed_key TEXT NOT NULL,
+        item_id  TEXT NOT NULL,
+        seen_at  INTEGER NOT NULL,
+        PRIMARY KEY (guild_id, feed_key, item_id)
+      );
       CREATE TABLE IF NOT EXISTS birthdays (
         guild_id       TEXT NOT NULL,
         user_id        TEXT NOT NULL,
@@ -497,6 +510,43 @@ export class BotStore {
   caseByNumber(guildId: string, number: number): ModCase | null {
     const r = this.db.prepare('SELECT * FROM mod_cases WHERE guild_id = ? AND number = ?').get(guildId, number) as Parameters<typeof BotStore.toCase>[0] | undefined;
     return r ? BotStore.toCase(r) : null;
+  }
+
+  // ─── Channel locks (what /lock changed, so /unlock can put it back) ──────────────────────────────────────────────
+
+  channelLock(channelId: string): { allow: bigint; deny: bigint } | null {
+    const r = this.db.prepare('SELECT allow, deny FROM channel_locks WHERE channel_id = ?').get(channelId) as { allow: string; deny: string } | undefined;
+    return r ? { allow: BigInt(r.allow), deny: BigInt(r.deny) } : null;
+  }
+
+  saveChannelLock(guildId: string, channelId: string, previous: { allow: bigint; deny: bigint }): void {
+    this.db.prepare('INSERT OR REPLACE INTO channel_locks (channel_id, guild_id, allow, deny) VALUES (?, ?, ?, ?)').run(channelId, guildId, String(previous.allow), String(previous.deny));
+  }
+
+  removeChannelLock(channelId: string): void {
+    this.db.prepare('DELETE FROM channel_locks WHERE channel_id = ?').run(channelId);
+  }
+
+  // ─── Social alerts ───────────────────────────────────────────────────────────────────────────────────────────────
+
+  /** Items already announced for a feed, or null if the feed was never checked (so the first check posts nothing). */
+  seenFeedItems(guildId: string, feedKey: string): Set<string> | null {
+    const rows = this.db.prepare('SELECT item_id FROM feed_seen WHERE guild_id = ? AND feed_key = ?').all(guildId, feedKey) as { item_id: string }[];
+    return rows.length ? new Set(rows.map((r) => r.item_id)) : null;
+  }
+
+  markFeedItemsSeen(guildId: string, feedKey: string, itemIds: string[], at = Date.now()): void {
+    // An empty feed still counts as "checked", so its first real post is announced.
+    for (const id of itemIds.length ? itemIds : ['(checked)']) {
+      this.db.prepare('INSERT OR IGNORE INTO feed_seen (guild_id, feed_key, item_id, seen_at) VALUES (?, ?, ?, ?)').run(guildId, feedKey, id, at);
+    }
+    // Keep the newest 300 per feed.
+    this.db
+      .prepare(
+        `DELETE FROM feed_seen WHERE guild_id = ? AND feed_key = ? AND item_id NOT IN
+         (SELECT item_id FROM feed_seen WHERE guild_id = ? AND feed_key = ? ORDER BY seen_at DESC LIMIT 300)`,
+      )
+      .run(guildId, feedKey, guildId, feedKey);
   }
 
   // ─── Temporary bans ──────────────────────────────────────────────────────────────────────────────────────────────
