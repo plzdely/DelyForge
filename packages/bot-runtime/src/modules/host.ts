@@ -22,6 +22,7 @@ import * as sticky from './sticky.js';
 import * as tempVoice from './tempvoice.js';
 import { pollFeeds } from './feeds.js';
 import { runScheduled } from './scheduled.js';
+import { checkLostPermissions, notifyOwner, runModuleTest } from './trust.js';
 
 /**
  * Connects Discord events to the enabled modules, per server, and keeps each server's slash commands in line with
@@ -46,6 +47,7 @@ export class ModuleHost {
     private readonly log: (level: LogLevel, message: string) => void,
     command: (name: string, ok: boolean, durationMs: number) => void,
     workflowRun: ModuleContext['workflowRun'],
+    private readonly problem: (kind: 'permissions', message: string) => void = () => {},
   ) {
     this.modules = initial.modules;
     this.builders = initial.builders;
@@ -187,12 +189,24 @@ export class ModuleHost {
       if (panelChanges) this.log('info', `Updated ${panelChanges} panel message(s) in “${guild.name}”.`);
       await invites.syncInvites(this.ctx, guild);
       await tempVoice.cleanupTempChannels(this.ctx, guild);
+      checkLostPermissions(this.ctx, guild, (m) => this.problem('permissions', m), true);
     } catch (e) {
       this.log('warn', `Could not update “${guild.name}” to the new settings: ${(e as Error).message}`);
     } finally {
       this.syncing.delete(guild.id);
       if (this.resync.delete(guild.id)) void this.syncGuildCommands(guild);
     }
+  }
+
+  /** "Send a test" button: posts one module message in a server. */
+  async runTest(guildId: string, test: Parameters<typeof runModuleTest>[2]): Promise<{ ok: boolean; message: string }> {
+    const guild = this.client.guilds.cache.get(guildId);
+    if (!guild || !this.store) return { ok: false, message: 'The bot isn’t in that server (or is still starting).' };
+    return runModuleTest(this.ctx, guild, test);
+  }
+
+  notifyOwner(text: string): Promise<boolean> {
+    return this.client.isReady() ? notifyOwner(this.client, text) : Promise.resolve(false);
   }
 
   // ─── Event wiring ────────────────────────────────────────────────────────────────────────────────────────────────
@@ -271,6 +285,11 @@ export class ModuleHost {
         startWorkflows(after.guild, { type: 'voiceJoin', channelId: after.channelId }, { user: after.member.user, member: after.member });
       }),
     );
+    // Lost permissions: the bot's role was edited or removed, or one of its roles was taken away.
+    const recheck = (guild: Guild) => checkLostPermissions(ctx, guild, (m) => this.problem('permissions', m));
+    c.on(Events.GuildRoleUpdate, safe('Permission check', async (_before, role) => recheck(role.guild)));
+    c.on(Events.GuildRoleDelete, safe('Permission check', async (role) => recheck(role.guild)));
+    c.on(Events.GuildMemberUpdate, safe('Permission check', async (_before, after) => void (after.id === c.user?.id && recheck(after.guild))));
     c.on(Events.MessageCreate, safe('Auto-moderation', (m) => automodCheck(ctx, m)));
     c.on(Events.MessageCreate, safe('Leveling', (m) => onMessageXp(ctx, m)));
     c.on(Events.MessageDelete, safe('Message delete log', (m) => logging.onMessageDelete(ctx, m)));

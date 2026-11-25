@@ -1,5 +1,5 @@
 import type { AppNotification, NotificationType } from '@delyforge/shared';
-import { Bell, BellOff, CheckCheck, MemoryStick, Plug, RotateCcw, Skull, Trash2, Unplug } from 'lucide-react';
+import { Bell, BellOff, CheckCheck, MemoryStick, Plug, RotateCcw, ShieldAlert, Skull, Trash2, Unplug } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router';
 import { toast } from 'sonner';
@@ -20,6 +20,7 @@ const ICONS: Record<NotificationType, { icon: typeof Bell; tone: 'danger' | 'war
   'bot.disconnected': { icon: Unplug, tone: 'warning' },
   'bot.high_memory': { icon: MemoryStick, tone: 'warning' },
   'bot.restarted': { icon: RotateCcw, tone: 'success' },
+  'bot.permission_lost': { icon: ShieldAlert, tone: 'warning' },
 };
 
 function Row({ n, onRead }: { n: AppNotification; onRead: (id: number) => void }) {

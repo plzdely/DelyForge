@@ -5,6 +5,7 @@ import {
   DEFAULT_PLANS,
   type Entitlements,
   type FromRuntime,
+  type ModuleTest,
   type NotificationType,
   type RuntimeOptions,
   type ToRuntime,
@@ -15,6 +16,7 @@ import {
   createRedactor,
   fromRuntimeSchema,
 } from '@delyforge/shared';
+import { randomUUID } from 'node:crypto';
 import type { BotRepository } from '../db/bots';
 import type { LogRepository, NotificationRepository } from '../db/logs';
 import type { AnalyticsRepository } from '../db/analytics';
@@ -93,7 +95,16 @@ interface Handle {
   highMemoryNotified: boolean;
   /** Gateway intents the running process connected with. */
   intents: number;
+  /** "Send a test" requests waiting for the bot's answer. */
+  tests: Map<string, (r: { ok: boolean; message: string }) => void>;
+  /** Owner DMs waiting for the bot to be online again (e.g. written while it was crashed). */
+  ownerDms: string[];
+  lastOwnerDm: Map<NotificationType, number>;
 }
+
+/** Problems the bot also DMs its owner about (when enabled in Settings). */
+const OWNER_DM_TYPES = new Set<NotificationType>(['bot.restarted', 'bot.crash_loop', 'bot.permission_lost']);
+const OWNER_DM_EVERY_MS = 15 * 60_000;
 
 const ACTIVE = new Set(['starting', 'online', 'reconnecting', 'stopping']);
 
@@ -281,6 +292,26 @@ export class BotSupervisor {
     return (options.intents & ~h.intents) !== 0;
   }
 
+  /** Asks the running bot to post one test message. Resolves with what happened (never rejects). */
+  testModule(botId: string, guildId: string, test: ModuleTest): Promise<{ ok: boolean; message: string }> {
+    const h = this.handles.get(botId);
+    if (!h?.proc || h.state.status !== 'online') return Promise.resolve({ ok: false, message: 'Start the bot first — tests are sent by the running bot.' });
+    const requestId = randomUUID();
+    const proc = h.proc;
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        h.tests.delete(requestId);
+        resolve({ ok: false, message: 'The bot didn’t answer within 20 seconds.' });
+      }, 20_000);
+      h.tests.set(requestId, (r) => {
+        clearTimeout(timer);
+        h.tests.delete(requestId);
+        resolve(r);
+      });
+      proc.postMessage({ type: 'test-module', requestId, guildId, test });
+    });
+  }
+
   // ─── Process lifecycle ───────────────────────────────────────────────────────────────────────────────────────────
 
   private launch(botId: string, h: Handle): BotRuntimeState {
@@ -350,6 +381,7 @@ export class BotSupervisor {
         this.d.bots.recordReady(botId, msg.user.tag, msg.user.avatarUrl, msg.guildCount);
         this.update(h, { status: 'online', readyAt: new Date().toISOString() });
         this.d.emit({ type: 'project-updated', botId });
+        for (const text of h.ownerDms.splice(0)) proc.postMessage({ type: 'notify-owner', text });
         if (wasAutoRestart) {
           this.notify('bot.restarted', 'restarts', botId, 'Bot restarted', `${this.name(botId)} crashed and was restarted automatically. It is back online.`);
         }
@@ -407,6 +439,13 @@ export class BotSupervisor {
       case 'stopped':
         this.d.analytics?.stopped(botId);
         break;
+      case 'test-result':
+        h.tests.get(msg.requestId)?.({ ok: msg.ok, message: msg.message });
+        break;
+      case 'problem':
+        this.log(botId, 'warn', msg.message);
+        this.notify('bot.permission_lost', 'permissions', botId, 'Bot lost permissions', `${this.name(botId)}: ${msg.message}`);
+        break;
     }
   }
 
@@ -429,6 +468,7 @@ export class BotSupervisor {
     }
     const waiters = h.stopWaiters.splice(0);
     for (const w of waiters) w();
+    for (const answer of [...h.tests.values()]) answer({ ok: false, message: 'The bot stopped before it could send the test.' });
   }
 
   private onCrash(botId: string, h: Handle, code: number | null): void {
@@ -512,6 +552,9 @@ export class BotSupervisor {
         stopWaiters: [],
         highMemoryNotified: false,
         intents: 0,
+        tests: new Map(),
+        ownerDms: [],
+        lastOwnerDm: new Map(),
       };
       this.handles.set(botId, h);
     }
@@ -540,6 +583,18 @@ export class BotSupervisor {
     }
   }
 
+  /** The bot DMs its owner — now if it's online, otherwise once it's back. At most one DM per problem type per 15 min. */
+  private dmOwner(botId: string, type: NotificationType, text: string): void {
+    const h = this.handles.get(botId);
+    if (!h) return;
+    const now = Date.now();
+    if (now - (h.lastOwnerDm.get(type) ?? 0) < OWNER_DM_EVERY_MS) return;
+    h.lastOwnerDm.set(type, now);
+    const message = text.slice(0, 1800);
+    if (h.proc && h.state.status === 'online') h.proc.postMessage({ type: 'notify-owner', text: message });
+    else h.ownerDms = [...h.ownerDms, message].slice(-3);
+  }
+
   private name(botId: string): string {
     try {
       return this.d.bots.get(botId).name;
@@ -561,6 +616,7 @@ export class BotSupervisor {
       const notification = this.d.notifications.create(type, title, body, botId);
       this.d.emit({ type: 'notification', notification });
       if (prefs.desktop) this.d.desktopNotify?.(title, body);
+      if (prefs.discordDm && OWNER_DM_TYPES.has(type)) this.dmOwner(botId, type, `⚠️ **${title}** — ${body}\n-# Sent by DelyForge. Turn these off in Settings → Notifications.`);
     } catch {
       // Never let a notification failure affect the bot.
     }

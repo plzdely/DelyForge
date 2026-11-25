@@ -21,7 +21,7 @@ const ACTIVITY_TYPES = {
 export function createDiscordClient(options: RuntimeOptions, events: BotClientEvents): BotClient {
   // Partials let logging report deletes/edits of messages sent before the bot started.
   const client = new Client({ intents: options.intents, partials: [Partials.Message, Partials.Channel, Partials.GuildMember, Partials.Reaction, Partials.User] });
-  const modules = new ModuleHost(client, options, events.log, events.command, events.workflowRun);
+  const modules = new ModuleHost(client, options, events.log, events.command, events.workflowRun, events.problem);
 
   client.once(Events.ClientReady, async (c) => {
     events.ready({
@@ -90,6 +90,8 @@ export function createDiscordClient(options: RuntimeOptions, events: BotClientEv
     },
     setModules: (m) => modules.setModules(m),
     setBuilders: (b) => modules.setBuilders(b),
+    runTest: (guildId, test) => modules.runTest(guildId, test),
+    notifyOwner: (text) => modules.notifyOwner(text),
     setPresence: (presence: BotPresence) => {
       if (!client.user) return;
       const a = presence.activity;

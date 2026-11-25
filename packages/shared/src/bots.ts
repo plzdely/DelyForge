@@ -139,6 +139,7 @@ export const NOTIFICATION_TYPES = [
   'bot.disconnected',
   'bot.login_failed',
   'bot.high_memory',
+  'bot.permission_lost',
 ] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 

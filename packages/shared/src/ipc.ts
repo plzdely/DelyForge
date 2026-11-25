@@ -21,6 +21,7 @@ import {
 import type { Entitlements } from './entitlements.js';
 import { type BotModules, type GuildInfo, type ModuleUpdateResult, updateModuleSchema } from './modules.js';
 import { type Builders, type WorkflowRun, saveBuildersSchema } from './builders.js';
+import { moduleTestSchema } from './runtime.js';
 import {
   type AccountStatus,
   type InvoiceInfo,
@@ -80,6 +81,7 @@ export const IPC_CHANNELS = {
   discordGuilds: 'discord:guilds',
   modulesGet: 'modules:get',
   modulesUpdate: 'modules:update',
+  modulesTest: 'modules:test',
   buildersGet: 'builders:get',
   buildersSave: 'builders:save',
   workflowRuns: 'builders:workflow-runs',
@@ -204,6 +206,7 @@ export const ipcInputSchemas = {
   [IPC_CHANNELS.discordGuilds]: z.object({ id: z.uuid(), refresh: z.boolean().optional() }).strict(),
   [IPC_CHANNELS.modulesGet]: botIdInputSchema,
   [IPC_CHANNELS.modulesUpdate]: updateModuleSchema,
+  [IPC_CHANNELS.modulesTest]: moduleTestSchema,
   [IPC_CHANNELS.buildersGet]: botIdInputSchema,
   [IPC_CHANNELS.buildersSave]: saveBuildersSchema,
   [IPC_CHANNELS.workflowRuns]: botIdInputSchema,
@@ -422,6 +425,8 @@ export interface DelyForgeBridge {
   modules: {
     get(id: string): Promise<IpcResult<BotModules>>;
     update(input: z.input<typeof updateModuleSchema>): Promise<IpcResult<ModuleUpdateResult>>;
+    /** Asks the running bot to post one test message (welcome, level-up…) and says what happened. */
+    test(input: z.input<typeof moduleTestSchema>): Promise<IpcResult<{ ok: boolean; message: string }>>;
   };
   builders: {
     get(id: string): Promise<IpcResult<Builders>>;

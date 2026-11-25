@@ -4,6 +4,7 @@ import {
   type GuildInfo,
   INTENTS,
   type ImplementedModuleId,
+  type ModuleTest,
   type LogEvent,
   type LoggingConfig,
   type ModerationConfig,
@@ -20,7 +21,7 @@ import {
   modulePermissions,
   resolveGuildModules,
 } from '@delyforge/shared';
-import { ArrowLeft, ExternalLink, Lock, Plus, RotateCcw, Trash2, TriangleAlert } from 'lucide-react';
+import { ArrowLeft, ExternalLink, FlaskConical, Lock, Plus, RotateCcw, Trash2, TriangleAlert } from 'lucide-react';
 import { type ReactNode, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { toast } from 'sonner';
@@ -51,6 +52,18 @@ import { useRuntimeControls, useRuntimeState } from '@/lib/runtime';
 import { ModuleWorkspaceGate, useModuleWorkspace } from './modules';
 
 type Draft = ModuleConfigs[ImplementedModuleId];
+
+/** "Send a test" buttons: the running bot posts with the saved settings, using you as the example member. */
+const TESTS: Partial<Record<ImplementedModuleId, { test: ModuleTest; label: string }[]>> = {
+  welcome: [
+    { test: 'welcome', label: 'Test welcome' },
+    { test: 'goodbye', label: 'Test goodbye' },
+  ],
+  leveling: [{ test: 'levelUp', label: 'Test level-up' }],
+  birthdays: [{ test: 'birthday', label: 'Test birthday' }],
+  scheduled: [{ test: 'scheduled', label: 'Send the first message now' }],
+  feeds: [{ test: 'feeds', label: 'Post the newest item of the first feed' }],
+};
 
 const ACTION_LABELS = { delete: 'Delete message', warn: 'Delete + warn', timeout: 'Delete + timeout' } as const;
 
@@ -331,6 +344,7 @@ export function ModuleSettings() {
   const saved = id && guild ? resolveGuildModules(ws.modules.data?.[guild.id])[id] : null;
   const [draft, setDraft] = useState<Draft | null>(saved);
   const [needsRestart, setNeedsRestart] = useState(false);
+  const [testing, setTesting] = useState<ModuleTest | null>(null);
 
   // Reset the draft when switching server or module, or when saved data first arrives.
   const savedKey = JSON.stringify(saved);
@@ -438,6 +452,37 @@ export function ModuleSettings() {
                 <RotateCcw /> Restart bot
               </Button>
             </div>
+          ) : null}
+
+          {TESTS[id]?.length && !locked ? (
+            <Card className="flex flex-wrap items-center gap-3 p-4">
+              <FlaskConical className="size-4 text-fg-subtle" />
+              <p className="min-w-0 flex-1 text-sm text-fg-muted">
+                {state.status !== 'online'
+                  ? 'Start the bot to send a test message.'
+                  : dirty
+                    ? 'Save your changes first — tests use the saved settings.'
+                    : !draft.enabled
+                      ? 'Turn the module on and save to send a test.'
+                      : 'See it for real: the bot posts once, with you as the example member. Roles aren’t pinged.'}
+              </p>
+              {TESTS[id]!.map((t) => (
+                <Button
+                  key={t.test}
+                  size="sm"
+                  disabled={state.status !== 'online' || dirty || !draft.enabled || testing !== null}
+                  onClick={() => {
+                    setTesting(t.test);
+                    call((b) => b.modules.test({ id: bot.id, guildId: guild.id, test: t.test }))
+                      .then((r) => (r.ok ? toast.success('Test sent', { description: r.message }) : toast.error('Test not sent', { description: r.message })))
+                      .catch((e: Error) => toast.error('Test not sent', { description: e.message }))
+                      .finally(() => setTesting(null));
+                  }}
+                >
+                  {testing === t.test ? 'Sending…' : t.label}
+                </Button>
+              ))}
+            </Card>
           ) : null}
 
           <fieldset disabled={locked} className="space-y-3">

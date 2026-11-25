@@ -23,6 +23,15 @@ export async function onMemberJoin(ctx: ModuleContext, member: GuildMember): Pro
     }
   }
 
+  await sendWelcome(ctx, member);
+}
+
+/** The welcome message and DM (no roles). Also used by the "Send a test" button. */
+export async function sendWelcome(ctx: ModuleContext, member: GuildMember): Promise<{ posted: boolean; dm: boolean }> {
+  const config = ctx.config(member.guild.id).welcome;
+  const vars = templateVars(member);
+  let posted = false;
+  let dm = false;
   if (config.welcome.enabled) {
     const channel = await sendableChannel(ctx, member.guild, config.welcome.channelId, 'Welcome message');
     if (channel) {
@@ -45,21 +54,31 @@ export async function onMemberJoin(ctx: ModuleContext, member: GuildMember): Pro
               }
             : { content: text, allowedMentions: SAFE_MENTIONS },
         )
-        .catch((e: Error) => ctx.log('warn', `Welcome: could not send message: ${e.message}`));
+        .then(
+          () => (posted = true),
+          (e: Error) => ctx.log('warn', `Welcome: could not send message: ${e.message}`),
+        );
     }
   }
 
   if (config.dm.enabled && config.dm.message.trim()) {
-    const sent = await tryDM(member.user, renderTemplate(config.dm.message, vars));
-    if (!sent) ctx.log('info', `Welcome: ${member.user.tag} doesn’t accept DMs.`);
+    dm = await tryDM(member.user, renderTemplate(config.dm.message, vars));
+    if (!dm) ctx.log('info', `Welcome: ${member.user.tag} doesn’t accept DMs.`);
   }
+  return { posted, dm };
 }
 
 export async function onMemberLeave(ctx: ModuleContext, member: GuildMember | PartialGuildMember): Promise<void> {
   const config = ctx.config(member.guild.id).welcome;
   if (!config.enabled || !config.goodbye.enabled || member.user?.bot) return;
+  await sendGoodbye(ctx, member);
+}
+
+/** The goodbye message. Also used by the "Send a test" button. */
+export async function sendGoodbye(ctx: ModuleContext, member: GuildMember | PartialGuildMember): Promise<boolean> {
+  const config = ctx.config(member.guild.id).welcome;
   const channel = await sendableChannel(ctx, member.guild, config.goodbye.channelId, 'Goodbye message');
-  if (!channel || !member.user) return;
+  if (!channel || !member.user) return false;
   const text = renderTemplate(config.goodbye.message, {
     user: `<@${member.user.id}>`,
     'user.name': member.displayName ?? member.user.username,
@@ -67,5 +86,8 @@ export async function onMemberLeave(ctx: ModuleContext, member: GuildMember | Pa
     server: member.guild.name,
     memberCount: member.guild.memberCount,
   });
-  await channel.send({ content: text, allowedMentions: { parse: [] } }).catch((e: Error) => ctx.log('warn', `Goodbye: could not send message: ${e.message}`));
+  return channel.send({ content: text, allowedMentions: { parse: [] } }).then(
+    () => true,
+    (e: Error) => (ctx.log('warn', `Goodbye: could not send message: ${e.message}`), false),
+  );
 }

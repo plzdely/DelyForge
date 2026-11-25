@@ -380,6 +380,10 @@ async function main(): Promise<void> {
   handle(IPC_CHANNELS.discordGuilds, ({ id, refresh }) => modulesService.guilds(id, refresh));
   handle(IPC_CHANNELS.modulesGet, ({ id }) => modulesService.get(id));
   handle(IPC_CHANNELS.modulesUpdate, ({ id, guildId, moduleId, config }) => modulesService.update(id, guildId, moduleId, config));
+  handle(IPC_CHANNELS.modulesTest, ({ id, guildId, test }) => {
+    bots.get(id); // unknown bot → NOT_FOUND
+    return supervisor.testModule(id, guildId, test);
+  });
 
   // Builders & templates
   handle(IPC_CHANNELS.buildersGet, ({ id }) => buildersService.get(id));

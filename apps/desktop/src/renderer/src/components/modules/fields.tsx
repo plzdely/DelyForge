@@ -1,3 +1,4 @@
+import { DiscordMessage } from '@/components/builders/discord-preview';
 import { type GuildInfo, TEMPLATE_VARIABLES, renderTemplate } from '@delyforge/shared';
 import type { ReactNode } from 'react';
 import { Card, CardBody, CardHeader } from '@/components/ui/card';
@@ -57,7 +58,12 @@ export function TemplateField({
           </button>
         ))}
       </div>
-      {value ? <div className="rounded-md border border-border bg-bg-subtle px-3 py-2 text-xs whitespace-pre-wrap text-fg-muted">Preview: {preview}</div> : null}
+      {value ? (
+        <div aria-label="Preview">
+          <div className="mb-1 text-2xs font-medium tracking-wide text-fg-subtle uppercase">Preview</div>
+          <DiscordMessage botName="Your bot" text={preview} />
+        </div>
+      ) : null}
     </Field>
   );
 }

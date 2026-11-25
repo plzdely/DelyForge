@@ -36,6 +36,8 @@ function harness(opts: { loginError?: unknown } = {}) {
         setPresence: (p) => presences.push(p),
         setModules: () => {},
         setBuilders: () => {},
+        runTest: async () => ({ ok: true, message: "test" }),
+        notifyOwner: async () => true,
         ping: () => 42,
         guildCount: () => 3,
       };

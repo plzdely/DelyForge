@@ -96,6 +96,11 @@ async function feedUrl(feed: FeedsConfig['feeds'][number]): Promise<string> {
   return `https://www.youtube.com/feeds/videos.xml?channel_id=${id}`;
 }
 
+/** The newest post of a feed (for the "Send a test" button). */
+export async function latestFeedItem(feed: FeedsConfig['feeds'][number]): Promise<FeedItem | null> {
+  return parseFeed(await fetchText(await feedUrl(feed)))[0] ?? null;
+}
+
 /** Problems are logged at most once an hour per feed, so a dead feed doesn't flood the console. */
 const lastWarned = new Map<string, number>();
 

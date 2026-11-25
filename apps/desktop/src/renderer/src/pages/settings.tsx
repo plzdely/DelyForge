@@ -162,7 +162,9 @@ export function SettingsPage() {
               ['disconnects', 'Lasting disconnects', 'A bot lost its connection to Discord for more than a minute.'],
               ['restarts', 'Automatic restarts', 'A crashed bot was restarted and is back online.'],
               ['highMemory', 'High memory use', 'A bot is using more than 512 MB of memory.'],
+              ['permissions', 'Lost permissions', 'A bot’s role lost permissions that one of its modules needs.'],
               ['desktop', 'Windows notifications', 'Also show a pop-up in the corner of your screen.'],
+              ['discordDm', 'Discord DMs', 'The bot also DMs you (its owner) after a crash, when it keeps crashing, or when it loses permissions.'],
             ] as const
           ).map(([key, title, description]) => (
             <div key={key}>

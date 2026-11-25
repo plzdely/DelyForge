@@ -316,6 +316,46 @@ describe('BotSupervisor — runtime messages', () => {
     FakeProcess.all[0]!.exit(1);
     expect(desktop).toEqual(['Bot crashed']);
   });
+
+  it('relays "Send a test" to the running bot and returns its answer', async () => {
+    const { supervisor, addBot } = setup();
+    const id = addBot('Aurora');
+    expect(await supervisor.testModule(id, '123456789012345678', 'welcome')).toMatchObject({ ok: false, message: expect.stringMatching(/Start the bot/) });
+    supervisor.start(id);
+    const p = FakeProcess.all[0]!;
+    p.ready();
+    const answer = supervisor.testModule(id, '123456789012345678', 'welcome');
+    const req = p.received.find((m) => m.type === 'test-module');
+    expect(req).toMatchObject({ guildId: '123456789012345678', test: 'welcome' });
+    p.send({ type: 'test-result', requestId: (req as { requestId: string }).requestId, ok: true, message: 'Posted in #welcome.' });
+    expect(await answer).toEqual({ ok: true, message: 'Posted in #welcome.' });
+  });
+
+  it('notifies about lost permissions and DMs the owner once per 15 minutes', () => {
+    const { supervisor, addBot, notifications } = setup();
+    const id = addBot('Aurora');
+    supervisor.start(id);
+    const p = FakeProcess.all[0]!;
+    p.ready();
+    p.send({ type: 'problem', kind: 'permissions', message: 'In “Aurora” the bot lost: Send Messages.' });
+    p.send({ type: 'problem', kind: 'permissions', message: 'In “Aurora” the bot lost: Manage Roles.' });
+    expect(notifications.list().filter((n) => n.type === 'bot.permission_lost')).toHaveLength(2);
+    const dms = p.received.filter((m) => m.type === 'notify-owner');
+    expect(dms).toHaveLength(1);
+    expect((dms[0] as { text: string }).text).toMatch(/lost permissions.*Send Messages/s);
+  });
+
+  it('keeps the crash DM until the bot is back online', async () => {
+    const { supervisor, addBot } = setup();
+    const id = addBot('Aurora');
+    supervisor.start(id);
+    FakeProcess.all[0]!.ready();
+    FakeProcess.all[0]!.exit(1);
+    await wait(40);
+    const second = FakeProcess.all[1]!;
+    second.ready();
+    expect(second.received.filter((m) => m.type === 'notify-owner').map((m) => (m as { text: string }).text).join()).toMatch(/restarted/);
+  });
 });
 
 describe('BotSupervisor — modules', () => {

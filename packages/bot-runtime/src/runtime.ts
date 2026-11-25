@@ -4,6 +4,7 @@ import {
   type BotPresence,
   type FromRuntime,
   type LogLevel,
+  type ModuleTest,
   type RuntimeFatalCode,
   type RuntimeOptions,
   createRedactor,
@@ -17,6 +18,7 @@ export interface BotClientEvents {
   connection(state: 'disconnected' | 'reconnecting' | 'resumed'): void;
   command(name: string, ok: boolean, durationMs: number): void;
   workflowRun(run: { workflowId: string; ok: boolean; steps: number; message: string }): void;
+  problem(kind: 'permissions', message: string): void;
 }
 
 /** Minimal surface the runtime needs from a Discord client — lets tests use a fake instead of discord.js. */
@@ -26,6 +28,8 @@ export interface BotClient {
   setPresence(presence: BotPresence): void;
   setModules(modules: BotModules): void;
   setBuilders(builders: Builders): void;
+  runTest(guildId: string, test: ModuleTest): Promise<{ ok: boolean; message: string }>;
+  notifyOwner(text: string): Promise<boolean>;
   ping(): number | null;
   guildCount(): number;
 }
@@ -139,6 +143,18 @@ export function createBotRuntime(deps: RuntimeDeps) {
       return;
     }
 
+    if (msg.type === 'test-module') {
+      const result = client ? await client.runTest(msg.guildId, msg.test).catch((e: Error) => ({ ok: false, message: e.message })) : { ok: false, message: 'The bot isn’t running.' };
+      deps.send({ type: 'test-result', requestId: msg.requestId, ok: result.ok, message: redact(result.message).slice(0, 500) });
+      return;
+    }
+
+    if (msg.type === 'notify-owner') {
+      const sent = await client?.notifyOwner(msg.text).catch(() => false);
+      if (!sent) log('info', 'Couldn’t DM the bot owner (they may not share a server with the bot, or have DMs closed).');
+      return;
+    }
+
     // start
     if (client) {
       log('warn', 'Already started.');
@@ -158,6 +174,7 @@ export function createBotRuntime(deps: RuntimeDeps) {
       connection: (state) => deps.send({ type: 'connection', state }),
       command: (name, ok, durationMs) => deps.send({ type: 'command', name, ok, durationMs }),
       workflowRun: (run) => deps.send({ type: 'workflow-run', ...run, message: redact(run.message).slice(0, 500) }),
+      problem: (kind, message) => deps.send({ type: 'problem', kind, message: redact(message).slice(0, 1000) }),
     });
 
     try {

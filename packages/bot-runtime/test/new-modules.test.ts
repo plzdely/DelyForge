@@ -184,3 +184,27 @@ describe('channel lock memory', () => {
     store.close();
   });
 });
+
+describe('problem alerts', () => {
+  it('reports permissions the bot loses, but not ones a newly enabled module needs', async () => {
+    const { checkLostPermissions } = await import('../src/modules/trust.js');
+    const ALL = (1n << 41n) - 1n & ~(1n << 3n); // everything except Administrator
+    const SEND = 1n << 11n;
+    let modules = resolveGuildModules({ welcome: { ...DEFAULT_MODULE_CONFIGS.welcome, enabled: true } });
+    const ctx = { config: () => modules } as never;
+    const guild = { id: 'g1', name: 'Aurora', members: { me: { permissions: { bitfield: ALL } } } };
+    const reports: string[] = [];
+    const check = (baseline = false) => checkLostPermissions(ctx, guild as never, (m) => reports.push(m), baseline);
+    check(true);
+    guild.members.me.permissions.bitfield = ALL & ~SEND;
+    check();
+    expect(reports).toHaveLength(1);
+    expect(reports[0]).toMatch(/Aurora.*Send Messages/);
+    // Enabling a module that needs Manage Roles (which the bot lacks) is a baseline, not a loss.
+    guild.members.me.permissions.bitfield = ALL & ~SEND & ~(1n << 28n);
+    modules = resolveGuildModules({ welcome: { ...DEFAULT_MODULE_CONFIGS.welcome, enabled: true }, verification: { ...DEFAULT_MODULE_CONFIGS.verification, enabled: true } });
+    check(true);
+    check();
+    expect(reports).toHaveLength(1);
+  });
+});

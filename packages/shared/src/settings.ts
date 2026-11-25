@@ -18,8 +18,12 @@ export const appSettingsSchema = z.object({
       disconnects: z.boolean(),
       restarts: z.boolean(),
       highMemory: z.boolean(),
+      /** The bot lost permissions one of its modules needs. (Defaults keep older saved settings valid.) */
+      permissions: z.boolean().default(true),
       /** Also show a Windows notification (in addition to the in-app inbox). */
       desktop: z.boolean(),
+      /** The bot also DMs its owner on Discord about crashes and lost permissions. */
+      discordDm: z.boolean().default(true),
     })
     .strict(),
 });
@@ -31,7 +35,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   showRoadmapPreview: false,
   runInBackground: true,
   startWithWindows: false,
-  notifications: { crashes: true, disconnects: true, restarts: true, highMemory: true, desktop: true },
+  notifications: { crashes: true, disconnects: true, restarts: true, highMemory: true, permissions: true, desktop: true, discordDm: true },
 };
 
 /** Partial update — at least one known key, unknown keys rejected. */

@@ -136,6 +136,7 @@ const bridge: DelyForgeBridge = {
   modules: {
     get: (id) => invoke(IPC_CHANNELS.modulesGet, { id }),
     update: (input) => invoke(IPC_CHANNELS.modulesUpdate, input),
+    test: (input) => invoke(IPC_CHANNELS.modulesTest, input),
   },
   builders: {
     get: (id) => invoke(IPC_CHANNELS.buildersGet, { id }),
