@@ -57,7 +57,7 @@ user documentation, release.
 ## Ideas worth adding (beyond the original spec)
 - **Dry-run / sandbox server mode** — test a bot against a private test guild with one click before going live.
 - **Config diff & history** — every change to a bot is versioned; one-click rollback.
-- **Permission doctor** — scans a guild and explains exactly why a command fails (missing permission, role hierarchy).
+- ~~**Permission doctor**~~ — built in 0.3 as the Setup Doctor.
 - **Health score** per bot (uptime, error rate, latency) on the dashboard.
 - **Command palette** (Ctrl+K) for power users.
 - **Status page** generator for a community's bot uptime.

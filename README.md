@@ -27,14 +27,16 @@ Your bot's token (its password) is encrypted and never leaves your PC.
 | | |
 |---|---|
 | 🤖 **Many bots, one app** | Create, group, favorite, start and stop as many bots as you like. |
-| 🧩 **10 ready-made modules** | Moderation, Welcome, Tickets, Leveling, Logging, Verification, Utility, Reaction Roles, Suggestions, Giveaways. |
+| 🧩 **19 ready-made modules** | Moderation (cases, temp bans, AutoMod), Welcome, Tickets, Leveling, Logging (who did what), Verification, Utility, Reaction Roles, Suggestions, Giveaways, Invite Tracker, Starboard, Temporary Voice, Raid Protection, Sticky Messages, Server Stats, Birthdays, Social Alerts (YouTube + RSS), Scheduled Messages. |
+| 🩺 **Setup Doctor** | Checks a server for every module that's on and explains each problem in plain English, with the fix. |
+| 🧪 **Test buttons** | Send a test welcome, level-up, birthday or feed post with one click, and preview every message Discord-style. |
 | ⌨️ **Command Builder** | Make your own slash commands visually, with a live preview of how the reply looks in Discord. |
 | 🎨 **Embed Builder** | Design rich Discord message cards and reuse them in commands and automations. |
-| ⚡ **Automation Studio** | "When this happens in Discord, do that" — workflows without code. |
+| ⚡ **Automation Studio** | "When this happens in Discord, do that" — on joins, messages, reactions, boosts, voice or a schedule, with variables and If/Otherwise. |
 | 📦 **10 templates** | Start from a gaming, support, streamer, business, roleplay or all-in-one bot. |
 | 👥 **Members tab** | See and remove warnings, check the level leaderboard, reset XP — even while the bot is offline. |
 | 📈 **Monitoring & analytics** | Live status, latency, CPU and memory, plus uptime and command usage over time. |
-| 🔔 **Alerts** | A notification when a bot disconnects, crashes or can't log in. |
+| 🔔 **Alerts** | A notification when a bot disconnects, crashes, can't log in or loses a permission — and the bot can DM you about it. |
 | 💾 **Backups** | Save a bot's whole setup to a file and restore it later. |
 | 🌙 **Runs in the background** | Close the window and your bots keep going in the tray. Optionally start with Windows. |
 

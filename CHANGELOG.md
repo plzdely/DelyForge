@@ -5,6 +5,30 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-25
+
+### Added
+- **Setup Doctor** (Modules tab): the running bot checks the chosen server for every module that's on — deleted or
+  unset channels, channels it can't post in, roles it can't give, missing permissions — and says how to fix each one,
+  with a re-invite link for missing permissions.
+- **Send a test** buttons for welcome, goodbye, level-up, birthday, scheduled and feed messages (posts once with you as
+  the example member; never pings roles). Every message box now shows a Discord-style preview.
+- **Problem alerts:** a notification when a bot loses a permission one of its modules needs, and the bot DMs its owner
+  after a crash, a crash loop or a lost permission (at most once per 15 minutes; Settings → Notifications).
+- **Moderation 2.0:** numbered cases with `/history`, `/case` and `/note`; temporary bans (`/ban duration:`);
+  `/lock`, `/unlock` and `/slowmode`; five new AutoMod filters (caps, mass mentions, emoji spam, scam links, repeats).
+- Two new modules: **Social Alerts** (new YouTube videos and RSS/news posts) and **Scheduled Messages** (chosen days
+  and time, in your time zone).
+- **Automations:** new triggers (schedule, reaction, boost, voice join), new steps (start a thread, time out, random
+  message, saved variables), and **If / Otherwise / End if** blocks with text and number checks.
+
+### Fixed
+- `{option:NAME}` in custom commands was never filled in; it is now (as is the new `{var:NAME}`).
+- One-per-line boxes (AutoMod words, allowed websites) swallowed the Enter key.
+- A permanent ban no longer gets lifted by an earlier temporary ban; `/lock` checks the moderator's rights in that
+  channel and `/unlock` restores the channel's previous permissions.
+- Social Alerts download at most 1 MB and read feeds without slow pattern matching, so a hostile feed can't stall a bot.
+
 ## [0.2.1] - 2026-11-25
 
 ### Added

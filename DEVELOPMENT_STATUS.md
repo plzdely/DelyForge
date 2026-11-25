@@ -1,6 +1,6 @@
 # Development Status
 
-_Last updated: 2026-11-25 — logging records who did what; seven new modules (17 in total)._
+_Last updated: 2026-11-25 — v0.3.0: Setup Doctor, test buttons, problem DMs, Moderation 2.0, Social Alerts, Scheduled Messages, Automations upgrade (19 modules)._
 
 > **Current mode: Personal edition** (`PERSONAL_EDITION = true` in `packages/shared/src/brand.ts`). Selling is on hold:
 > every feature is unlocked on this PC with no limits and no sign-in, and the screens that need a paid DelyForge server
@@ -288,6 +288,25 @@ See "Making yourself staff" under Phase 8: set your `role` to `ADMIN` in Prisma 
 - If a moderator deletes several messages from the same person quickly, Discord merges them into one audit entry,
   so only the first delete names the moderator.
 
+## v0.3 (2026-11-25)
+
+| Item | Status | Verification |
+|---|---|---|
+| Setup Doctor (deleted/unset channels, per-channel rights, roles above the bot, missing permissions) | ✅ / 🟡 | 3 doctor tests + supervisor round-trip; **not yet run against a real server** |
+| Send-a-test buttons, Discord-style previews | ✅ / 🟡 | supervisor test for the request/answer; posting not yet watched in Discord |
+| Lost-permission alerts + owner DMs (crash, crash loop, lost permission; 15-min limit) | ✅ / 🟡 | runtime + supervisor tests |
+| Moderation 2.0 (cases, history, notes, temp bans, lock/unlock/slowmode, 5 AutoMod filters) | ✅ / 🟡 | shared + store tests |
+| Social Alerts (YouTube + RSS), Scheduled Messages | ✅ / 🟡 | feed parser, time-zone and store tests |
+| Automations: 4 triggers, 4 steps, variables, If/Otherwise blocks | ✅ / 🟡 | schema + engine tests |
+
+### Things to know
+- Tests and the Setup Doctor are done by the **running** bot, so start it first. Tests use the **saved** settings.
+- Owner DMs go to whoever owns the bot in the Developer Portal; they only arrive if that person shares a server with
+  the bot and accepts DMs. A crash DM is sent once the bot is back online.
+- Social Alerts check every 10 minutes; the first check only remembers existing posts. YouTube `@handle` links are
+  turned into the channel ID by reading the channel page once. Twitch needs a free Twitch developer app — not built.
+- Variables (`{var:name}`) are saved per server in the bot's own data and kept between runs.
+
 ## Known limitations / honest notes
 - Bots run on this PC, so they're online while DelyForge is running. Closing the window keeps it running in the tray
   (Settings → "Keep bots running when I close the window"), and "Start DelyForge when Windows starts" brings bots back
@@ -302,4 +321,8 @@ The Free plan allows 1 bot. To test with more, start the app with a simulated pl
 customer builds ignore it). In Git Bash: `DELYFORGE_DEV_PLAN=pro pnpm dev:desktop`. In PowerShell:
 `$env:DELYFORGE_DEV_PLAN='pro'; pnpm dev:desktop`.
 
-## Next up — final test and review with you
+## Next up — v0.4 (planned)
+- Change history with one-click undo for every settings change.
+- Economy and fun modules; a guided first-run tour.
+- Twitch alerts (needs a free Twitch developer app).
+- Watching every module once in a real server.
