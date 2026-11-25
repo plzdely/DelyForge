@@ -54,6 +54,18 @@ const toGiveaway = (r: GiveawayRow): Giveaway => ({
   requiredRoleId: r.required_role_id,
 });
 
+export interface ModCase {
+  number: number;
+  /** warn, timeout, untimeout, kick, ban, tempban, unban, note, automod */
+  type: string;
+  userId: string;
+  moderatorId: string;
+  reason: string;
+  /** For timeouts and temporary bans, e.g. "1d". */
+  duration: string | null;
+  createdAt: number;
+}
+
 export interface ManagedCommand {
   guildId: string;
   name: string;
@@ -174,6 +186,24 @@ export class BotStore {
         channel_id TEXT PRIMARY KEY,
         guild_id   TEXT NOT NULL,
         owner_id   TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS mod_cases (
+        guild_id     TEXT NOT NULL,
+        number       INTEGER NOT NULL,
+        type         TEXT NOT NULL,
+        user_id      TEXT NOT NULL,
+        moderator_id TEXT NOT NULL,
+        reason       TEXT NOT NULL,
+        duration     TEXT,
+        created_at   INTEGER NOT NULL,
+        PRIMARY KEY (guild_id, number)
+      );
+      CREATE INDEX IF NOT EXISTS mod_cases_user_idx ON mod_cases (guild_id, user_id);
+      CREATE TABLE IF NOT EXISTS temp_bans (
+        guild_id TEXT NOT NULL,
+        user_id  TEXT NOT NULL,
+        unban_at INTEGER NOT NULL,
+        PRIMARY KEY (guild_id, user_id)
       );
       CREATE TABLE IF NOT EXISTS birthdays (
         guild_id       TEXT NOT NULL,
@@ -442,6 +472,48 @@ export class BotStore {
 
   setWinners(id: number, winnerIds: string[]): void {
     this.db.prepare('UPDATE giveaways SET winner_ids = ? WHERE id = ?').run(JSON.stringify(winnerIds), id);
+  }
+
+  // ─── Moderation cases ────────────────────────────────────────────────────────────────────────────────────────────
+
+  /** Records a moderation case and returns its number (1, 2, 3… per server). */
+  addCase(c: { guildId: string; type: string; userId: string; moderatorId: string; reason: string; duration?: string | null }, at = Date.now()): number {
+    const next = (this.db.prepare('SELECT COALESCE(MAX(number), 0) + 1 AS n FROM mod_cases WHERE guild_id = ?').get(c.guildId) as { n: number }).n;
+    this.db
+      .prepare('INSERT INTO mod_cases (guild_id, number, type, user_id, moderator_id, reason, duration, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(c.guildId, next, c.type, c.userId, c.moderatorId, c.reason, c.duration ?? null, at);
+    return next;
+  }
+
+  private static toCase(r: { number: number; type: string; user_id: string; moderator_id: string; reason: string; duration: string | null; created_at: number }): ModCase {
+    return { number: r.number, type: r.type, userId: r.user_id, moderatorId: r.moderator_id, reason: r.reason, duration: r.duration, createdAt: r.created_at };
+  }
+
+  cases(guildId: string, userId: string, limit = 25): ModCase[] {
+    const rows = this.db.prepare('SELECT * FROM mod_cases WHERE guild_id = ? AND user_id = ? ORDER BY number DESC LIMIT ?').all(guildId, userId, limit) as Parameters<typeof BotStore.toCase>[0][];
+    return rows.map(BotStore.toCase);
+  }
+
+  caseByNumber(guildId: string, number: number): ModCase | null {
+    const r = this.db.prepare('SELECT * FROM mod_cases WHERE guild_id = ? AND number = ?').get(guildId, number) as Parameters<typeof BotStore.toCase>[0] | undefined;
+    return r ? BotStore.toCase(r) : null;
+  }
+
+  // ─── Temporary bans ──────────────────────────────────────────────────────────────────────────────────────────────
+
+  addTempBan(guildId: string, userId: string, unbanAt: number): void {
+    this.db.prepare('INSERT OR REPLACE INTO temp_bans (guild_id, user_id, unban_at) VALUES (?, ?, ?)').run(guildId, userId, unbanAt);
+  }
+
+  removeTempBan(guildId: string, userId: string): void {
+    this.db.prepare('DELETE FROM temp_bans WHERE guild_id = ? AND user_id = ?').run(guildId, userId);
+  }
+
+  dueTempBans(now: number): { guildId: string; userId: string }[] {
+    return (this.db.prepare('SELECT guild_id, user_id FROM temp_bans WHERE unban_at <= ?').all(now) as { guild_id: string; user_id: string }[]).map((r) => ({
+      guildId: r.guild_id,
+      userId: r.user_id,
+    }));
   }
 
   // ─── Invite tracker ──────────────────────────────────────────────────────────────────────────────────────────────

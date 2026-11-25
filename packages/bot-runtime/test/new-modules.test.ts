@@ -106,3 +106,25 @@ describe('slash commands', () => {
     expect(names(on)).toEqual(expect.arrayContaining(['invites', 'inviteboard', 'birthday']));
   });
 });
+
+describe('moderation cases and temporary bans', () => {
+  it('numbers cases per server and lists a member’s history newest first', () => {
+    const store = new BotStore(join(mkdtempSync(join(tmpdir(), 'df-case-')), 'b.db'));
+    expect(store.addCase({ guildId: 'g', type: 'warn', userId: 'u', moderatorId: 'm', reason: 'spam' })).toBe(1);
+    expect(store.addCase({ guildId: 'g', type: 'tempban', userId: 'u', moderatorId: 'm', reason: 'again', duration: '3d' })).toBe(2);
+    expect(store.addCase({ guildId: 'other', type: 'kick', userId: 'u', moderatorId: 'm', reason: 'x' })).toBe(1);
+    expect(store.cases('g', 'u').map((c) => c.number)).toEqual([2, 1]);
+    expect(store.caseByNumber('g', 2)).toMatchObject({ type: 'tempban', duration: '3d' });
+    store.close();
+  });
+
+  it('lifts temporary bans only when their time is up', () => {
+    const store = new BotStore(join(mkdtempSync(join(tmpdir(), 'df-tb-')), 'b.db'));
+    store.addTempBan('g', 'u1', 1000);
+    store.addTempBan('g', 'u2', 5000);
+    expect(store.dueTempBans(2000)).toEqual([{ guildId: 'g', userId: 'u1' }]);
+    store.removeTempBan('g', 'u1');
+    expect(store.dueTempBans(2000)).toEqual([]);
+    store.close();
+  });
+});

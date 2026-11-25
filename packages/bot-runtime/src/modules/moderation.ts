@@ -1,12 +1,18 @@
 import {
   containsInvite,
+  countEmoji,
   disallowedLinks,
+  isCapsSpam,
   matchBlockedWord,
   recordMessageAndCheckSpam,
+  scamLinks,
   thresholdFor,
 } from '@delyforge/shared';
 import {
+  type APIEmbed,
+  AuditLogEvent,
   type ChatInputCommandInteraction,
+  type Client,
   type Guild,
   type GuildMember,
   type Message,
@@ -14,8 +20,50 @@ import {
   PermissionFlagsBits,
 } from 'discord.js';
 import { COLORS, type ModuleContext, modLog, truncate, tryDM } from './context.js';
+import { parseDuration } from './community.js';
+import type { AuditLike } from './logging.js';
 
-export const MODERATION_COMMANDS = new Set(['warn', 'warnings', 'clearwarnings', 'timeout', 'untimeout', 'kick', 'ban', 'unban', 'purge']);
+export const MODERATION_COMMANDS = new Set([
+  'warn',
+  'warnings',
+  'clearwarnings',
+  'history',
+  'case',
+  'note',
+  'timeout',
+  'untimeout',
+  'kick',
+  'ban',
+  'unban',
+  'purge',
+  'lock',
+  'unlock',
+  'slowmode',
+]);
+
+const CASE_LABELS: Record<string, string> = {
+  warn: '⚠️ Warning',
+  timeout: '⏳ Timeout',
+  untimeout: '✅ Timeout removed',
+  kick: '👢 Kick',
+  ban: '🔨 Ban',
+  tempban: '🔨 Temporary ban',
+  unban: '✅ Unban',
+  note: '📝 Note',
+  automod: '🤖 Auto-moderation',
+};
+
+/** Records a numbered case and posts it to the moderation log. Returns the case number. */
+async function logCase(
+  ctx: ModuleContext,
+  guild: Guild,
+  c: { type: string; userId: string; moderatorId: string; reason: string; duration?: string | null },
+  embed: APIEmbed,
+): Promise<number> {
+  const n = ctx.store.addCase({ guildId: guild.id, ...c });
+  await modLog(ctx, guild, { ...embed, title: `Case #${n} · ${embed.title ?? CASE_LABELS[c.type] ?? c.type}` });
+  return n;
+}
 
 const reply = (i: ChatInputCommandInteraction, content: string) =>
   i.replied || i.deferred
@@ -57,11 +105,12 @@ async function applyThreshold(ctx: ModuleContext, guild: Guild, member: GuildMem
     return null;
   }
   const label = t.action === 'timeout' ? `timed out for ${t.minutes} min` : t.action === 'kick' ? 'kicked' : 'banned';
-  await modLog(ctx, guild, {
-    title: 'Automatic action',
-    description: `<@${member.id}> was **${label}** — ${why}.`,
-    color: COLORS.danger,
-  });
+  await logCase(
+    ctx,
+    guild,
+    { type: t.action, userId: member.id, moderatorId: ctx.client.user.id, reason: why, duration: t.action === 'timeout' ? `${t.minutes}m` : null },
+    { title: 'Automatic action', description: `<@${member.id}> was **${label}** — ${why}.`, color: COLORS.danger },
+  );
   return label;
 }
 
@@ -96,7 +145,12 @@ export async function handleModerationCommand(ctx: ModuleContext, i: ChatInputCo
       ctx.store.rememberName(guild.id, target.id, target.displayName);
       ctx.store.rememberName(guild.id, actor.id, actor.displayName);
       if (config.dmMembers) await tryDM(target.user, `You were warned in **${guild.name}**: ${reason}`);
-      await modLog(ctx, guild, { title: 'Member warned', description: `<@${target.id}> by <@${actor.id}>\n**Reason:** ${reason}\n**Warnings:** ${count}`, color: COLORS.warn });
+      await logCase(
+        ctx,
+        guild,
+        { type: 'warn', userId: target.id, moderatorId: actor.id, reason },
+        { title: 'Member warned', description: `<@${target.id}> by <@${actor.id}>\n**Reason:** ${reason}\n**Warnings:** ${count}`, color: COLORS.warn },
+      );
       const auto = await applyThreshold(ctx, guild, target, count);
       await reply(i, `⚠️ Warned **${target.displayName}** (${count} warning${count === 1 ? '' : 's'}).${auto ? ` They were automatically ${auto}.` : ''}`);
       return;
@@ -111,6 +165,74 @@ export async function handleModerationCommand(ctx: ModuleContext, i: ChatInputCo
         flags: MessageFlags.Ephemeral,
         allowedMentions: { parse: [] },
       });
+      return;
+    }
+    case 'history': {
+      const user = i.options.getUser('member', true);
+      const cases = ctx.store.cases(guild.id, user.id, 20);
+      const warnings = ctx.store.warningCount(guild.id, user.id);
+      if (!cases.length) return void (await reply(i, `**${user.username}** has a clean record.`));
+      const lines = cases.map((c) => `**#${c.number}** ${CASE_LABELS[c.type] ?? c.type}${c.duration ? ` (${c.duration})` : ''} — ${truncate(c.reason, 100)} · <@${c.moderatorId}> <t:${Math.floor(c.createdAt / 1000)}:R>`);
+      await i.reply({
+        embeds: [{ title: `History for ${user.username}`, description: lines.join('\n'), footer: { text: `${cases.length} case(s) shown · ${warnings} active warning(s)` }, color: COLORS.info }],
+        flags: MessageFlags.Ephemeral,
+        allowedMentions: { parse: [] },
+      });
+      return;
+    }
+    case 'case': {
+      const c = ctx.store.caseByNumber(guild.id, i.options.getInteger('number', true));
+      if (!c) return void (await reply(i, 'There’s no case with that number.'));
+      await i.reply({
+        embeds: [
+          {
+            title: `Case #${c.number} · ${CASE_LABELS[c.type] ?? c.type}`,
+            description: `**Member:** <@${c.userId}>\n**By:** <@${c.moderatorId}>${c.duration ? `\n**Duration:** ${c.duration}` : ''}\n**Reason:** ${c.reason}\n**When:** <t:${Math.floor(c.createdAt / 1000)}:f>`,
+            color: COLORS.info,
+          },
+        ],
+        flags: MessageFlags.Ephemeral,
+        allowedMentions: { parse: [] },
+      });
+      return;
+    }
+    case 'note': {
+      const user = i.options.getUser('member', true);
+      const text = truncate(i.options.getString('text', true), 400);
+      const n = await logCase(ctx, guild, { type: 'note', userId: user.id, moderatorId: actor.id, reason: text }, { description: `<@${user.id}> by <@${actor.id}>\n${text}`, color: COLORS.info });
+      await reply(i, `📝 Saved as case #${n}. Only staff can see notes (\`/history\`).`);
+      return;
+    }
+    case 'lock':
+    case 'unlock': {
+      const channel = i.options.getChannel('channel') ?? i.channel;
+      if (!channel || !('permissionOverwrites' in channel) || channel.isThread()) return void (await reply(i, 'Pick a text channel.'));
+      const locking = i.commandName === 'lock';
+      try {
+        await channel.permissionOverwrites.edit(
+          guild.roles.everyone,
+          { SendMessages: locking ? false : null, SendMessagesInThreads: locking ? false : null, CreatePublicThreads: locking ? false : null },
+          { reason: `${locking ? 'Locked' : 'Unlocked'} by ${actor.user.tag}: ${reason}` },
+        );
+      } catch (e) {
+        return void (await reply(i, `Couldn’t change the channel: ${(e as Error).message}`));
+      }
+      if ('send' in channel) await channel.send({ content: locking ? `🔒 This channel is locked by staff. ${reason}` : '🔓 This channel is open again.', allowedMentions: { parse: [] } }).catch(() => null);
+      await modLog(ctx, guild, { title: locking ? 'Channel locked' : 'Channel unlocked', description: `<#${channel.id}> by <@${actor.id}>${locking ? `\n**Reason:** ${reason}` : ''}`, color: locking ? COLORS.warn : COLORS.success });
+      await reply(i, `${locking ? '🔒 Locked' : '🔓 Unlocked'} <#${channel.id}>.`);
+      return;
+    }
+    case 'slowmode': {
+      const channel = i.options.getChannel('channel') ?? i.channel;
+      if (!channel || !('setRateLimitPerUser' in channel)) return void (await reply(i, 'Pick a text channel.'));
+      const seconds = i.options.getInteger('seconds', true);
+      try {
+        await channel.setRateLimitPerUser(seconds, `Slowmode set by ${actor.user.tag}`);
+      } catch (e) {
+        return void (await reply(i, `Couldn’t change the channel: ${(e as Error).message}`));
+      }
+      await modLog(ctx, guild, { title: 'Slowmode', description: `<#${channel.id}>: ${seconds ? `${seconds}s` : 'off'} — by <@${actor.id}>`, color: COLORS.info });
+      await reply(i, seconds ? `🐢 Slowmode in <#${channel.id}>: one message every ${seconds}s.` : `Slowmode is off in <#${channel.id}>.`);
       return;
     }
     case 'clearwarnings': {
@@ -128,6 +250,13 @@ export async function handleModerationCommand(ctx: ModuleContext, i: ChatInputCo
     case 'kick':
     case 'ban': {
       const target = await fetchTarget();
+      // Temporary ban: e.g. "3d" or "12h" (up to 30 days), lifted automatically.
+      const durationText = i.commandName === 'ban' ? i.options.getString('duration')?.trim() || null : null;
+      const durationMs = durationText ? parseDuration(durationText) : null;
+      if (durationText && !durationMs) return void (await reply(i, 'Use a duration like 30m, 12h or 3d (up to 30 days).'));
+      const until = durationMs ? Date.now() + durationMs : null;
+      const banType = until ? 'tempban' : 'ban';
+      const untilText = until ? ` until <t:${Math.floor(until / 1000)}:f>` : '';
       if (!target && i.commandName === 'ban') {
         // They already left (e.g. a raider) — Discord still allows banning by user ID; no roles to compare.
         const user = i.options.getUser('member', true);
@@ -137,16 +266,20 @@ export async function handleModerationCommand(ctx: ModuleContext, i: ChatInputCo
         } catch (e) {
           return void (await reply(i, `Couldn’t ban: ${(e as Error).message}`));
         }
-        await modLog(ctx, guild, { title: 'Member banned', description: `<@${user.id}> (${user.tag}, not in the server) by <@${actor.id}>
-**Reason:** ${reason}`, color: COLORS.danger });
-        return void (await reply(i, `✅ **${user.username}** was banned.`));
+        if (until) ctx.store.addTempBan(guild.id, user.id, until);
+        await logCase(ctx, guild, { type: banType, userId: user.id, moderatorId: actor.id, reason, duration: durationText }, {
+          title: until ? 'Member temporarily banned' : 'Member banned',
+          description: `<@${user.id}> (${user.tag}, not in the server) by <@${actor.id}>${untilText}\n**Reason:** ${reason}`,
+          color: COLORS.danger,
+        });
+        return void (await reply(i, `✅ **${user.username}** was banned${untilText}.`));
       }
       if (!target) return void (await reply(i, 'That person isn’t in this server.'));
       const problem = hierarchyProblem(guild, actor, target);
       if (problem) return void (await reply(i, problem));
       await i.deferReply({ flags: MessageFlags.Ephemeral });
       const minutes = i.options.getInteger('minutes') ?? 0;
-      const verb = i.commandName === 'timeout' ? `timed out for ${minutes} min` : i.commandName === 'kick' ? 'kicked' : 'banned';
+      const verb = i.commandName === 'timeout' ? `timed out for ${minutes} min` : i.commandName === 'kick' ? 'kicked' : `banned${untilText}`;
       if (config.dmMembers) await tryDM(target.user, `You were ${verb} in **${guild.name}**: ${reason}`);
       try {
         if (i.commandName === 'timeout') await target.timeout(minutes * 60_000, `${reason} (by ${actor.user.tag} · ${actor.id})`);
@@ -157,12 +290,15 @@ export async function handleModerationCommand(ctx: ModuleContext, i: ChatInputCo
       } catch (e) {
         return void (await reply(i, `Couldn’t do that: ${(e as Error).message}`));
       }
-      await modLog(ctx, guild, {
-        title: `Member ${verb.split(' ')[0]}`,
-        description: `<@${target.id}> (${target.user.tag}) by <@${actor.id}>\n**Reason:** ${reason}`,
-        color: COLORS.danger,
-      });
-      await reply(i, `✅ **${target.displayName}** was ${verb}.`);
+      if (i.commandName === 'ban' && until) ctx.store.addTempBan(guild.id, target.id, until);
+      const type = i.commandName === 'ban' ? banType : i.commandName;
+      const n = await logCase(
+        ctx,
+        guild,
+        { type, userId: target.id, moderatorId: actor.id, reason, duration: i.commandName === 'timeout' ? `${minutes}m` : durationText },
+        { title: `Member ${verb.split(' ')[0]}`, description: `<@${target.id}> (${target.user.tag}) by <@${actor.id}>${i.commandName === 'ban' ? untilText : ''}\n**Reason:** ${reason}`, color: COLORS.danger },
+      );
+      await reply(i, `✅ **${target.displayName}** was ${verb}. (Case #${n})`);
       return;
     }
     case 'untimeout': {
@@ -171,7 +307,7 @@ export async function handleModerationCommand(ctx: ModuleContext, i: ChatInputCo
       const problem = hierarchyProblem(guild, actor, target);
       if (problem) return void (await reply(i, problem));
       await target.timeout(null, `Timeout removed by ${actor.user.tag}`).catch(() => null);
-      await modLog(ctx, guild, { title: 'Timeout removed', description: `<@${target.id}> by <@${actor.id}>`, color: COLORS.info });
+      await logCase(ctx, guild, { type: 'untimeout', userId: target.id, moderatorId: actor.id, reason }, { title: 'Timeout removed', description: `<@${target.id}> by <@${actor.id}>`, color: COLORS.info });
       await reply(i, `✅ Removed the timeout for **${target.displayName}**.`);
       return;
     }
@@ -183,7 +319,8 @@ export async function handleModerationCommand(ctx: ModuleContext, i: ChatInputCo
       } catch {
         return void (await reply(i, 'That user isn’t banned, or I don’t have permission to unban.'));
       }
-      await modLog(ctx, guild, { title: 'Member unbanned', description: `<@${userId}> by <@${actor.id}>\n**Reason:** ${reason}`, color: COLORS.success });
+      ctx.store.removeTempBan(guild.id, userId);
+      await logCase(ctx, guild, { type: 'unban', userId, moderatorId: actor.id, reason }, { title: 'Member unbanned', description: `<@${userId}> by <@${actor.id}>\n**Reason:** ${reason}`, color: COLORS.success });
       await reply(i, `✅ Unbanned <@${userId}>.`);
       return;
     }
@@ -208,6 +345,8 @@ export async function handleModerationCommand(ctx: ModuleContext, i: ChatInputCo
 // ─── Auto-moderation ──────────────────────────────────────────────────────────────────────────────────────────────
 
 const recent = new Map<string, number[]>();
+/** Last message per member, for the repeated-message rule. */
+const lastMessage = new Map<string, { text: string; count: number; at: number }>();
 
 /** Forgets members with no messages inside the spam window, so memory doesn't grow with every member ever seen. */
 function pruneSpamTracker(now: number, perSeconds: number): void {
@@ -227,10 +366,25 @@ export async function automodCheck(ctx: ModuleContext, message: Message): Promis
 
   const text = message.content;
   let rule: { label: string; action: 'delete' | 'warn' | 'timeout' } | null = null;
+  const mentions = message.mentions.users.size + message.mentions.roles.size + (message.mentions.everyone ? 1 : 0);
+  const repeatKey = `${message.guild.id}:${member.id}`;
+  const normalized = text.trim().toLowerCase();
+  const last = lastMessage.get(repeatKey);
+  const repeats = normalized && last && last.text === normalized && Date.now() - last.at < 60_000 ? last.count + 1 : 1;
+  lastMessage.set(repeatKey, { text: normalized, count: repeats, at: Date.now() });
+  if (lastMessage.size > 5000) for (const [k, v] of lastMessage) if (Date.now() - v.at > 60_000) lastMessage.delete(k);
+
   if (a.invites.enabled && containsInvite(text)) rule = { label: 'posting server invites', action: a.invites.action };
+  else if (a.scams.enabled && scamLinks(text).length) rule = { label: 'posting a scam link', action: a.scams.action };
+  else if (a.mentions.enabled && mentions > a.mentions.max) rule = { label: 'mentioning too many people', action: a.mentions.action };
   else if (a.links.enabled && disallowedLinks(text, a.links.allowedDomains).length) rule = { label: 'posting links', action: a.links.action };
   else if (a.words.enabled && matchBlockedWord(text, a.words.words)) rule = { label: 'using a blocked word', action: a.words.action };
-  else if (a.spam.enabled) {
+  else if (a.caps.enabled && isCapsSpam(text, a.caps.minLength, a.caps.percent)) rule = { label: 'writing in all caps', action: a.caps.action };
+  else if (a.emoji.enabled && countEmoji(text) > a.emoji.max) rule = { label: 'sending too many emoji', action: a.emoji.action };
+  else if (a.repeats.enabled && repeats >= a.repeats.count) {
+    rule = { label: 'repeating the same message', action: a.repeats.action };
+    lastMessage.delete(repeatKey);
+  } else if (a.spam.enabled) {
     const key = `${message.guild.id}:${member.id}`;
     const ts = recent.get(key) ?? [];
     recent.set(key, ts);
@@ -257,9 +411,57 @@ export async function automodCheck(ctx: ModuleContext, message: Message): Promis
     .send({ content: `<@${member.id}>, your message was removed for ${rule.label}.`, allowedMentions: { users: [member.id] } })
     .catch(() => null);
   if (notice) setTimeout(() => void notice.delete().catch(() => null), 6000);
-  await modLog(ctx, message.guild, {
-    title: 'Auto-moderation',
-    description: `Message by <@${member.id}> in <#${message.channel.id}> removed for **${rule.label}**${extra}.\n>>> ${truncate(text, 900) || '(no text)'}`,
-    color: COLORS.warn,
+  await logCase(
+    ctx,
+    message.guild,
+    { type: 'automod', userId: member.id, moderatorId: ctx.client.user.id, reason: `${rule.label}${extra}` },
+    { title: 'Auto-moderation', description: `Message by <@${member.id}> in <#${message.channel.id}> removed for **${rule.label}**${extra}.\n>>> ${truncate(text, 900) || '(no text)'}`, color: COLORS.warn },
+  );
+}
+
+// ─── Temporary bans and actions taken outside DelyForge ───────────────────────────────────────────────────────────
+
+/** Lifts temporary bans whose time is up (runs every 15 seconds; survives restarts because end times are stored). */
+export async function endTempBans(ctx: ModuleContext, client: Client): Promise<void> {
+  for (const due of ctx.store.dueTempBans(Date.now())) {
+    ctx.store.removeTempBan(due.guildId, due.userId);
+    const guild = client.guilds.cache.get(due.guildId);
+    if (!guild) continue;
+    const lifted = await guild.bans.remove(due.userId, 'Temporary ban ended').then(
+      () => true,
+      () => false, // already unbanned by hand
+    );
+    if (lifted) {
+      await logCase(ctx, guild, { type: 'unban', userId: due.userId, moderatorId: ctx.client.user.id, reason: 'Temporary ban ended' }, { title: 'Temporary ban ended', description: `<@${due.userId}> can join again.`, color: COLORS.success });
+    }
+  }
+}
+
+/**
+ * Bans, kicks and timeouts done with Discord's own buttons (not DelyForge commands) still get a case, so /history is
+ * complete. Taken from the live audit log; DelyForge's own actions are already recorded when they happen.
+ */
+export async function onAuditCase(ctx: ModuleContext, e: AuditLike, guild: Guild): Promise<void> {
+  if (!ctx.config(guild.id).moderation.enabled || !e.executorId || !e.targetId || e.executorId === ctx.client.user.id) return;
+  let type: string | null = null;
+  let duration: string | null = null;
+  if (e.action === AuditLogEvent.MemberBanAdd) type = 'ban';
+  else if (e.action === AuditLogEvent.MemberBanRemove) {
+    type = 'unban';
+    ctx.store.removeTempBan(guild.id, e.targetId);
+  } else if (e.action === AuditLogEvent.MemberKick) type = 'kick';
+  else if (e.action === AuditLogEvent.MemberUpdate) {
+    const t = e.changes.find((c) => c.key === 'communication_disabled_until');
+    if (t) {
+      type = t.new ? 'timeout' : 'untimeout';
+      if (typeof t.new === 'string') duration = `${Math.max(1, Math.round((Date.parse(t.new) - Date.now()) / 60_000))}m`;
+    }
+  }
+  if (!type) return;
+  const reason = e.reason ?? 'No reason given';
+  await logCase(ctx, guild, { type, userId: e.targetId, moderatorId: e.executorId, reason, duration }, {
+    title: `${CASE_LABELS[type] ?? type} (in Discord)`,
+    description: `<@${e.targetId}> by <@${e.executorId}>\n**Reason:** ${truncate(reason, 400)}`,
+    color: type === 'unban' || type === 'untimeout' ? COLORS.success : COLORS.danger,
   });
 }

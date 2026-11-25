@@ -133,7 +133,7 @@ function ModerationForm({ c, set, guild, automodLocked }: { c: ModerationConfig;
             <Badge key={cmd}>{cmd}</Badge>
           ))}
         </div>
-        <ChannelSelect id="mod-log" label="Moderation log channel" hint="Every warning, timeout, kick, ban and auto-moderation action is recorded here." guild={guild} value={c.logChannelId} onChange={(v) => set({ ...c, logChannelId: v })} />
+        <ChannelSelect id="mod-log" label="Moderation log channel" hint="Every action gets a numbered case here — including bans, kicks and timeouts done with Discord’s own buttons. Look them up with /history and /case." guild={guild} value={c.logChannelId} onChange={(v) => set({ ...c, logChannelId: v })} />
         <ToggleRow title="Tell members why" description="DM members when they are warned, timed out, kicked or banned." checked={c.dmMembers} onChange={(v) => set({ ...c, dmMembers: v })} />
       </Section>
 
@@ -176,6 +176,15 @@ function ModerationForm({ c, set, guild, automodLocked }: { c: ModerationConfig;
               <ActionSelect id="am-invites" value={a.invites.action} onChange={(v) => setA({ invites: { ...a.invites, action: v } })} />
             </div>
             <div className="flex items-center justify-between gap-4">
+              <ToggleRow title="Scam links" description="Fake “free Nitro” and look-alike Discord or Steam sites that steal accounts." checked={a.scams.enabled} onChange={(v) => setA({ scams: { ...a.scams, enabled: v } })} />
+              <ActionSelect id="am-scams" value={a.scams.action} onChange={(v) => setA({ scams: { ...a.scams, action: v } })} />
+            </div>
+            <div className="flex items-center justify-between gap-4">
+              <ToggleRow title="Mass mentions" description={`More than ${a.mentions.max} people or roles mentioned in one message.`} checked={a.mentions.enabled} onChange={(v) => setA({ mentions: { ...a.mentions, enabled: v } })} />
+              <ActionSelect id="am-mentions" value={a.mentions.action} onChange={(v) => setA({ mentions: { ...a.mentions, action: v } })} />
+            </div>
+            {a.mentions.enabled ? <NumberField id="am-mentions-max" label="Most mentions allowed" value={a.mentions.max} min={2} max={50} onChange={(v) => setA({ mentions: { ...a.mentions, max: v } })} /> : null}
+            <div className="flex items-center justify-between gap-4">
               <ToggleRow title="Links" description="Any link not on the allowed list." checked={a.links.enabled} onChange={(v) => setA({ links: { ...a.links, enabled: v } })} />
               <ActionSelect id="am-links" value={a.links.action} onChange={(v) => setA({ links: { ...a.links, action: v } })} />
             </div>
@@ -189,6 +198,26 @@ function ModerationForm({ c, set, guild, automodLocked }: { c: ModerationConfig;
             {a.words.enabled ? (
               <LinesInput id="am-wordlist" label="Words" hint="One per line. Matches whole words and simple tricks like b.a.d." value={a.words.words} onChange={(v) => setA({ words: { ...a.words, words: v.map((w) => w.toLowerCase()) } })} />
             ) : null}
+            <div className="flex items-center justify-between gap-4">
+              <ToggleRow title="All caps" description={`Messages of ${a.caps.minLength}+ letters that are at least ${a.caps.percent}% capitals.`} checked={a.caps.enabled} onChange={(v) => setA({ caps: { ...a.caps, enabled: v } })} />
+              <ActionSelect id="am-caps" value={a.caps.action} onChange={(v) => setA({ caps: { ...a.caps, action: v } })} />
+            </div>
+            {a.caps.enabled ? (
+              <div className="flex gap-4">
+                <NumberField id="am-caps-len" label="Only messages with at least" suffix="letters" value={a.caps.minLength} min={5} max={200} onChange={(v) => setA({ caps: { ...a.caps, minLength: v } })} />
+                <NumberField id="am-caps-pct" label="Capitals" suffix="%" value={a.caps.percent} min={50} max={100} onChange={(v) => setA({ caps: { ...a.caps, percent: v } })} />
+              </div>
+            ) : null}
+            <div className="flex items-center justify-between gap-4">
+              <ToggleRow title="Emoji spam" description={`More than ${a.emoji.max} emoji in one message.`} checked={a.emoji.enabled} onChange={(v) => setA({ emoji: { ...a.emoji, enabled: v } })} />
+              <ActionSelect id="am-emoji" value={a.emoji.action} onChange={(v) => setA({ emoji: { ...a.emoji, action: v } })} />
+            </div>
+            {a.emoji.enabled ? <NumberField id="am-emoji-max" label="Most emoji allowed" value={a.emoji.max} min={3} max={100} onChange={(v) => setA({ emoji: { ...a.emoji, max: v } })} /> : null}
+            <div className="flex items-center justify-between gap-4">
+              <ToggleRow title="Repeated messages" description={`The same message ${a.repeats.count} times in a row within a minute.`} checked={a.repeats.enabled} onChange={(v) => setA({ repeats: { ...a.repeats, enabled: v } })} />
+              <ActionSelect id="am-repeats" value={a.repeats.action} onChange={(v) => setA({ repeats: { ...a.repeats, action: v } })} />
+            </div>
+            {a.repeats.enabled ? <NumberField id="am-repeats-count" label="Times in a row" value={a.repeats.count} min={2} max={10} onChange={(v) => setA({ repeats: { ...a.repeats, count: v } })} /> : null}
             <div className="flex items-center justify-between gap-4">
               <ToggleRow title="Spam" description={`More than ${a.spam.maxMessages} messages in ${a.spam.perSeconds} seconds.`} checked={a.spam.enabled} onChange={(v) => setA({ spam: { ...a.spam, enabled: v } })} />
               <ActionSelect id="am-spam" value={a.spam.action} onChange={(v) => setA({ spam: { ...a.spam, action: v } })} />

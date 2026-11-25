@@ -5,7 +5,7 @@ import { commandKey, customCommandJSON, matchingWorkflows, runCustomCommand, run
 import { commandHash, desiredCommands } from './commands.js';
 import type { ModuleContext } from './context.js';
 import * as logging from './logging.js';
-import { MODERATION_COMMANDS, automodCheck, handleModerationCommand } from './moderation.js';
+import { MODERATION_COMMANDS, automodCheck, endTempBans, handleModerationCommand, onAuditCase } from './moderation.js';
 import { UTILITY_COMMANDS, handleUtilityCommand } from './utility.js';
 import { endDueGiveaways, handleGiveaway, handleSuggest, onGiveawayEnter, onSuggestionButton, onSuggestionDecision } from './community.js';
 import { LEVELING_COMMANDS, handleLevelingCommand, onMessageXp } from './leveling.js';
@@ -90,6 +90,7 @@ export class ModuleHost {
     // Giveaways end on time even across restarts, because end times are stored.
     this.giveawayTimer = setInterval(() => {
       if (this.store) void endDueGiveaways(this.ctx, this.client).catch((e: Error) => this.log('error', `Giveaways: ${e.message}`));
+      if (this.store) void endTempBans(this.ctx, this.client).catch((e: Error) => this.log('error', `Temporary bans: ${e.message}`));
     }, 15_000);
     void this.everyMinute();
     this.minuteTimer = setInterval(() => void this.everyMinute(), 60_000);
@@ -247,6 +248,7 @@ export class ModuleHost {
     c.on(Events.MessageUpdate, safe('Message edit log', (a, b) => logging.onMessageEdit(ctx, a, b)));
     // Who did what: channels, roles, permissions, members, bans, server settings… (needs View Audit Log).
     c.on(Events.GuildAuditLogEntryCreate, safe('Audit log', (entry, guild) => logging.onAuditEntry(ctx, entry, guild)));
+    c.on(Events.GuildAuditLogEntryCreate, safe('Moderation cases', (entry, guild) => onAuditCase(ctx, entry, guild)));
     c.on(Events.VoiceStateUpdate, safe('Voice log', (a, b) => logging.onVoice(ctx, a, b)));
     c.on(Events.VoiceStateUpdate, safe('Temporary voice', (a, b) => tempVoice.onVoiceState(ctx, a, b)));
     c.on(Events.InviteCreate, safe('Invite tracker', async (inv) => invites.onInviteCreate(inv)));

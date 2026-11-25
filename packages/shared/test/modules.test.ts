@@ -195,3 +195,27 @@ describe('reaction role panels', () => {
     expect(schema.safeParse({ enabled: true, panels: [{ ...panel, roles: [] }] }).success).toBe(false);
   });
 });
+
+describe('more auto-moderation checks (0.3)', () => {
+  it('spots fake Discord/Steam links but leaves real ones alone', async () => {
+    const { scamLinks } = await import('../src/modules.js');
+    expect(scamLinks('free nitro https://dlscord-nitro.gift/claim')).toEqual(['dlscord-nitro.gift']);
+    expect(scamLinks('trade me https://steamcornmunity.com/tradeoffer')).toEqual(['steamcornmunity.com']);
+    expect(scamLinks('https://discord.com/channels/1 https://discord.gg/abc https://discords.com/bots https://youtube.com/watch')).toEqual([]);
+  });
+
+  it('counts caps and emoji', async () => {
+    const { isCapsSpam, countEmoji } = await import('../src/modules.js');
+    expect(isCapsSpam('WHY IS NOBODY ANSWERING ME', 10, 70)).toBe(true);
+    expect(isCapsSpam('OK', 10, 70)).toBe(false);
+    expect(isCapsSpam('Normal sentence here', 10, 70)).toBe(false);
+    expect(countEmoji('hi 😀😀 <:pog:123456789012345678> 👍')).toBe(4);
+  });
+
+  it('loads moderation settings saved before the new filters existed', () => {
+    const old = JSON.parse(JSON.stringify(DEFAULT_MODULE_CONFIGS.moderation)) as { automod: Record<string, unknown> };
+    for (const k of ['caps', 'mentions', 'emoji', 'scams', 'repeats']) delete old.automod[k];
+    const parsed = guildModulesSchema.parse({ moderation: old });
+    expect(parsed.moderation?.automod).toMatchObject({ scams: { enabled: true }, mentions: { max: 5 } });
+  });
+});

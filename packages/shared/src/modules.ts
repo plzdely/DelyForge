@@ -115,6 +115,24 @@ export const moderationConfigSchema = z
           })
           .strict(),
         invites: z.object({ enabled: z.boolean(), action: z.enum(ACTIONS) }).strict(),
+        // Added in 0.3 — each has a default so settings saved earlier still load.
+        caps: z
+          .object({ enabled: z.boolean(), minLength: z.number().int().min(5).max(200), percent: z.number().int().min(50).max(100), action: z.enum(ACTIONS) })
+          .strict()
+          .default({ enabled: false, minLength: 10, percent: 70, action: 'delete' }),
+        mentions: z
+          .object({ enabled: z.boolean(), max: z.number().int().min(2).max(50), action: z.enum(ACTIONS) })
+          .strict()
+          .default({ enabled: true, max: 5, action: 'timeout' }),
+        emoji: z
+          .object({ enabled: z.boolean(), max: z.number().int().min(3).max(100), action: z.enum(ACTIONS) })
+          .strict()
+          .default({ enabled: false, max: 10, action: 'delete' }),
+        scams: z.object({ enabled: z.boolean(), action: z.enum(ACTIONS) }).strict().default({ enabled: true, action: 'delete' }),
+        repeats: z
+          .object({ enabled: z.boolean(), count: z.number().int().min(2).max(10), action: z.enum(ACTIONS) })
+          .strict()
+          .default({ enabled: false, count: 3, action: 'warn' }),
       })
       .strict(),
   })
@@ -494,6 +512,11 @@ export const DEFAULT_MODULE_CONFIGS: ModuleConfigs = {
       links: { enabled: false, allowedDomains: ['youtube.com', 'youtu.be', 'twitch.tv'], action: 'delete' },
       words: { enabled: false, words: [], action: 'delete' },
       invites: { enabled: true, action: 'delete' },
+      caps: { enabled: false, minLength: 10, percent: 70, action: 'delete' },
+      mentions: { enabled: true, max: 5, action: 'timeout' },
+      emoji: { enabled: false, max: 10, action: 'delete' },
+      scams: { enabled: true, action: 'delete' },
+      repeats: { enabled: false, count: 3, action: 'warn' },
     },
   },
   logging: {
@@ -580,7 +603,7 @@ export interface ModuleInfo {
 
 export const MODULES: readonly ModuleInfo[] = [
   { id: 'welcome', name: 'Welcome', summary: 'Greet new members, say goodbye, send a DM and give roles automatically.', feature: 'modules.basic', available: true, commands: [] },
-  { id: 'moderation', name: 'Moderation', summary: 'Kick, ban, timeout and warn with staff-only commands, warning thresholds and auto-moderation.', feature: 'modules.basic', available: true, commands: ['/warn', '/warnings', '/clearwarnings', '/timeout', '/untimeout', '/kick', '/ban', '/unban', '/purge'] },
+  { id: 'moderation', name: 'Moderation', summary: 'Staff commands with numbered cases and history, temporary bans, channel lockdown, and auto-moderation for spam, scams, mentions and more.', feature: 'modules.basic', available: true, commands: ['/warn', '/warnings', '/clearwarnings', '/history', '/case', '/note', '/timeout', '/untimeout', '/kick', '/ban', '/unban', '/purge', '/lock', '/unlock', '/slowmode'] },
   { id: 'logging', name: 'Logging', summary: 'Who did what: deleted and edited messages, joins and leaves, and every staff change with who made it.', feature: 'modules.standard', available: true, commands: [] },
   { id: 'utility', name: 'Utility', summary: 'Handy commands: server info, user info, avatars and native Discord polls.', feature: 'modules.basic', available: true, commands: ['/serverinfo', '/userinfo', '/avatar', '/poll'] },
   { id: 'leveling', name: 'Leveling', summary: 'XP for chatting, levels, leaderboards and role rewards.', feature: 'modules.standard', available: true, commands: ['/rank', '/leaderboard'] },
@@ -749,6 +772,51 @@ export function matchBlockedWord(text: string, words: readonly string[]): string
 }
 
 /** Sliding-window spam detector state for one member. Returns true when the limit is exceeded. */
+/** True when a message is mostly capital letters (ignoring short messages). */
+export function isCapsSpam(text: string, minLength: number, percent: number): boolean {
+  const letters = text.replace(/<a?:\w+:\d+>|https?:\/\/\S+|<[@#&!]+\d+>/g, '').replace(/[^\p{L}]/gu, '');
+  if (letters.length < minLength) return false;
+  const upper = letters.replace(/[^\p{Lu}]/gu, '').length;
+  return (upper / letters.length) * 100 >= percent;
+}
+
+/** Normal and server emojis in a message. */
+export function countEmoji(text: string): number {
+  return (text.match(/<a?:\w+:\d+>/g)?.length ?? 0) + (text.replace(/<a?:\w+:\d+>/g, '').match(/\p{Extended_Pictographic}/gu)?.length ?? 0);
+}
+
+const OFFICIAL_HOSTS = ['discord.com', 'discord.dev', 'discord.new', 'discord.co', 'discords.com', 'discord.gg', 'discordapp.com', 'discordapp.net', 'discord.media', 'discord.gift', 'discordstatus.com', 'steampowered.com', 'steamcommunity.com', 'steamstatic.com'];
+const IMITATED = ['discord', 'discordapp', 'discordgift', 'steamcommunity', 'steampowered', 'steamcommunlty'];
+
+function editDistance(a: string, b: string): number {
+  const d = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array<number>(b.length).fill(0)]);
+  for (let j = 1; j <= b.length; j++) d[0]![j] = j;
+  for (let i = 1; i <= a.length; i++)
+    for (let j = 1; j <= b.length; j++) d[i]![j] = Math.min(d[i - 1]![j]! + 1, d[i]![j - 1]! + 1, d[i - 1]![j - 1]! + (a[i - 1] === b[j - 1] ? 0 : 1));
+  return d[a.length]![b.length]!;
+}
+
+/**
+ * Links that pretend to be Discord or Steam (the usual "free Nitro" / "Steam gift" account-stealing scams):
+ * look-alike domains such as dlscord-nitro.gift or steamcornmunity.com. Real Discord and Steam links are fine.
+ */
+export function scamLinks(text: string): string[] {
+  const found: string[] = [];
+  for (const match of text.matchAll(/https?:\/\/[^\s<>]+/gi)) {
+    let host: string;
+    try {
+      host = new URL(match[0]).hostname.toLowerCase().replace(/^www\./, '');
+    } catch {
+      continue;
+    }
+    if (OFFICIAL_HOSTS.some((h) => host === h || host.endsWith(`.${h}`))) continue;
+    const name = host.split('.').slice(0, -1).join('').replace(/[^a-z0-9]/g, '');
+    const lookalike = IMITATED.some((w) => name.length >= 5 && (editDistance(name, w) <= 2 || (name.includes(w.slice(0, 5)) && /nitro|gift|free|airdrop|promo/.test(name))));
+    if (lookalike || (/n[i1]tro/.test(name) && /d[i1l]sc|gift|free/.test(name))) found.push(host);
+  }
+  return found;
+}
+
 export function recordMessageAndCheckSpam(timestamps: number[], now: number, maxMessages: number, perSeconds: number): boolean {
   const windowStart = now - perSeconds * 1000;
   while (timestamps.length && timestamps[0]! < windowStart) timestamps.shift();
