@@ -188,6 +188,19 @@ const UTILITY: Record<keyof ModuleConfigs['utility']['commands'], CommandJSON> =
     .addIntegerOption((o) => o.setName('hours').setDescription('How long it runs (default 24)').setMinValue(1).setMaxValue(768))
     .addBooleanOption((o) => o.setName('multiple').setDescription('Allow picking more than one answer'))
     .toJSON(),
+  remind: new SlashCommandBuilder()
+    .setName('remind')
+    .setDescription('Get a reminder later')
+    .setDMPermission(false)
+    .addStringOption((o) => o.setName('in').setDescription('When, e.g. 10m, 2h, 1d or 1h30m (up to 30 days)').setRequired(true).setMaxLength(20))
+    .addStringOption((o) => o.setName('text').setDescription('What to remind you about').setRequired(true).setMaxLength(500))
+    .toJSON(),
+  roll: new SlashCommandBuilder()
+    .setName('roll')
+    .setDescription('Roll dice')
+    .addIntegerOption((o) => o.setName('sides').setDescription('Sides per die (default 6)').setMinValue(2).setMaxValue(1000))
+    .addIntegerOption((o) => o.setName('dice').setDescription('How many dice (default 1)').setMinValue(1).setMaxValue(10))
+    .toJSON(),
 };
 
 export function commandHash(c: RESTPostAPIApplicationCommandsJSONBody): string {

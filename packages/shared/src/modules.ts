@@ -221,7 +221,16 @@ export const utilityConfigSchema = z
   .object({
     enabled: z.boolean(),
     commands: z
-      .object({ serverinfo: z.boolean(), userinfo: z.boolean(), avatar: z.boolean(), poll: z.boolean() })
+      .object({
+        serverinfo: z.boolean(),
+        userinfo: z.boolean(),
+        avatar: z.boolean(),
+        poll: z.boolean(),
+        /** /remind in:2h text:… — the bot reminds the member later. */
+        remind: z.boolean().default(true),
+        /** /roll — dice. */
+        roll: z.boolean().default(true),
+      })
       .strict(),
   })
   .strict();
@@ -481,9 +490,21 @@ export const stickyConfigSchema = z
   .object({
     enabled: z.boolean(),
     messages: z
-      .array(z.object({ channelId: snowflakeSchema, text: z.string().trim().min(1, 'Write the sticky message').max(2000) }).strict())
+      .array(
+        z
+          .object({
+            channelId: snowflakeSchema,
+            text: z.string().trim().min(1, 'Write the sticky message').max(2000),
+            /** Show it as a coloured card. */
+            embed: z.boolean().default(false),
+            color: hexColor.default('#7c5cff'),
+          })
+          .strict(),
+      )
       .max(10)
       .refine((m) => new Set(m.map((x) => x.channelId)).size === m.length, 'One sticky message per channel'),
+    /** How long a channel must be quiet before the sticky message is re-posted. */
+    quietSeconds: z.number().int().min(2).max(120).default(5),
   })
   .strict();
 export type StickyConfig = z.infer<typeof stickyConfigSchema>;
@@ -522,6 +543,8 @@ export const birthdaysConfigSchema = z
     roleId: snowflakeSchema.nullable(),
     /** Hour of the day (UTC) to announce birthdays. */
     hourUtc: z.number().int().min(0).max(23),
+    /** Also DM the birthday person (empty = no DM). */
+    dmMessage: template(500).default(''),
   })
   .strict();
 export type BirthdaysConfig = z.infer<typeof birthdaysConfigSchema>;
@@ -549,6 +572,10 @@ export const feedsConfigSchema = z
             message: template(500),
             /** Role to ping with {role} (null = no ping). */
             roleId: snowflakeSchema.nullable(),
+            /** Only post when the title contains one of these words (comma-separated; empty = everything). */
+            keywords: z.string().max(200).default(''),
+            /** YouTube: don't announce Shorts. */
+            skipShorts: z.boolean().default(false),
           })
           .strict(),
       )
@@ -574,6 +601,11 @@ export const scheduledConfigSchema = z
             days: z.array(z.number().int().min(0).max(6)).max(7),
             time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Use a time like 09:30'),
             roleId: snowflakeSchema.nullable(),
+            /** Post as a coloured card. */
+            embed: z.boolean().default(false),
+            color: hexColor.default('#7c5cff'),
+            /** Delete the previous post of this message when posting a new one (keeps the channel tidy). */
+            deletePrevious: z.boolean().default(false),
           })
           .strict(),
       )
@@ -670,7 +702,7 @@ export const DEFAULT_MODULE_CONFIGS: ModuleConfigs = {
   },
   utility: {
     enabled: false,
-    commands: { serverinfo: true, userinfo: true, avatar: true, poll: true },
+    commands: { serverinfo: true, userinfo: true, avatar: true, poll: true, remind: true, roll: true },
   },
   leveling: {
     enabled: false,
@@ -717,9 +749,9 @@ export const DEFAULT_MODULE_CONFIGS: ModuleConfigs = {
   starboard: { enabled: false, channelId: null, emoji: '⭐', threshold: 3, selfStar: false, ignoredChannelIds: [] },
   tempVoice: { enabled: false, hubChannelId: null, categoryId: null, nameTemplate: '{user}’s channel', userLimit: 0, ownerCommands: true },
   antiRaid: { enabled: false, alertChannelId: null, joinThreshold: 10, perSeconds: 30, raidAction: 'alert', raidMinutes: 10, minAccountAgeDays: 0, lockdown: false },
-  sticky: { enabled: false, messages: [] },
+  sticky: { enabled: false, messages: [], quietSeconds: 5 },
   serverStats: { enabled: false, counters: [] },
-  birthdays: { enabled: false, channelId: null, message: '🎂 Happy birthday {user}! Have a great day.', roleId: null, hourUtc: 9 },
+  birthdays: { enabled: false, channelId: null, message: '🎂 Happy birthday {user}! Have a great day.', roleId: null, hourUtc: 9, dmMessage: '' },
   feeds: { enabled: false, feeds: [] },
   scheduled: { enabled: false, timezone: 'UTC', messages: [] },
 };
@@ -759,7 +791,7 @@ export const MODULES: readonly ModuleInfo[] = [
   { id: 'welcome', name: 'Welcome', summary: 'Greet new members, say goodbye, send a DM and give roles automatically.', feature: 'modules.basic', available: true, commands: [] },
   { id: 'moderation', name: 'Moderation', summary: 'Staff commands with numbered cases and history, temporary bans, channel lockdown, and auto-moderation for spam, scams, mentions and more.', feature: 'modules.basic', available: true, commands: ['/warn', '/warnings', '/clearwarnings', '/history', '/case', '/note', '/timeout', '/untimeout', '/kick', '/ban', '/unban', '/softban', '/purge', '/lock', '/unlock', '/slowmode', '/role', '/nick'] },
   { id: 'logging', name: 'Logging', summary: 'Who did what: deleted and edited messages, joins and leaves, and every staff change with who made it.', feature: 'modules.standard', available: true, commands: [] },
-  { id: 'utility', name: 'Utility', summary: 'Handy commands: server info, user info, avatars and native Discord polls.', feature: 'modules.basic', available: true, commands: ['/serverinfo', '/userinfo', '/avatar', '/poll'] },
+  { id: 'utility', name: 'Utility', summary: 'Handy commands: server info, user info, avatars and native Discord polls.', feature: 'modules.basic', available: true, commands: ['/serverinfo', '/userinfo', '/avatar', '/poll', '/remind', '/roll'] },
   { id: 'leveling', name: 'Leveling', summary: 'XP for chatting, levels, leaderboards and role rewards.', feature: 'modules.standard', available: true, commands: ['/rank', '/leaderboard', '/xp'] },
   { id: 'tickets', name: 'Tickets', summary: 'A support panel that opens private ticket channels, with transcripts when closed.', feature: 'modules.standard', available: true, commands: ['/ticket add', '/ticket close'] },
   { id: 'verification', name: 'Verification', summary: 'A verify button that gives new members access, with an optional minimum account age.', feature: 'modules.standard', available: true, commands: [] },

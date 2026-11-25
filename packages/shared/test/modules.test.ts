@@ -239,3 +239,24 @@ describe('settings saved by older versions keep loading (v0.4 options)', () => {
     expect(moduleConfigSchemas.reactionRoles.parse({ enabled: true, panels: [panel] }).panels[0]).toMatchObject({ oneRoleOnly: false, requiredRoleId: null });
   });
 });
+
+describe('settings saved by v0.3 keep loading after the v0.4 additions', () => {
+  it('fills in defaults for every new option', () => {
+    const v03 = {
+      utility: { enabled: true, commands: { serverinfo: true, userinfo: true, avatar: true, poll: true } },
+      sticky: { enabled: true, messages: [{ channelId: '123456789012345678', text: 'Read the rules' }] },
+      scheduled: { enabled: true, timezone: 'UTC', messages: [{ channelId: '123456789012345678', text: 'Hi', days: [], time: '09:00', roleId: null }] },
+      feeds: { enabled: true, feeds: [{ kind: 'rss', source: 'https://a.b/feed', channelId: '123456789012345678', message: '{title}', roleId: null }] },
+      tickets: { ...DEFAULT_MODULE_CONFIGS.tickets, askReason: undefined, claimButton: undefined, autoCloseHours: undefined },
+      suggestions: { enabled: true, channelId: null, staffRoleIds: [] },
+      tempVoice: { enabled: true, hubChannelId: null, categoryId: null, nameTemplate: 'x', userLimit: 0 },
+      giveaways: { enabled: true, managerRoleIds: [], color: '#f5a524' },
+      invites: { enabled: true, channelId: null, message: 'x' },
+    };
+    const parsed = Object.fromEntries(Object.entries(v03).map(([id, c]) => [id, (moduleConfigSchemas as Record<string, { safeParse(x: unknown): { success: boolean; data?: unknown } }>)[id]!.safeParse(JSON.parse(JSON.stringify(c)))]));
+    for (const [id, r] of Object.entries(parsed)) expect(r.success, id).toBe(true);
+    expect((parsed['utility']!.data as { commands: { remind: boolean } }).commands.remind).toBe(true);
+    expect((parsed['sticky']!.data as { quietSeconds: number }).quietSeconds).toBe(5);
+    expect((parsed['tickets']!.data as { claimButton: boolean }).claimButton).toBe(true);
+  });
+});

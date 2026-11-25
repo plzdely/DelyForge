@@ -6,7 +6,7 @@ import { commandHash, desiredCommands } from './commands.js';
 import type { ModuleContext } from './context.js';
 import * as logging from './logging.js';
 import { MODERATION_COMMANDS, automodCheck, endTempBans, handleModerationCommand, onAuditCase } from './moderation.js';
-import { UTILITY_COMMANDS, handleUtilityCommand } from './utility.js';
+import { UTILITY_COMMANDS, deliverReminders, handleUtilityCommand } from './utility.js';
 import { endDueGiveaways, handleGiveaway, handleSuggest, onGiveawayEnter, onSuggestionButton, onSuggestionDecision } from './community.js';
 import { LEVELING_COMMANDS, handleLevelingCommand, onMemberLeaveXp, onMessageXp, voiceXp } from './leveling.js';
 import { CID, syncPanels } from './panels.js';
@@ -96,6 +96,7 @@ export class ModuleHost {
     this.giveawayTimer = setInterval(() => {
       if (this.store) void endDueGiveaways(this.ctx, this.client).catch((e: Error) => this.log('error', `Giveaways: ${e.message}`));
       if (this.store) void endTempBans(this.ctx, this.client).catch((e: Error) => this.log('error', `Temporary bans: ${e.message}`));
+      if (this.store) void deliverReminders(this.ctx, this.client).catch((e: Error) => this.log('error', `Reminders: ${e.message}`));
     }, 15_000);
     void this.everyMinute();
     this.minuteTimer = setInterval(() => void this.everyMinute(), 30_000);

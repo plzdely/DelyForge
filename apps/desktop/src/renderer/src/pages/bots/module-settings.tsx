@@ -350,6 +350,8 @@ const UTILITY_LABELS: Record<keyof UtilityConfig['commands'], [string, string]> 
   userinfo: ['/userinfo', 'A member’s join date, account age and roles'],
   avatar: ['/avatar', 'Show anyone’s avatar in full size'],
   poll: ['/poll', 'Native Discord polls with up to 10 answers'],
+  remind: ['/remind', 'Members set a reminder (e.g. in 2h) and the bot pings them later'],
+  roll: ['/roll', 'Roll dice, e.g. 2 dice with 20 sides'],
 };
 
 function UtilityForm({ c, set }: { c: UtilityConfig; set: (c: UtilityConfig) => void }) {

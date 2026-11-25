@@ -1,6 +1,6 @@
 import { renderTemplate } from '@delyforge/shared';
 import { type ChatInputCommandInteraction, type Guild, MessageFlags } from 'discord.js';
-import { BRAND_COLOR, type ModuleContext, SAFE_MENTIONS, sendableChannel } from './context.js';
+import { BRAND_COLOR, type ModuleContext, SAFE_MENTIONS, sendableChannel, tryDM } from './context.js';
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const DAYS_IN_MONTH = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
@@ -61,9 +61,9 @@ export async function checkBirthdays(ctx: ModuleContext, guild: Guild, now = new
     const member = await guild.members.fetch(userId).catch(() => null);
     if (!member) continue; // left the server
     if (role) await member.roles.add(role, 'Happy birthday!').catch((e: Error) => ctx.log('warn', `Birthdays: could not give the role: ${e.message}`));
-    await channel
-      ?.send({ content: renderTemplate(config.message, { user: `<@${userId}>`, 'user.name': member.displayName, server: guild.name }), allowedMentions: SAFE_MENTIONS })
-      .catch((e: Error) => ctx.log('warn', `Birthdays: could not post: ${e.message}`));
+    const vars = { user: `<@${userId}>`, 'user.name': member.displayName, server: guild.name };
+    await channel?.send({ content: renderTemplate(config.message, vars), allowedMentions: SAFE_MENTIONS }).catch((e: Error) => ctx.log('warn', `Birthdays: could not post: ${e.message}`));
+    if (config.dmMessage.trim()) await tryDM(member.user, renderTemplate(config.dmMessage, vars));
   }
 }
 

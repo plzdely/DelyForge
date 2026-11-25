@@ -1,7 +1,9 @@
-import { type ChatInputCommandInteraction, ChannelType, MessageFlags } from 'discord.js';
-import { BRAND_COLOR, type ModuleContext } from './context.js';
+import { randomInt } from 'node:crypto';
+import { type ChatInputCommandInteraction, ChannelType, type Client, MessageFlags } from 'discord.js';
+import { parseDuration } from './community.js';
+import { BRAND_COLOR, type ModuleContext, truncate, tryDM } from './context.js';
 
-export const UTILITY_COMMANDS = new Set(['serverinfo', 'userinfo', 'avatar', 'poll']);
+export const UTILITY_COMMANDS = new Set(['serverinfo', 'userinfo', 'avatar', 'poll', 'remind', 'roll']);
 
 /** Splits "Yes | No | Maybe" into 2–10 trimmed, unique answers (Discord's poll limits). */
 export function parsePollOptions(raw: string): string[] | null {
@@ -15,7 +17,7 @@ export function parsePollOptions(raw: string): string[] | null {
 
 export async function handleUtilityCommand(ctx: ModuleContext, i: ChatInputCommandInteraction): Promise<void> {
   const config = i.guild ? ctx.config(i.guild.id).utility : null;
-  const name = i.commandName as 'serverinfo' | 'userinfo' | 'avatar' | 'poll';
+  const name = i.commandName as 'serverinfo' | 'userinfo' | 'avatar' | 'poll' | 'remind' | 'roll';
   if (config && (!config.enabled || !config.commands[name])) {
     await i.reply({ content: 'This command is turned off in this server.', flags: MessageFlags.Ephemeral });
     return;
@@ -74,6 +76,24 @@ export async function handleUtilityCommand(ctx: ModuleContext, i: ChatInputComma
       await i.reply({ embeds: [{ title: `${user.username}’s avatar`, image: { url }, url, color: BRAND_COLOR }], allowedMentions: { parse: [] } });
       return;
     }
+    case 'remind': {
+      if (!i.guildId || !i.channelId) return;
+      const ms = parseDuration(i.options.getString('in', true));
+      if (!ms) return void (await i.reply({ content: 'Use a time like `10m`, `2h`, `1d` or `1h30m` (1 minute to 30 days).', flags: MessageFlags.Ephemeral }));
+      if (ctx.store.pendingReminders(i.guildId, i.user.id) >= 25) return void (await i.reply({ content: 'You already have 25 reminders waiting here.', flags: MessageFlags.Ephemeral }));
+      const dueAt = Date.now() + ms;
+      ctx.store.addReminder({ guildId: i.guildId, channelId: i.channelId, userId: i.user.id, text: truncate(i.options.getString('text', true), 500), dueAt });
+      await i.reply({ content: `⏰ I’ll remind you <t:${Math.floor(dueAt / 1000)}:R>.`, flags: MessageFlags.Ephemeral });
+      return;
+    }
+    case 'roll': {
+      const sides = i.options.getInteger('sides') ?? 6;
+      const dice = i.options.getInteger('dice') ?? 1;
+      const rolls = Array.from({ length: dice }, () => randomInt(1, sides + 1));
+      const total = rolls.reduce((a, b) => a + b, 0);
+      await i.reply({ content: `🎲 ${dice}d${sides}: ${rolls.map((r) => `**${r}**`).join(' + ')}${dice > 1 ? ` = **${total}**` : ''}`, allowedMentions: { parse: [] } });
+      return;
+    }
     case 'poll': {
       const answers = parsePollOptions(i.options.getString('options', true));
       if (!answers) {
@@ -89,6 +109,19 @@ export async function handleUtilityCommand(ctx: ModuleContext, i: ChatInputComma
         },
       });
       return;
+    }
+  }
+}
+
+/** Every 15 s: delivers due reminders in the channel they were set in (or by DM if that's not possible). */
+export async function deliverReminders(ctx: ModuleContext, client: Client): Promise<void> {
+  for (const r of ctx.store.takeDueReminders(Date.now())) {
+    const text = `⏰ <@${r.userId}> here’s your reminder: ${r.text}`;
+    const channel = client.guilds.cache.get(r.guildId)?.channels.cache.get(r.channelId);
+    const posted = channel?.isSendable() ? await channel.send({ content: text, allowedMentions: { users: [r.userId] } }).then(() => true, () => false) : false;
+    if (!posted) {
+      const user = await client.users.fetch(r.userId).catch(() => null);
+      if (user) await tryDM(user, `⏰ Reminder: ${r.text}`);
     }
   }
 }

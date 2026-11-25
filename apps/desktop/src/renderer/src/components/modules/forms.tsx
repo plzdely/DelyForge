@@ -9,7 +9,7 @@ import { ChannelChecklist, ChannelSelect, NumberField, RoleChecklist, ToggleRow 
 
 type Props<K extends keyof ModuleConfigs> = { c: ModuleConfigs[K]; set: (c: ModuleConfigs[K]) => void; guild: GuildInfo };
 
-function ColorField({ id, value, onChange }: { id: string; value: string; onChange: (v: string) => void }) {
+export function ColorField({ id, value, onChange }: { id: string; value: string; onChange: (v: string) => void }) {
   return (
     <Field label="Colour" htmlFor={id}>
       <input id={id} type="color" value={value} onChange={(e) => onChange(e.target.value)} className="h-9 w-full cursor-pointer rounded-md border border-border-strong bg-bg-subtle p-1" />

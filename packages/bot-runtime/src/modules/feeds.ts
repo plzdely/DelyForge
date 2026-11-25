@@ -101,6 +101,13 @@ export async function latestFeedItem(feed: FeedsConfig['feeds'][number]): Promis
   return parseFeed(await fetchText(await feedUrl(feed)))[0] ?? null;
 }
 
+/** Whether a new post should be announced: keyword filter (any word, case-insensitive) and the Shorts switch. */
+export function wantedItem(item: Pick<FeedItem, 'title' | 'link'>, feed: Pick<FeedsConfig['feeds'][number], 'keywords' | 'skipShorts'>): boolean {
+  if (feed.skipShorts && /youtube\.com\/shorts\//i.test(item.link)) return false;
+  const words = feed.keywords.split(',').map((w) => w.trim().toLowerCase()).filter(Boolean);
+  return !words.length || words.some((w) => item.title.toLowerCase().includes(w));
+}
+
 /** Problems are logged at most once an hour per feed, so a dead feed doesn't flood the console. */
 const lastWarned = new Map<string, number>();
 
@@ -118,7 +125,10 @@ export async function pollFeeds(ctx: ModuleContext, guild: Guild): Promise<void>
         ctx.store.markFeedItemsSeen(guild.id, key, items.map((i) => i.id));
         continue;
       }
-      const fresh = items.filter((i) => !seen.has(i.id)).slice(0, 3).reverse(); // oldest first, at most 3 per check
+      const unseen = items.filter((i) => !seen.has(i.id));
+      // Filtered-out posts are still remembered, so they don't come back later.
+      for (const skipped of unseen.filter((i) => !wantedItem(i, feed))) ctx.store.markFeedItemsSeen(guild.id, key, [skipped.id]);
+      const fresh = unseen.filter((i) => wantedItem(i, feed)).slice(0, 3).reverse(); // oldest first, at most 3 per check
       if (!fresh.length) continue;
       const channel = await sendableChannel(ctx, guild, feed.channelId, 'Social alerts');
       for (const item of fresh) {

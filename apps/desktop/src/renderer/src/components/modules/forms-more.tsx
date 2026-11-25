@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Field, Input, Textarea } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { CategorySelect, RoleSelect, RoleValueRows, Section, TemplateField } from './fields';
+import { ColorField } from './forms';
 import { ChannelChecklist, ChannelSelect, NumberField, ToggleRow } from './pickers';
 
 type Props<K extends keyof ModuleConfigs> = { c: ModuleConfigs[K]; set: (c: ModuleConfigs[K]) => void; guild: GuildInfo };
@@ -124,14 +125,19 @@ export function StickyForm({ c, set, guild }: Props<'sticky'>) {
           <Field label="Message" htmlFor={`sticky-text-${n}`}>
             <Textarea id={`sticky-text-${n}`} rows={3} maxLength={2000} value={m.text} onChange={(e) => update(n, { text: e.target.value })} />
           </Field>
+          <div className="grid grid-cols-[1fr_140px] items-end gap-3">
+            <ToggleRow title="Show as a card" checked={m.embed} onChange={(v) => update(n, { embed: v })} />
+            {m.embed ? <ColorField id={`sticky-color-${n}`} value={m.color} onChange={(v) => update(n, { color: v })} /> : null}
+          </div>
         </div>
       ))}
+      <NumberField id="sticky-quiet" label="Re-post after the channel is quiet for" suffix="seconds" min={2} max={120} value={c.quietSeconds} onChange={(v) => set({ ...c, quietSeconds: v })} />
       <Button
         size="sm"
         disabled={c.messages.length >= 10 || !guild.channels.some((ch) => ch.kind === 'text')}
         onClick={() => {
           const free = guild.channels.find((ch) => ch.kind === 'text' && !c.messages.some((m) => m.channelId === ch.id));
-          if (free) set({ ...c, messages: [...c.messages, { channelId: free.id, text: '' }] });
+          if (free) set({ ...c, messages: [...c.messages, { channelId: free.id, text: '', embed: false, color: '#7c5cff' }] });
         }}
       >
         <Plus /> Add sticky message
@@ -203,6 +209,17 @@ export function BirthdaysForm({ c, set, guild }: Props<'birthdays'>) {
         <RoleSelect id="bday-role" label="Birthday role (optional)" assignableOnly guild={guild} value={c.roleId} onChange={(v) => set({ ...c, roleId: v })} />
         <NumberField id="bday-hour" label={`Announce at (UTC hour) — ${localTime(c.hourUtc)} your time`} min={0} max={23} value={c.hourUtc} onChange={(v) => set({ ...c, hourUtc: v })} />
       </div>
+      <TemplateField
+        id="bday-dm"
+        label="Also DM them (optional)"
+        max={500}
+        value={c.dmMessage}
+        onChange={(v) => set({ ...c, dmMessage: v })}
+        variables={[
+          { key: '{user.name}', description: 'Their display name' },
+          { key: '{server}', description: 'Server name' },
+        ]}
+      />
     </Section>
   );
 }
@@ -246,6 +263,12 @@ export function FeedsForm({ c, set, guild }: Props<'feeds'>) {
             variables={FEED_VARIABLES}
             sample={{ title: 'My newest video', link: 'https://youtu.be/example', author: 'Your Channel', role: '@Notifications' }}
           />
+          <div className="grid grid-cols-[1fr_auto] items-end gap-3">
+            <Field label="Only posts with these words (optional)" htmlFor={`feed-kw-${n}`} hint="Comma-separated, e.g. update, patch. Empty = everything.">
+              <Input id={`feed-kw-${n}`} maxLength={200} value={f.keywords} onChange={(e) => update(n, { keywords: e.target.value })} />
+            </Field>
+            {f.kind === 'youtube' ? <ToggleRow title="Skip Shorts" checked={f.skipShorts} onChange={(v) => update(n, { skipShorts: v })} /> : null}
+          </div>
         </div>
       ))}
       <Button
@@ -253,7 +276,7 @@ export function FeedsForm({ c, set, guild }: Props<'feeds'>) {
         disabled={c.feeds.length >= 20 || !guild.channels.some((ch) => ch.kind === 'text' || ch.kind === 'announcement')}
         onClick={() => {
           const ch = guild.channels.find((x) => x.kind === 'announcement') ?? guild.channels.find((x) => x.kind === 'text');
-          if (ch) set({ ...c, feeds: [...c.feeds, { kind: 'youtube', source: '', channelId: ch.id, message: '{role} **{author}** posted: {title}\n{link}', roleId: null }] });
+          if (ch) set({ ...c, feeds: [...c.feeds, { kind: 'youtube', source: '', channelId: ch.id, message: '{role} **{author}** posted: {title}\n{link}', roleId: null, keywords: '', skipShorts: false }] });
         }}
       >
         <Plus /> Add feed
@@ -313,6 +336,11 @@ export function ScheduledForm({ c, set, guild }: Props<'scheduled'>) {
             <Textarea id={`sched-text-${n}`} rows={3} maxLength={2000} value={m.text} onChange={(e) => update(n, { text: e.target.value })} />
           </Field>
           <RoleSelect id={`sched-role-${n}`} label="Ping a role (optional)" guild={guild} value={m.roleId} onChange={(v) => update(n, { roleId: v })} />
+          <div className="grid grid-cols-[1fr_140px] items-end gap-3">
+            <ToggleRow title="Show as a card" checked={m.embed} onChange={(v) => update(n, { embed: v })} />
+            {m.embed ? <ColorField id={`sched-color-${n}`} value={m.color} onChange={(v) => update(n, { color: v })} /> : null}
+          </div>
+          <ToggleRow title="Delete the previous post" description="Keeps only the latest copy in the channel (good for daily reminders)." checked={m.deletePrevious} onChange={(v) => update(n, { deletePrevious: v })} />
         </div>
       ))}
       <Button
@@ -322,7 +350,7 @@ export function ScheduledForm({ c, set, guild }: Props<'scheduled'>) {
           const ch = guild.channels.find((x) => x.kind === 'text');
           // The first message fills in your own time zone instead of the UTC default.
           const timezone = !c.messages.length && c.timezone === 'UTC' ? myTimeZone() : c.timezone;
-          if (ch) set({ ...c, timezone, messages: [...c.messages, { channelId: ch.id, text: '', days: [], time: '09:00', roleId: null }] });
+          if (ch) set({ ...c, timezone, messages: [...c.messages, { channelId: ch.id, text: '', days: [], time: '09:00', roleId: null, embed: false, color: '#7c5cff', deletePrevious: false }] });
         }}
       >
         <Plus /> Add scheduled message

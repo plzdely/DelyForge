@@ -1,6 +1,7 @@
 import type { ScheduledConfig } from '@delyforge/shared';
 import type { Guild } from 'discord.js';
-import { type ModuleContext, sendableChannel } from './context.js';
+import { createHash } from 'node:crypto';
+import { type ModuleContext, hexToInt, sendableChannel } from './context.js';
 
 const WEEKDAYS: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
 
@@ -37,8 +38,21 @@ export async function runScheduled(ctx: ModuleContext, guild: Guild, now = new D
     sent.add(key);
     const m = config.messages[i]!;
     const channel = await sendableChannel(ctx, guild, m.channelId, 'Scheduled messages');
-    await channel
-      ?.send({ content: m.roleId ? `<@&${m.roleId}> ${m.text}` : m.text, allowedMentions: { parse: [], roles: m.roleId ? [m.roleId] : [] } })
-      .catch((e: Error) => ctx.log('warn', `Scheduled messages: could not post: ${e.message}`));
+    if (!channel) continue;
+    // Identifies "this scheduled message" across restarts: its channel, time and text.
+    const postKey = `${guild.id}:${m.channelId}:${m.time}:${createHash('sha1').update(m.text).digest('hex').slice(0, 12)}`;
+    if (m.deletePrevious) {
+      const last = ctx.store.lastScheduledPost(postKey);
+      if (last && last.channelId === channel.id) await channel.messages.delete(last.messageId).catch(() => null);
+    }
+    const ping = m.roleId ? `<@&${m.roleId}>` : undefined;
+    const posted = await channel
+      .send(
+        m.embed
+          ? { content: ping, embeds: [{ description: m.text, color: hexToInt(m.color) }], allowedMentions: { parse: [], roles: m.roleId ? [m.roleId] : [] } }
+          : { content: ping ? `${ping} ${m.text}` : m.text, allowedMentions: { parse: [], roles: m.roleId ? [m.roleId] : [] } },
+      )
+      .catch((e: Error) => (ctx.log('warn', `Scheduled messages: could not post: ${e.message}`), null));
+    if (posted) ctx.store.saveScheduledPost(postKey, channel.id, posted.id);
   }
 }

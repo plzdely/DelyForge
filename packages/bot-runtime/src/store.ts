@@ -205,6 +205,19 @@ export class BotStore {
         unban_at INTEGER NOT NULL,
         PRIMARY KEY (guild_id, user_id)
       );
+      CREATE TABLE IF NOT EXISTS reminders (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        guild_id   TEXT NOT NULL,
+        channel_id TEXT NOT NULL,
+        user_id    TEXT NOT NULL,
+        text       TEXT NOT NULL,
+        due_at     INTEGER NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS scheduled_posts (
+        post_key   TEXT PRIMARY KEY,
+        channel_id TEXT NOT NULL,
+        message_id TEXT NOT NULL
+      );
       CREATE TABLE IF NOT EXISTS workflow_vars (
         guild_id TEXT NOT NULL,
         name     TEXT NOT NULL,
@@ -548,6 +561,34 @@ export class BotStore {
   caseByNumber(guildId: string, number: number): ModCase | null {
     const r = this.db.prepare('SELECT * FROM mod_cases WHERE guild_id = ? AND number = ?').get(guildId, number) as Parameters<typeof BotStore.toCase>[0] | undefined;
     return r ? BotStore.toCase(r) : null;
+  }
+
+  // ─── Reminders ───────────────────────────────────────────────────────────────────────────────────────────────────
+
+  addReminder(r: { guildId: string; channelId: string; userId: string; text: string; dueAt: number }): number {
+    return Number(this.db.prepare('INSERT INTO reminders (guild_id, channel_id, user_id, text, due_at) VALUES (?, ?, ?, ?, ?)').run(r.guildId, r.channelId, r.userId, r.text, r.dueAt).lastInsertRowid);
+  }
+
+  pendingReminders(guildId: string, userId: string): number {
+    return (this.db.prepare('SELECT COUNT(*) AS n FROM reminders WHERE guild_id = ? AND user_id = ?').get(guildId, userId) as { n: number }).n;
+  }
+
+  /** Reminders that are due, removed as they're taken (so each is delivered once). */
+  takeDueReminders(now: number): { guildId: string; channelId: string; userId: string; text: string; dueAt: number }[] {
+    const rows = this.db.prepare('SELECT * FROM reminders WHERE due_at <= ? ORDER BY due_at LIMIT 50').all(now) as { id: number; guild_id: string; channel_id: string; user_id: string; text: string; due_at: number }[];
+    const del = this.db.prepare('DELETE FROM reminders WHERE id = ?');
+    return rows.filter((r) => Number(del.run(r.id).changes) === 1).map((r) => ({ guildId: r.guild_id, channelId: r.channel_id, userId: r.user_id, text: r.text, dueAt: r.due_at }));
+  }
+
+  // ─── Scheduled posts (to delete the previous one) ────────────────────────────────────────────────────────────────
+
+  lastScheduledPost(key: string): { channelId: string; messageId: string } | null {
+    const r = this.db.prepare('SELECT channel_id, message_id FROM scheduled_posts WHERE post_key = ?').get(key) as { channel_id: string; message_id: string } | undefined;
+    return r ? { channelId: r.channel_id, messageId: r.message_id } : null;
+  }
+
+  saveScheduledPost(key: string, channelId: string, messageId: string): void {
+    this.db.prepare('INSERT OR REPLACE INTO scheduled_posts (post_key, channel_id, message_id) VALUES (?, ?, ?)').run(key, channelId, messageId);
   }
 
   // ─── Workflow variables ({var:name}, kept between runs) ─────────────────────────────────────────────────────────

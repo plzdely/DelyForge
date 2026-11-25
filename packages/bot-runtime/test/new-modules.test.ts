@@ -166,8 +166,8 @@ describe('scheduled messages', () => {
     expect(localParts(new Date('2026-01-14T14:30:00Z'), 'America/Chicago')?.time).toBe('08:30');
     expect(localParts(new Date(), 'Not/AZone')).toBeNull();
     const msgs = [
-      { channelId: '1', text: 'daily', days: [], time: '09:30', roleId: null },
-      { channelId: '1', text: 'mondays', days: [1], time: '09:30', roleId: null },
+      { channelId: '1', text: 'daily', days: [], time: '09:30', roleId: null, embed: false, color: '#7c5cff', deletePrevious: false },
+      { channelId: '1', text: 'mondays', days: [1], time: '09:30', roleId: null, embed: false, color: '#7c5cff', deletePrevious: false },
     ];
     expect(dueMessages(msgs, { day: 3, time: '09:30' })).toEqual([0]);
     expect(dueMessages(msgs, { day: 1, time: '09:30' })).toEqual([0, 1]);
@@ -314,6 +314,30 @@ describe('v0.4 tickets, invites and voice', () => {
     store.addTempChannel('g', 'v1', 'owner');
     store.setTempChannelOwner('v1', 'newOwner');
     expect(store.tempChannelOwner('v1')).toBe('newOwner');
+    store.close();
+  });
+});
+
+describe('v0.4 utility and feeds', () => {
+  it('filters feed posts by keywords and skips Shorts', async () => {
+    const { wantedItem } = await import('../src/modules/feeds.js');
+    const feed = { keywords: 'update, patch', skipShorts: true };
+    expect(wantedItem({ title: 'Big PATCH notes', link: 'https://www.youtube.com/watch?v=1' }, feed)).toBe(true);
+    expect(wantedItem({ title: 'Vlog', link: 'https://www.youtube.com/watch?v=2' }, feed)).toBe(false);
+    expect(wantedItem({ title: 'Update teaser', link: 'https://www.youtube.com/shorts/3' }, feed)).toBe(false);
+    expect(wantedItem({ title: 'Anything', link: 'https://blog/x' }, { keywords: '', skipShorts: false })).toBe(true);
+  });
+
+  it('delivers each due reminder once', () => {
+    const store = new BotStore(join(mkdtempSync(join(tmpdir(), 'df-rem-')), 'b.db'));
+    store.addReminder({ guildId: 'g', channelId: 'c', userId: 'u', text: 'stretch', dueAt: 1000 });
+    store.addReminder({ guildId: 'g', channelId: 'c', userId: 'u', text: 'later', dueAt: 9_999_999_999_999 });
+    expect(store.pendingReminders('g', 'u')).toBe(2);
+    expect(store.takeDueReminders(2000).map((r) => r.text)).toEqual(['stretch']);
+    expect(store.takeDueReminders(2000)).toEqual([]);
+    store.saveScheduledPost('k', 'c', 'm1');
+    store.saveScheduledPost('k', 'c', 'm2');
+    expect(store.lastScheduledPost('k')).toEqual({ channelId: 'c', messageId: 'm2' });
     store.close();
   });
 });
