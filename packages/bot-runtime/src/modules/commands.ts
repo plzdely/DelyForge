@@ -237,6 +237,22 @@ const LEVELING: CommandJSON[] = [
 
 const STARS: CommandJSON = new SlashCommandBuilder().setName('stars').setDescription('Members whose messages got the most stars').setDMPermission(false).toJSON();
 
+const PRICE: CommandJSON = new SlashCommandBuilder()
+  .setName('price')
+  .setDescription('What something in the shop costs right now')
+  .setDMPermission(false)
+  .addStringOption((o) => o.setName('item').setDescription('Start typing an item').setRequired(true).setAutocomplete(true).setMaxLength(100))
+  .toJSON();
+
+const VOUCH: CommandJSON = new SlashCommandBuilder()
+  .setName('vouch')
+  .setDescription('Leave a review of your order')
+  .setDMPermission(false)
+  .addIntegerOption((o) => o.setName('stars').setDescription('1 to 5 stars').setRequired(true).setMinValue(1).setMaxValue(5))
+  .addStringOption((o) => o.setName('review').setDescription('How was it?').setRequired(true).setMaxLength(1000))
+  .addAttachmentOption((o) => o.setName('image').setDescription('A screenshot of what you got (optional)'))
+  .toJSON();
+
 const INVITES: CommandJSON[] = [
   new SlashCommandBuilder()
     .setName('invites')
@@ -351,5 +367,7 @@ export function desiredCommands(config: ModuleConfigs): CommandJSON[] {
   if (config.starboard.enabled) out.push(STARS);
   if (config.tempVoice.enabled && config.tempVoice.ownerCommands) out.push(VOICE);
   if (config.birthdays.enabled) out.push(BIRTHDAY);
+  if (config.shop.enabled) out.push(PRICE);
+  if (config.shop.enabled && config.shop.vouchChannelId) out.push(VOUCH);
   return out;
 }

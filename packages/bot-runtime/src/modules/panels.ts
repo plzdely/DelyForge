@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import type { ModuleConfigs, PanelConfig, RolePanelConfig } from '@delyforge/shared';
+import { type ModuleConfigs, type PanelConfig, type RolePanelConfig, renderPriceList } from '@delyforge/shared';
 import {
   type APIActionRowComponent,
   type APIComponentInMessageActionRow,
@@ -21,6 +21,7 @@ export const CID = {
   verify: 'df:verify',
   roleButton: (panelId: string, roleId: string) => `df:rr:${panelId}:${roleId}`,
   roleMenu: (panelId: string) => `df:rrm:${panelId}`,
+  shopOrder: 'df:shop:order',
 } as const;
 
 export interface DesiredPanel {
@@ -87,8 +88,41 @@ function rolePanelMessage(p: RolePanelConfig): MessageCreateOptions {
 
 const hashOf = (payload: MessageCreateOptions) => createHash('sha256').update(JSON.stringify(payload)).digest('hex').slice(0, 16);
 
-/** The panels a server should have, from its settings. */
-export function desiredPanels(config: ModuleConfigs): DesiredPanel[] {
+/** The price list: plain-text messages (split at 2,000 characters) with the Order button under the last one. */
+function shopPanels(config: ModuleConfigs, now: number): Omit<DesiredPanel, 'hash'>[] {
+  const c = config.shop;
+  if (!c.enabled || !c.channelId) return [];
+  const channelId = c.channelId;
+  const texts = renderPriceList(c, now);
+  const order: Row[] =
+    c.orderButton && config.tickets.enabled
+      ? [
+          {
+            type: ComponentType.ActionRow,
+            components: [
+              c.ordersOpen
+                ? { type: ComponentType.Button, style: ButtonStyle.Success, label: 'Order', emoji: { name: '🛒' }, custom_id: CID.shopOrder }
+                : { type: ComponentType.Button, style: ButtonStyle.Secondary, label: 'Orders closed', emoji: { name: '🔴' }, custom_id: CID.shopOrder, disabled: true },
+            ],
+          } as Row,
+        ]
+      : [];
+  return texts.map((content, n) => ({ key: `shop:${n}`, channelId, payload: { content, embeds: [], components: n === texts.length - 1 ? order : [], allowedMentions: { parse: [] } } }));
+}
+
+/**
+ * When the posted price list no longer matches (a sale started or ended): a short fingerprint of what it should be,
+ * so the caller syncs once per change (not every check, if posting keeps failing). Null when it's up to date.
+ */
+export function shopPanelsStale(ctx: ModuleContext, guildId: string, now = Date.now()): string | null {
+  const want = new Map(desiredPanels(ctx.config(guildId), now).filter((p) => p.key.startsWith('shop:')).map((p) => [p.key, p.hash]));
+  const have = ctx.store.panels(guildId).filter((p) => p.key.startsWith('shop:'));
+  const stale = have.length !== want.size || have.some((p) => want.get(p.key) !== p.hash);
+  return stale ? [...want.values()].join(',') || 'removed' : null;
+}
+
+/** The panels a server should have, from its settings (the price list depends on the time, for sales). */
+export function desiredPanels(config: ModuleConfigs, now = Date.now()): DesiredPanel[] {
   const out: Omit<DesiredPanel, 'hash'>[] = [];
   if (config.tickets.enabled && config.tickets.panel.channelId) {
     out.push({ key: 'tickets', channelId: config.tickets.panel.channelId, payload: buttonPanel(config.tickets.panel, CID.ticketOpen, ButtonStyle.Primary) });
@@ -106,6 +140,7 @@ export function desiredPanels(config: ModuleConfigs): DesiredPanel[] {
       if (p.channelId) out.push({ key: `rr:${p.id}`, channelId: p.channelId, payload: rolePanelMessage(p) });
     }
   }
+  out.push(...shopPanels(config, now));
   return out.map((p) => ({ ...p, hash: hashOf(p.payload) }));
 }
 
@@ -129,7 +164,7 @@ export async function syncPanels(ctx: ModuleContext, guild: Guild): Promise<numb
     if (!channel) continue;
     if (have && have.channelId === want.channelId) {
       const edited = await channel.messages
-        .edit(have.messageId, { embeds: want.payload.embeds, components: want.payload.components })
+        .edit(have.messageId, { content: want.payload.content, embeds: want.payload.embeds, components: want.payload.components })
         .then(() => true)
         .catch(() => false); // deleted by hand → post a fresh one below
       if (edited) {

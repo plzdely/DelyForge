@@ -28,6 +28,7 @@ export const MODULE_IDS = [
   'birthdays',
   'feeds',
   'scheduled',
+  'shop',
 ] as const;
 export type ModuleId = (typeof MODULE_IDS)[number];
 
@@ -655,6 +656,98 @@ export const scheduledConfigSchema = z
   .strict();
 export type ScheduledConfig = z.infer<typeof scheduledConfigSchema>;
 
+// ─── Shop (price list, sales, orders) ──────────────────────────────────────────────────────────────────────────────
+
+const shopId = z.string().regex(/^[a-z0-9]{1,12}$/);
+const money = z.number().min(0, 'Prices can’t be negative').max(1_000_000);
+
+export const shopItemSchema = z
+  .object({
+    id: shopId,
+    name: z.string().trim().min(1, 'Name the item').max(80),
+    price: money,
+    /** Top of a price range ("$30-$50"), or null for one price. */
+    priceTo: money.nullable(),
+    /** "and up" ("$20+"): the final price depends on the work. */
+    plus: z.boolean(),
+  })
+  .strict();
+export type ShopItem = z.infer<typeof shopItemSchema>;
+
+export const shopCategorySchema = z
+  .object({
+    id: shopId,
+    emoji: z.string().trim().max(64),
+    name: z.string().trim().min(1, 'Name the category').max(60),
+    items: z.array(shopItemSchema).max(25),
+  })
+  .strict();
+export type ShopCategory = z.infer<typeof shopCategorySchema>;
+
+export const shopSaleSchema = z
+  .object({
+    id: shopId,
+    name: z.string().trim().min(1, 'Name the sale (e.g. Black Friday)').max(60),
+    percentOff: z.number().int().min(1).max(95),
+    /** Everything, some categories, or some items (by ID). */
+    target: z.enum(['all', 'categories', 'items']),
+    targetIds: z.array(shopId).max(100),
+    /** Unix milliseconds. */
+    startsAt: z.number().int().min(0),
+    endsAt: z.number().int().min(0),
+    /** Post an announcement (and ping the sale role) when it starts. */
+    announce: z.boolean(),
+  })
+  .strict()
+  .refine((s) => s.endsAt > s.startsAt, 'A sale has to end after it starts')
+  .refine((s) => s.target === 'all' || s.targetIds.length > 0, 'Pick what the sale is on');
+export type ShopSale = z.infer<typeof shopSaleSchema>;
+
+export const shopCodeSchema = z
+  .object({
+    code: z.string().regex(/^[A-Z0-9-]{3,20}$/, 'Codes are 3–20 capital letters, numbers or dashes'),
+    percentOff: z.number().int().min(1).max(95),
+    /** 0 = unlimited. */
+    maxUses: z.number().int().min(0).max(100_000),
+    /** Unix milliseconds, or null = never expires. */
+    endsAt: z.number().int().min(0).nullable(),
+  })
+  .strict();
+export type ShopCode = z.infer<typeof shopCodeSchema>;
+
+export const shopConfigSchema = z
+  .object({
+    enabled: z.boolean(),
+    /** Where the bot keeps the price list (it edits its own messages, so prices change in place). */
+    channelId: channel,
+    /** Text above the list (title, small print). */
+    header: template(1000),
+    /** Line between sections, e.g. ✦ ･ﾟ: *✧･ﾟ:* ✦ — empty for none. */
+    divider: z.string().max(200),
+    /** Text under the list (e.g. where payment info is). */
+    footer: template(1000),
+    currency: z.string().trim().min(1, 'Set a currency sign').max(5),
+    /** Symbol in front of every item, e.g. ✦ — empty for none. */
+    bullet: z.string().max(16),
+    categories: z.array(shopCategorySchema).max(15),
+    /** Taking orders right now: the list says so and the Order button works. */
+    ordersOpen: z.boolean(),
+    closedMessage: z.string().max(300),
+    /** An Order button under the list: pick an item, describe it, and a ticket opens with the price. Needs Tickets. */
+    orderButton: z.boolean(),
+    /** Which ticket panel orders open as ('' = the main one). */
+    ticketPanelId: z.union([z.literal(''), shopId]),
+    sales: z.array(shopSaleSchema).max(20),
+    announceChannelId: channel,
+    announceRoleId: snowflakeSchema.nullable(),
+    codes: z.array(shopCodeSchema).max(25),
+    /** /vouch posts reviews here (off when empty). */
+    vouchChannelId: channel,
+  })
+  .strict()
+  .refine((c) => new Set(c.codes.map((x) => x.code)).size === c.codes.length, 'Two discount codes have the same name');
+export type ShopConfig = z.infer<typeof shopConfigSchema>;
+
 // ─── Registry — the one list of built modules; everything below is derived from it ────────────────────────────────
 
 export const moduleConfigSchemas = {
@@ -677,6 +770,7 @@ export const moduleConfigSchemas = {
   birthdays: birthdaysConfigSchema,
   feeds: feedsConfigSchema,
   scheduled: scheduledConfigSchema,
+  shop: shopConfigSchema,
 } as const;
 export type ImplementedModuleId = keyof typeof moduleConfigSchemas;
 export const IMPLEMENTED_MODULES = Object.keys(moduleConfigSchemas) as [ImplementedModuleId, ...ImplementedModuleId[]];
@@ -798,6 +892,25 @@ export const DEFAULT_MODULE_CONFIGS: ModuleConfigs = {
   birthdays: { enabled: false, channelId: null, message: '🎂 Happy birthday {user}! Have a great day.', roleId: null, hourUtc: 9, dmMessage: '' },
   feeds: { enabled: false, feeds: [] },
   scheduled: { enabled: false, timezone: 'UTC', messages: [] },
+  shop: {
+    enabled: false,
+    channelId: null,
+    header: '# 💸 ***PRICE LIST***\n-# All prices in USD',
+    divider: '✦ ･ﾟ: *✧･ﾟ:* ✦ *:･ﾟ✧*:･ﾟ ✦',
+    footer: '-# Open a ticket to order',
+    currency: '$',
+    bullet: '✦',
+    categories: [],
+    ordersOpen: true,
+    closedMessage: 'We’re not taking new orders right now — check back soon!',
+    orderButton: true,
+    ticketPanelId: '',
+    sales: [],
+    announceChannelId: null,
+    announceRoleId: null,
+    codes: [],
+    vouchChannelId: null,
+  },
 };
 
 /** Settings for one server: any subset of modules (missing ones use defaults). */
@@ -850,6 +963,7 @@ export const MODULES: readonly ModuleInfo[] = [
   { id: 'serverStats', name: 'Server Stats', summary: 'Channel names that show live member, bot and boost counts.', feature: 'modules.standard', available: true, commands: [] },
   { id: 'feeds', name: 'Social Alerts', summary: 'Announce new YouTube videos and posts from any news or RSS feed.', feature: 'modules.standard', available: true, commands: [] },
   { id: 'scheduled', name: 'Scheduled Messages', summary: 'Post announcements automatically on chosen days and times.', feature: 'modules.standard', available: true, commands: [] },
+  { id: 'shop', name: 'Shop', summary: 'Your price list, kept up to date by the bot: sales that start and end on their own, an Order button that opens a ticket with the price, discount codes and vouches.', feature: 'modules.standard', available: true, commands: ['/price', '/vouch'] },
   { id: 'birthdays', name: 'Birthdays', summary: 'Members save their birthday; the bot celebrates them with a message and a role.', feature: 'modules.standard', available: true, commands: ['/birthday set', '/birthday remove', '/birthday upcoming'] },
 ];
 
@@ -1164,6 +1278,8 @@ export function modulePermissions<K extends ImplementedModuleId>(id: K, config: 
       return base | ((config as FeedsConfig).feeds.some((f) => f.roleId) ? P(17n) : 0n);
     case 'scheduled':
       return base | ((config as ScheduledConfig).messages.some((m) => m.roleId) ? P(17n) : 0n);
+    case 'shop':
+      return base | HISTORY | ((config as ShopConfig).announceRoleId ? P(17n) : 0n);
     default:
       return base;
   }

@@ -28,6 +28,7 @@ import { toast } from 'sonner';
 import { InviteLink } from '@/components/bots/permissions-editor';
 import { LinkButtonsEditor, Section, TemplateField } from '@/components/modules/fields';
 import { GiveawaysForm, LevelingForm, ReactionRolesForm, SuggestionsForm, TicketsForm, VerificationForm } from '@/components/modules/forms';
+import { ShopForm } from '@/components/modules/shop-form';
 import { AntiRaidForm, BirthdaysForm, FeedsForm, InvitesForm, ScheduledForm, ServerStatsForm, StarboardForm, StickyForm, TempVoiceForm } from '@/components/modules/forms-more';
 import {
   ChannelChecklist,
@@ -556,6 +557,9 @@ export function ModuleSettings() {
             {id === 'birthdays' ? <BirthdaysForm c={draft as ModuleConfigs['birthdays']} set={setDraft} guild={guild} /> : null}
             {id === 'feeds' ? <FeedsForm c={draft as ModuleConfigs['feeds']} set={setDraft} guild={guild} /> : null}
             {id === 'scheduled' ? <ScheduledForm c={draft as ModuleConfigs['scheduled']} set={setDraft} guild={guild} /> : null}
+            {id === 'shop' ? (
+              <ShopForm c={draft as ModuleConfigs['shop']} set={setDraft} guild={guild} tickets={resolveGuildModules(ws.modules.data?.[guild.id]).tickets} botName={bot.botUsername ?? bot.name} avatarUrl={bot.botAvatarUrl} />
+            ) : null}
           </fieldset>
 
           <div className="sticky bottom-0 -mx-1 flex items-center justify-end gap-2 rounded-xl border border-border bg-surface-raised/95 px-4 py-3 shadow-pop backdrop-blur">

@@ -81,7 +81,7 @@ export const RESERVED_COMMAND_NAMES = [
   'ping', 'warn', 'warnings', 'clearwarnings', 'timeout', 'untimeout', 'kick', 'ban', 'unban', 'purge',
   'serverinfo', 'userinfo', 'avatar', 'poll', 'rank', 'leaderboard', 'ticket', 'suggest', 'giveaway',
   'history', 'case', 'note', 'lock', 'unlock', 'slowmode', 'softban', 'role', 'nick', 'xp', 'invites', 'inviteboard',
-  'birthday', 'stars', 'voice', 'remind', 'roll', 'unwarn',
+  'birthday', 'stars', 'voice', 'remind', 'roll', 'unwarn', 'price', 'vouch',
 ] as const;
 
 const commandName = z

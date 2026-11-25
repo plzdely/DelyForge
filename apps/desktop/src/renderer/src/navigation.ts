@@ -29,6 +29,7 @@ import {
   ScrollText,
   Settings,
   Shield,
+  ShoppingBag,
   Smile,
   Sparkles,
   SquareSlash,
@@ -251,6 +252,7 @@ export const MODULE_NAV_ITEMS: NavItem[] = [
   { id: 'birthdays', label: 'Birthdays', path: '/modules/birthdays', icon: Cake, available: true, phase: 4, feature: 'modules.standard', summary: 'Celebrate members on their birthday with a message and a role.' },
   { id: 'feeds', label: 'Social Alerts', path: '/modules/feeds', icon: Rss, available: true, phase: 4, feature: 'modules.standard', summary: 'Announce new YouTube videos and posts from news or RSS feeds.' },
   { id: 'scheduled', label: 'Scheduled Messages', path: '/modules/scheduled', icon: CalendarClock, available: true, phase: 4, feature: 'modules.standard', summary: 'Post announcements automatically on chosen days and times.' },
+  { id: 'shop', label: 'Shop', path: '/modules/shop', icon: ShoppingBag, available: true, phase: 4, feature: 'modules.standard', summary: 'A price list the bot keeps updated, automatic sales, an Order button, discount codes and vouches.' },
 ];
 
 export const ALL_NAV_ITEMS: NavItem[] = [...NAV_SECTIONS.flatMap((s) => s.items), ...MODULE_NAV_ITEMS];

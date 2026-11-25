@@ -10,7 +10,8 @@ import { MODERATION_COMMANDS, automodCheck, endTempBans, handleModerationCommand
 import { UTILITY_COMMANDS, deliverReminders, handleUtilityCommand } from './utility.js';
 import { endDueGiveaways, handleGiveaway, handleSuggest, onGiveawayEnter, onSuggestionButton, onSuggestionDecision } from './community.js';
 import { LEVELING_COMMANDS, handleLevelingCommand, onMemberLeaveXp, onMessageXp, voiceXp } from './leveling.js';
-import { CID, syncPanels } from './panels.js';
+import { CID, shopPanelsStale, syncPanels } from './panels.js';
+import * as shop from './shop.js';
 import { kickUnverified, onRoleButton, onRoleMenu, onVerify, onVerifyAnswer } from './roles.js';
 import { autoCloseTickets, handleTicketCommand, onTicketClaim, onTicketClose, onTicketCloseConfirm, onTicketOpen, onTicketReason, TICKET_COMMANDS } from './tickets.js';
 import * as welcome from './welcome.js';
@@ -41,6 +42,8 @@ export class ModuleHost {
   /** Every 30 s: scheduled messages and birthdays; every 10 minutes: social alerts and stats counters (Discord's rename limit). */
   private minuteTimer: ReturnType<typeof setInterval> | null = null;
   private minutes = 0;
+  /** The price list each server was last synced to, so a failing post isn't retried every 30 s. */
+  private shopSynced = new Map<string, string>();
   private readonly ctx: ModuleContext;
 
   constructor(
@@ -108,6 +111,15 @@ export class ModuleHost {
     for (const guild of this.client.guilds.cache.values()) {
       if (!this.store) return;
       await runScheduled(this.ctx, guild).catch((e: Error) => this.log('error', `Scheduled messages: ${e.message}`));
+      // Sales start and end on time: the price list is re-posted when it no longer matches.
+      if (this.config(guild.id).shop.enabled || this.store.panels(guild.id).some((p) => p.key.startsWith('shop:'))) {
+        const want = shopPanelsStale(this.ctx, guild.id);
+        if (want && this.shopSynced.get(guild.id) !== want) {
+          this.shopSynced.set(guild.id, want);
+          void this.syncGuildCommands(guild);
+        }
+        await shop.announceSales(this.ctx, guild).catch((e: Error) => this.log('error', `Shop: ${e.message}`));
+      }
       for (const w of dueScheduledWorkflows(this.builders.workflows.filter((x) => x.enabled && x.guildId === guild.id), guild.id, new Date())) {
         void runWorkflow(this.ctx, this.builders, w, { guild, user: null, member: null });
       }
@@ -411,6 +423,7 @@ export class ModuleHost {
       if (i.isUserContextMenuCommand() || i.isMessageContextMenuCommand()) return this.runCustom(i);
       if (i.isButton() || i.isStringSelectMenu()) return this.runComponent(i);
       if (i.isModalSubmit()) return this.runModal(i);
+      if (i.isAutocomplete() && i.commandName === 'price') return void shop.onPriceAutocomplete(this.ctx, i).catch((e: Error) => this.log('warn', `/price suggestions: ${e.message}`));
     });
   }
 
@@ -436,7 +449,11 @@ export class ModuleHost {
                       ? starboard.handleStarsCommand
                       : n === 'voice'
                         ? tempVoice.handleVoiceCommand
-                        : null;
+                        : n === 'price'
+                          ? shop.handlePriceCommand
+                          : n === 'vouch'
+                            ? shop.handleVouchCommand
+                            : null;
     if (!handler) return this.runCustom(i); // custom command, or e.g. /ping (handled elsewhere)
     const started = Date.now();
     try {
@@ -456,6 +473,7 @@ export class ModuleHost {
     try {
       if (i.isStringSelectMenu()) {
         if (kind === 'rrm' && a) await onRoleMenu(this.ctx, i, a);
+        else if (kind === 'shop' && a === 'pick') await shop.onShopPick(this.ctx, i);
         return;
       }
       if (i.customId === CID.ticketOpen) await onTicketOpen(this.ctx, i);
@@ -464,6 +482,7 @@ export class ModuleHost {
       else if (i.customId === CID.ticketCloseConfirm) await onTicketCloseConfirm(this.ctx, i);
       else if (i.customId === CID.ticketClaim) await onTicketClaim(this.ctx, i);
       else if (i.customId === CID.verify) await onVerify(this.ctx, i);
+      else if (i.customId === CID.shopOrder) await shop.onShopOrder(this.ctx, i);
       else if (kind === 'rr' && a && b) await onRoleButton(this.ctx, i, a, b);
       else if (kind === 'sug' && a && b) await onSuggestionButton(this.ctx, i, a, Number(b));
       else if (kind === 'gw' && a === 'enter' && b) await onGiveawayEnter(this.ctx, i, Number(b));
@@ -481,6 +500,7 @@ export class ModuleHost {
       if (kind === 'sug' && action === 'decide' && a && b) await onSuggestionDecision(this.ctx, i, a, Number(b));
       else if (kind === 'vq' && action === 'answer') await onVerifyAnswer(this.ctx, i);
       else if (kind === 'ticket' && action === 'reason') await onTicketReason(this.ctx, i, a ?? null);
+      else if (kind === 'shop' && action === 'form' && a) await shop.onShopForm(this.ctx, i, a);
     } catch (e) {
       this.log('error', `Form “${i.customId}” failed: ${(e as Error).message}`);
       await this.replyError(i);

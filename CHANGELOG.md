@@ -5,6 +5,19 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.4] - 2026-11-25 (local build, not published)
+
+### Added
+- **Shop module**: the bot posts your price list in a channel and keeps it up to date by editing its own messages.
+  - Import an existing price list by pasting the Discord message; categories, items, ranges ($30-$50) and "and up"
+    prices ($20+) are read in, with your header, divider and footer.
+  - **Sales** start and end on their own: ~~old~~ and new prices, a sale banner with a countdown, on everything, some
+    categories or some items; the biggest discount wins. Optional announcement with a role ping when a sale starts.
+  - **Orders open/closed** switch and a 🛒 **Order** button: pick an item, describe it, optionally enter a discount
+    code, and a ticket opens showing the item and its price at that moment.
+  - **Discount codes** with a percentage, use limit and expiry (stack on top of a sale).
+  - `/price` (with suggestions while typing) and `/vouch` (1–5 stars, review, optional screenshot, numbered cards).
+
 ## [0.4.3] - 2026-11-25
 
 ### Added

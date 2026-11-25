@@ -98,23 +98,28 @@ function tooMany(ctx: ModuleContext, i: ButtonInteraction<'cached'> | ModalSubmi
   return open.length >= ctx.config(i.guildId).tickets.maxOpenPerUser ? open : null;
 }
 
-async function guardedOpen(ctx: ModuleContext, i: ButtonInteraction<'cached'> | ModalSubmitInteraction<'cached'>, reason: string | null, panelId: string | null): Promise<void> {
+/** Opens a ticket with text already filled in (used by the shop's Order button). True when it opened. */
+export function openTicketWith(ctx: ModuleContext, i: ModalSubmitInteraction<'cached'>, reason: string, panelId: string | null, label: string): Promise<boolean> {
+  return guardedOpen(ctx, i, reason, panelId, label);
+}
+
+async function guardedOpen(ctx: ModuleContext, i: ButtonInteraction<'cached'> | ModalSubmitInteraction<'cached'>, reason: string | null, panelId: string | null, label = 'What they need help with'): Promise<boolean> {
   const key = `${i.guildId}:${i.user.id}`;
-  if (opening.has(key)) return void (await reply(i, 'Your ticket is being created — one moment.'));
+  if (opening.has(key)) return (await reply(i, 'Your ticket is being created — one moment.'), false);
   opening.add(key);
   try {
-    await openTicket(ctx, i, reason, panelId);
+    return await openTicket(ctx, i, reason, panelId, label);
   } finally {
     opening.delete(key);
   }
 }
 
-async function openTicket(ctx: ModuleContext, i: ButtonInteraction<'cached'> | ModalSubmitInteraction<'cached'>, reason: string | null, panelId: string | null): Promise<void> {
+async function openTicket(ctx: ModuleContext, i: ButtonInteraction<'cached'> | ModalSubmitInteraction<'cached'>, reason: string | null, panelId: string | null, label: string): Promise<boolean> {
   const c = ctx.config(i.guildId).tickets;
   const kind = ticketKind(c, panelId);
-  if (!c.enabled || !kind) return void (await reply(i, 'Tickets aren’t open right now.'));
+  if (!c.enabled || !kind) return (await reply(i, 'Tickets aren’t open right now.'), false);
   const open = tooMany(ctx, i);
-  if (open) return void (await reply(i, `You already have an open ticket: ${open.map((id) => `<#${id}>`).join(', ')}`));
+  if (open) return (await reply(i, `You already have an open ticket: ${open.map((id) => `<#${id}>`).join(', ')}`), false);
   await i.deferReply({ flags: MessageFlags.Ephemeral });
 
   const me = i.guild.members.me!;
@@ -136,7 +141,7 @@ async function openTicket(ctx: ModuleContext, i: ButtonInteraction<'cached'> | M
     });
   } catch (e) {
     ctx.log('warn', `Tickets: could not create a channel: ${(e as Error).message}`);
-    return void (await reply(i, 'I couldn’t create your ticket — a server admin needs to give me the Manage Channels permission.'));
+    return (await reply(i, 'I couldn’t create your ticket — a server admin needs to give me the Manage Channels permission.'), false);
   }
   ctx.store.addTicket(i.guildId, channel.id, i.user.id, reason, kind.panelId);
 
@@ -157,7 +162,7 @@ async function openTicket(ctx: ModuleContext, i: ButtonInteraction<'cached'> | M
             server: i.guild.name,
             memberCount: i.guild.memberCount,
           }),
-          fields: reason ? [{ name: 'What they need help with', value: reason }] : [],
+          fields: reason ? [{ name: label, value: reason }] : [],
           color: hexToInt(kind.color),
         },
       ],
@@ -167,6 +172,7 @@ async function openTicket(ctx: ModuleContext, i: ButtonInteraction<'cached'> | M
     .catch((e: Error) => ctx.log('warn', `Tickets: could not post the welcome message in #${channel.name}: ${e.message}`));
   ctx.log('info', `Ticket opened by ${i.user.tag}: #${channel.name}`);
   await reply(i, `Your ticket is ready: <#${channel.id}>`);
+  return true;
 }
 
 /** Staff for a ticket: its panel's staff plus the main staff (Manage Channels always counts). */

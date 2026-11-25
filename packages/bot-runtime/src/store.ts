@@ -237,6 +237,12 @@ export class BotStore {
         seen_at  INTEGER NOT NULL,
         PRIMARY KEY (guild_id, feed_key, item_id)
       );
+      CREATE TABLE IF NOT EXISTS shop_counters (
+        guild_id TEXT NOT NULL,
+        key      TEXT NOT NULL,
+        n        INTEGER NOT NULL,
+        PRIMARY KEY (guild_id, key)
+      );
       CREATE TABLE IF NOT EXISTS birthdays (
         guild_id       TEXT NOT NULL,
         user_id        TEXT NOT NULL,
@@ -603,6 +609,19 @@ export class BotStore {
     const rows = this.db.prepare('SELECT * FROM reminders WHERE due_at <= ? ORDER BY due_at LIMIT 50').all(now) as { id: number; guild_id: string; channel_id: string; user_id: string; text: string; due_at: number }[];
     const del = this.db.prepare('DELETE FROM reminders WHERE id = ?');
     return rows.filter((r) => Number(del.run(r.id).changes) === 1).map((r) => ({ guildId: r.guild_id, channelId: r.channel_id, userId: r.user_id, text: r.text, dueAt: r.due_at }));
+  }
+
+  // ─── Shop counters (discount code uses, announced sales, vouch numbers) ───────────────────────────────────────────
+
+  shopCount(guildId: string, key: string): number {
+    const r = this.db.prepare('SELECT n FROM shop_counters WHERE guild_id = ? AND key = ?').get(guildId, key) as { n: number } | undefined;
+    return r?.n ?? 0;
+  }
+
+  /** Adds one and returns the new count (1 = the first time). */
+  bumpShopCount(guildId: string, key: string): number {
+    this.db.prepare('INSERT INTO shop_counters (guild_id, key, n) VALUES (?, ?, 1) ON CONFLICT (guild_id, key) DO UPDATE SET n = n + 1').run(guildId, key);
+    return this.shopCount(guildId, key);
   }
 
   // ─── Scheduled posts (to delete the previous one) ────────────────────────────────────────────────────────────────

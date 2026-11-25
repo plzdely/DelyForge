@@ -31,11 +31,19 @@ function Img({ src, className }: { src: string; className: string }) {
 
 /** Light markdown: **bold**, *italic*, `code`, and mentions/channels shown as Discord-style pills. */
 function Markdown({ text }: { text: string }) {
-  const parts = text.split(/(\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`|@\w+|#[\w-]+)/g);
+  const parts = text.split(/(\*\*\*[^*]+\*\*\*|\*\*[^*]+\*\*|~~[^~]+~~|\*[^*]+\*|`[^`]+`|@\w+|#[\w-]+)/g);
   return (
     <>
       {parts.map((p, i) =>
-        p.startsWith('**') && p.endsWith('**') ? (
+        p.startsWith('***') && p.endsWith('***') && p.length > 6 ? (
+          <strong key={i}>
+            <em>{p.slice(3, -3)}</em>
+          </strong>
+        ) : p.startsWith('~~') && p.endsWith('~~') ? (
+          <s key={i} className="opacity-80">
+            <Markdown text={p.slice(2, -2)} />
+          </s>
+        ) : p.startsWith('**') && p.endsWith('**') ? (
           <strong key={i}>{p.slice(2, -2)}</strong>
         ) : p.startsWith('`') && p.endsWith('`') ? (
           <code key={i} className="rounded bg-black/30 px-1 font-mono text-[0.85em]">
@@ -52,6 +60,43 @@ function Markdown({ text }: { text: string }) {
         ),
       )}
     </>
+  );
+}
+
+/** A whole Discord message with headings (#, ##, ###), small print (-#), timestamps and inline markdown. */
+export function DiscordText({ text }: { text: string }) {
+  const shown = text.replace(/<t:(\d+):([a-zA-Z])>/g, (_, sec: string, style: string) => {
+    const d = new Date(Number(sec) * 1000);
+    if (style !== 'R') return d.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
+    const hours = Math.round((d.getTime() - Date.now()) / 3_600_000);
+    return Math.abs(hours) < 48 ? `in ${hours} hours` : `in ${Math.round(hours / 24)} days`;
+  });
+  return (
+    <div className="text-[15px] leading-[1.375] text-[#dbdee1]">
+      {shown.split('\n').map((line, i) => {
+        const h = /^(#{1,3}) (.*)$/.exec(line);
+        if (h) {
+          const size = h[1]!.length === 1 ? 'text-[24px]' : h[1]!.length === 2 ? 'text-[20px]' : 'text-[16px]';
+          return (
+            <div key={i} className={`${size} my-1 font-bold text-white`}>
+              <Markdown text={h[2]!} />
+            </div>
+          );
+        }
+        if (line.startsWith('-# ')) {
+          return (
+            <div key={i} className="text-[12px] text-[#949ba4]">
+              <Markdown text={line.slice(3)} />
+            </div>
+          );
+        }
+        return (
+          <div key={i} className="min-h-[1.375em] whitespace-pre-wrap">
+            <Markdown text={line} />
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
