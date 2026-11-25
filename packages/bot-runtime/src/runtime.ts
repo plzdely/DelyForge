@@ -3,6 +3,7 @@ import {
   type Builders,
   type BotPresence,
   type FromRuntime,
+  type DoctorIssue,
   type LogLevel,
   type ModuleTest,
   type RuntimeFatalCode,
@@ -30,6 +31,7 @@ export interface BotClient {
   setBuilders(builders: Builders): void;
   runTest(guildId: string, test: ModuleTest): Promise<{ ok: boolean; message: string }>;
   notifyOwner(text: string): Promise<boolean>;
+  doctor(guildId: string): { ok: boolean; message: string; issues: DoctorIssue[] };
   ping(): number | null;
   guildCount(): number;
 }
@@ -146,6 +148,17 @@ export function createBotRuntime(deps: RuntimeDeps) {
     if (msg.type === 'test-module') {
       const result = client ? await client.runTest(msg.guildId, msg.test).catch((e: Error) => ({ ok: false, message: e.message })) : { ok: false, message: 'The bot isn’t running.' };
       deps.send({ type: 'test-result', requestId: msg.requestId, ok: result.ok, message: redact(result.message).slice(0, 500) });
+      return;
+    }
+
+    if (msg.type === 'doctor') {
+      let result: { ok: boolean; message: string; issues: DoctorIssue[] } = { ok: false, message: 'The bot isn’t running.', issues: [] };
+      try {
+        if (client) result = client.doctor(msg.guildId);
+      } catch (e) {
+        result = { ok: false, message: (e as Error).message, issues: [] };
+      }
+      deps.send({ type: 'doctor-result', requestId: msg.requestId, ok: result.ok, message: redact(result.message).slice(0, 500), issues: result.issues });
       return;
     }
 

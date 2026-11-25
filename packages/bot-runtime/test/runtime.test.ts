@@ -38,6 +38,7 @@ function harness(opts: { loginError?: unknown } = {}) {
         setBuilders: () => {},
         runTest: async () => ({ ok: true, message: "test" }),
         notifyOwner: async () => true,
+        doctor: () => ({ ok: true, message: '', issues: [] }),
         ping: () => 42,
         guildCount: () => 3,
       };

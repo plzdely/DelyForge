@@ -92,6 +92,7 @@ export function createDiscordClient(options: RuntimeOptions, events: BotClientEv
     setBuilders: (b) => modules.setBuilders(b),
     runTest: (guildId, test) => modules.runTest(guildId, test),
     notifyOwner: (text) => modules.notifyOwner(text),
+    doctor: (guildId) => modules.doctor(guildId),
     setPresence: (presence: BotPresence) => {
       if (!client.user) return;
       const a = presence.activity;

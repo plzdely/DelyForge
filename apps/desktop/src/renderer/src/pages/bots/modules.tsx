@@ -1,5 +1,6 @@
-import { type GuildInfo, MODULES, hasFeature, isImplementedModule, lowestPlanWithFeature, resolveGuildModules } from '@delyforge/shared';
-import { ChevronRight, Lock, Plug, Server } from 'lucide-react';
+import { type DoctorIssue, type GuildInfo, MODULES, hasFeature, isImplementedModule, lowestPlanWithFeature, resolveGuildModules } from '@delyforge/shared';
+import { ChevronRight, CircleCheck, CircleX, Lock, Plug, Server, Stethoscope, TriangleAlert } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { InviteLink } from '@/components/bots/permissions-editor';
 import { GuildPicker } from '@/components/modules/pickers';
@@ -9,7 +10,9 @@ import { Card } from '@/components/ui/card';
 import { EmptyState, Skeleton } from '@/components/ui/misc';
 import { cn } from '@/lib/cn';
 import { useEntitlements } from '@/lib/entitlements';
+import { call } from '@/lib/bridge';
 import { useBotModules, useGuilds, useRefreshGuilds } from '@/lib/modules';
+import { useRuntimeState } from '@/lib/runtime';
 import { useBotContext } from './layout';
 
 /**
@@ -86,6 +89,7 @@ export function BotModules() {
             />
           ) : null}
         </div>
+        {ws.guild ? <SetupDoctor guild={ws.guild} /> : null}
         <div className="grid grid-cols-2 gap-3">
           {MODULES.map((m) => {
             const locked = !hasFeature(entitlements, m.feature);
@@ -130,5 +134,70 @@ export function BotModules() {
         </div>
       </div>
     </ModuleWorkspaceGate>
+  );
+}
+
+/** Setup Doctor: the running bot checks the server against the saved settings and explains each problem. */
+function SetupDoctor({ guild }: { guild: GuildInfo }) {
+  const { bot } = useBotContext();
+  const state = useRuntimeState(bot.id);
+  const online = state.status === 'online';
+  const [result, setResult] = useState<{ ok: boolean; message: string; issues: DoctorIssue[] } | null>(null);
+  const [running, setRunning] = useState(false);
+  useEffect(() => setResult(null), [guild.id]);
+  const run = () => {
+    setRunning(true);
+    call((b) => b.modules.doctor({ id: bot.id, guildId: guild.id }))
+      .then(setResult)
+      .catch((e: Error) => setResult({ ok: false, message: e.message, issues: [] }))
+      .finally(() => setRunning(false));
+  };
+  const extraPerms = (result?.issues ?? []).reduce((bits, i) => (i.permissions ? bits | BigInt(i.permissions) : bits), 0n);
+
+  return (
+    <Card className="mb-4 space-y-3 p-4">
+      <div className="flex items-center gap-3">
+        <Stethoscope className="size-5 shrink-0 text-primary" />
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-semibold text-fg">Setup Doctor</div>
+          <p className="text-xs text-fg-subtle">
+            {online ? `Checks every module that’s on in ${guild.name}: its channels, roles and the bot’s permissions.` : 'Start the bot to check this server — the running bot sees the server as it is right now.'}
+          </p>
+        </div>
+        <Button size="sm" variant={result ? 'secondary' : 'primary'} disabled={!online || running} onClick={run}>
+          {running ? 'Checking…' : result ? 'Check again' : 'Check this server'}
+        </Button>
+      </div>
+      {result && !result.ok ? <p className="text-sm text-danger">{result.message}</p> : null}
+      {result?.ok && !result.issues.length ? (
+        <p className="flex items-center gap-2 text-sm text-success">
+          <CircleCheck className="size-4" /> No problems found.
+        </p>
+      ) : null}
+      {result?.ok && result.issues.length ? (
+        <ul className="space-y-2">
+          {result.issues.map((issue, n) => (
+            <li key={n} className="flex gap-3 rounded-lg border border-border bg-bg-subtle px-3 py-2">
+              {issue.severity === 'error' ? <CircleX className="mt-0.5 size-4 shrink-0 text-danger" /> : <TriangleAlert className="mt-0.5 size-4 shrink-0 text-warning" />}
+              <div className="min-w-0 flex-1">
+                <div className="text-sm text-fg">{issue.title}</div>
+                <div className="text-xs text-fg-muted">{issue.fix}</div>
+              </div>
+              {issue.moduleId ? (
+                <Button size="sm" variant="ghost" asChild>
+                  <Link to={`${issue.moduleId}?server=${guild.id}`}>Open settings</Link>
+                </Button>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {extraPerms && bot.discordApplicationId ? (
+        <div className="space-y-1">
+          <p className="text-xs text-fg-muted">Re-invite the bot with every permission it’s missing (it stays in the server; Discord just updates its role):</p>
+          <InviteLink applicationId={bot.discordApplicationId} permissions={(BigInt(bot.permissions) | extraPerms).toString()} />
+        </div>
+      ) : null}
+    </Card>
   );
 }

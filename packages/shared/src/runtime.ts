@@ -27,6 +27,18 @@ export type RuntimeOptions = z.infer<typeof runtimeOptionsSchema>;
 /** Messages the "Send a test" buttons can post, using the bot owner as the example member. */
 export const MODULE_TESTS = ['welcome', 'goodbye', 'levelUp', 'birthday', 'scheduled', 'feeds'] as const;
 export type ModuleTest = (typeof MODULE_TESTS)[number];
+/** One problem found by the Setup Doctor, in plain English. */
+export const doctorIssueSchema = z.object({
+  severity: z.enum(['error', 'warning']),
+  moduleId: z.string().max(40).nullable(),
+  title: z.string().max(300),
+  fix: z.string().max(400),
+  /** Server permissions to add (decimal), for the re-invite link. */
+  permissions: z.string().regex(/^\d{1,20}$/).nullable(),
+});
+export type DoctorIssue = z.infer<typeof doctorIssueSchema>;
+export const doctorInputSchema = z.object({ id: z.uuid(), guildId: z.string().regex(/^\d{17,20}$/) }).strict();
+
 export const moduleTestSchema = z
   .object({ id: z.uuid(), guildId: z.string().regex(/^\d{17,20}$/), test: z.enum(MODULE_TESTS) })
   .strict();
@@ -42,6 +54,7 @@ export const toRuntimeSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('test-module'), requestId: z.string().min(1).max(40), guildId: z.string().regex(/^\d{17,20}$/), test: z.enum(MODULE_TESTS) }),
   /** DM the bot's owner (the person who owns the application in the Developer Portal) about a problem. */
   z.object({ type: z.literal('notify-owner'), text: z.string().min(1).max(1800) }),
+  z.object({ type: z.literal('doctor'), requestId: z.string().min(1).max(40), guildId: z.string().regex(/^\d{17,20}$/) }),
 ]);
 export type ToRuntime = z.infer<typeof toRuntimeSchema>;
 
@@ -79,6 +92,7 @@ export const fromRuntimeSchema = z.discriminatedUnion('type', [
     message: z.string().max(500),
   }),
   z.object({ type: z.literal('test-result'), requestId: z.string().max(40), ok: z.boolean(), message: z.string().max(500) }),
+  z.object({ type: z.literal('doctor-result'), requestId: z.string().max(40), ok: z.boolean(), message: z.string().max(500), issues: z.array(doctorIssueSchema).max(100) }),
   /** Something the owner should fix, e.g. the bot lost permissions a module needs. */
   z.object({ type: z.literal('problem'), kind: z.enum(['permissions']), message: z.string().max(1000) }),
 ]);

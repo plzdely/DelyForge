@@ -23,6 +23,7 @@ import * as tempVoice from './tempvoice.js';
 import { pollFeeds } from './feeds.js';
 import { runScheduled } from './scheduled.js';
 import { checkLostPermissions, notifyOwner, runModuleTest } from './trust.js';
+import { diagnose, doctorInput } from './doctor.js';
 
 /**
  * Connects Discord events to the enabled modules, per server, and keeps each server's slash commands in line with
@@ -203,6 +204,13 @@ export class ModuleHost {
     const guild = this.client.guilds.cache.get(guildId);
     if (!guild || !this.store) return { ok: false, message: 'The bot isn’t in that server (or is still starting).' };
     return runModuleTest(this.ctx, guild, test);
+  }
+
+  /** Setup Doctor for one server. */
+  doctor(guildId: string): { ok: boolean; message: string; issues: ReturnType<typeof diagnose> } {
+    const guild = this.client.guilds.cache.get(guildId);
+    if (!guild) return { ok: false, message: 'The bot isn’t in that server (or is still starting).', issues: [] };
+    return { ok: true, message: '', issues: diagnose(doctorInput(guild, this.config(guildId))) };
   }
 
   notifyOwner(text: string): Promise<boolean> {

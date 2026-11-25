@@ -384,6 +384,10 @@ async function main(): Promise<void> {
     bots.get(id); // unknown bot → NOT_FOUND
     return supervisor.testModule(id, guildId, test);
   });
+  handle(IPC_CHANNELS.modulesDoctor, ({ id, guildId }) => {
+    bots.get(id);
+    return supervisor.doctor(id, guildId);
+  });
 
   // Builders & templates
   handle(IPC_CHANNELS.buildersGet, ({ id }) => buildersService.get(id));

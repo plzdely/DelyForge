@@ -4,6 +4,7 @@ import {
   type BotRuntimeState,
   DEFAULT_PLANS,
   type Entitlements,
+  type DoctorIssue,
   type FromRuntime,
   type ModuleTest,
   type NotificationType,
@@ -95,8 +96,8 @@ interface Handle {
   highMemoryNotified: boolean;
   /** Gateway intents the running process connected with. */
   intents: number;
-  /** "Send a test" requests waiting for the bot's answer. */
-  tests: Map<string, (r: { ok: boolean; message: string }) => void>;
+  /** Requests ("Send a test", Setup Doctor) waiting for the bot's answer; called with null if the bot stops. */
+  requests: Map<string, (r: FromRuntime | null) => void>;
   /** Owner DMs waiting for the bot to be online again (e.g. written while it was crashed). */
   ownerDms: string[];
   lastOwnerDm: Map<NotificationType, number>;
@@ -292,24 +293,38 @@ export class BotSupervisor {
     return (options.intents & ~h.intents) !== 0;
   }
 
-  /** Asks the running bot to post one test message. Resolves with what happened (never rejects). */
-  testModule(botId: string, guildId: string, test: ModuleTest): Promise<{ ok: boolean; message: string }> {
+  /** Sends a request to the running bot and waits up to 20 s for its answer (null: offline, stopped or no answer). */
+  private ask(botId: string, build: (requestId: string) => ToRuntime): Promise<FromRuntime | null | 'offline'> {
     const h = this.handles.get(botId);
-    if (!h?.proc || h.state.status !== 'online') return Promise.resolve({ ok: false, message: 'Start the bot first — tests are sent by the running bot.' });
+    if (!h?.proc || h.state.status !== 'online') return Promise.resolve('offline');
     const requestId = randomUUID();
     const proc = h.proc;
     return new Promise((resolve) => {
-      const timer = setTimeout(() => {
-        h.tests.delete(requestId);
-        resolve({ ok: false, message: 'The bot didn’t answer within 20 seconds.' });
-      }, 20_000);
-      h.tests.set(requestId, (r) => {
+      const done = (r: FromRuntime | null) => {
         clearTimeout(timer);
-        h.tests.delete(requestId);
+        h.requests.delete(requestId);
         resolve(r);
-      });
-      proc.postMessage({ type: 'test-module', requestId, guildId, test });
+      };
+      const timer = setTimeout(() => done(null), 20_000);
+      h.requests.set(requestId, done);
+      proc.postMessage(build(requestId));
     });
+  }
+
+  /** Asks the running bot to post one test message. Resolves with what happened (never rejects). */
+  async testModule(botId: string, guildId: string, test: ModuleTest): Promise<{ ok: boolean; message: string }> {
+    const r = await this.ask(botId, (requestId) => ({ type: 'test-module', requestId, guildId, test }));
+    if (r === 'offline') return { ok: false, message: 'Start the bot first — tests are sent by the running bot.' };
+    if (r?.type !== 'test-result') return { ok: false, message: 'The bot stopped or didn’t answer within 20 seconds.' };
+    return { ok: r.ok, message: r.message };
+  }
+
+  /** Setup Doctor: the running bot checks a server against the saved settings. */
+  async doctor(botId: string, guildId: string): Promise<{ ok: boolean; message: string; issues: DoctorIssue[] }> {
+    const r = await this.ask(botId, (requestId) => ({ type: 'doctor', requestId, guildId }));
+    if (r === 'offline') return { ok: false, message: 'Start the bot first — the check is done by the running bot, which sees the server as it is now.', issues: [] };
+    if (r?.type !== 'doctor-result') return { ok: false, message: 'The bot stopped or didn’t answer within 20 seconds.', issues: [] };
+    return { ok: r.ok, message: r.message, issues: r.issues };
   }
 
   // ─── Process lifecycle ───────────────────────────────────────────────────────────────────────────────────────────
@@ -440,7 +455,8 @@ export class BotSupervisor {
         this.d.analytics?.stopped(botId);
         break;
       case 'test-result':
-        h.tests.get(msg.requestId)?.({ ok: msg.ok, message: msg.message });
+      case 'doctor-result':
+        h.requests.get(msg.requestId)?.(msg);
         break;
       case 'problem':
         this.log(botId, 'warn', msg.message);
@@ -468,7 +484,7 @@ export class BotSupervisor {
     }
     const waiters = h.stopWaiters.splice(0);
     for (const w of waiters) w();
-    for (const answer of [...h.tests.values()]) answer({ ok: false, message: 'The bot stopped before it could send the test.' });
+    for (const answer of [...h.requests.values()]) answer(null);
   }
 
   private onCrash(botId: string, h: Handle, code: number | null): void {
@@ -552,7 +568,7 @@ export class BotSupervisor {
         stopWaiters: [],
         highMemoryNotified: false,
         intents: 0,
-        tests: new Map(),
+        requests: new Map(),
         ownerDms: [],
         lastOwnerDm: new Map(),
       };
