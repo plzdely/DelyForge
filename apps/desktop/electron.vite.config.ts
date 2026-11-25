@@ -22,6 +22,7 @@ export default defineConfig({
       __DELYFORGE_API_URL__: JSON.stringify(process.env['DELYFORGE_API_URL'] ?? ''),
       __DELYFORGE_PUBLIC_KEY__: JSON.stringify(process.env['DELYFORGE_ENTITLEMENT_PUBLIC_KEY'] ?? ''),
       __DELYFORGE_UPDATE_URL__: JSON.stringify(process.env['DELYFORGE_UPDATE_URL'] ?? ''),
+      __DELYFORGE_LOCAL_UPDATE_DIR__: JSON.stringify(process.env['DELYFORGE_LOCAL_UPDATE_DIR'] ?? ''),
     },
   },
   preload: {

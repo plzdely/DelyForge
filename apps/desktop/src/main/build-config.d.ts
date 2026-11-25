@@ -2,6 +2,8 @@
 declare const __DELYFORGE_API_URL__: string;
 declare const __DELYFORGE_PUBLIC_KEY__: string;
 declare const __DELYFORGE_UPDATE_URL__: string;
+/** Personal edition builds: the installer folder on this PC to update from. */
+declare const __DELYFORGE_LOCAL_UPDATE_DIR__: string;
 
 /** electron-vite copies `?asset` imports next to the build and gives their path. */
 declare module '*?asset' {

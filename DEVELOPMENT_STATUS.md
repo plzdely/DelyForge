@@ -278,9 +278,11 @@ See "Making yourself staff" under Phase 8: set your `role` to `ADMIN` in Prisma 
 - Starboard only copies a message to a starboard whose audience is no bigger than the original channel's (checked for
   every role and every member given their own access), never from private threads, and age-restricted messages only
   to an age-restricted starboard. Give staff their own starboard if you want their messages showcased.
-- **Self-updating (not switched on yet):** installed copies from 0.2.0 on check the GitHub Releases page every 6 hours.
-  It starts working once a release has the three files from `apps/desktop/release/` (the `.exe`, its `.blockmap` and
-  `latest.yml`). 0.1.0 can't update itself, so 0.2.0 has to be installed by hand once.
+- **Updating:** the installer closes every running DelyForge and deletes other DelyForge program folders, so only one
+  copy exists (bots and settings in `%APPDATA%\DelyForge` are kept). Installed copies built with `dist:unsigned`
+  watch `apps/desktop/release/` every 5 minutes and offer "Restart to update" when a **higher version number** appears
+  — so bump `version` in `apps/desktop/package.json` before each build. 0.1.0 has no updater: install 0.2.1 by hand once.
+  GitHub Releases support is built in for later (needs a build without the local folder).
 - Server Stats renames channels at most every 10 minutes (Discord allows 2 renames per channel per 10 minutes).
 - Birthdays use a UTC hour; the settings page shows what that is in your local time.
 - If a moderator deletes several messages from the same person quickly, Discord merges them into one audit entry,

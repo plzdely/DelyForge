@@ -5,7 +5,7 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [0.2.0] - 2026-11-25
+## [0.2.1] - 2026-11-25
 
 ### Added
 - Logging now records **who did what**, live from Discord's audit log: channels and permission changes, roles,
@@ -16,7 +16,9 @@ versions follow [Semantic Versioning](https://semver.org/).
 - Seven new modules: **Invite Tracker** (`/invites`, `/inviteboard`), **Starboard**, **Temporary Voice**
   (join to create), **Raid Protection** (join-flood alerts, kick/ban during raids, new-account filter),
   **Sticky Messages**, **Server Stats** counters and **Birthdays** (`/birthday set|remove|upcoming`, birthday role).
-- Installed copies can update themselves from the GitHub Releases page (works once a release includes `latest.yml`).
+- Updates: the installer closes DelyForge and removes any older copy, so there is only ever one installed. Installed
+  copies watch this PC's installer folder and offer "Restart to update" as soon as a newer installer is built (GitHub
+  Releases can be used instead later).
 
 ## [0.1.0] - 2026-11-15
 

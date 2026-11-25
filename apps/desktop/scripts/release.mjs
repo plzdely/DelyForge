@@ -7,6 +7,7 @@
 // Optional: CSC_LINK + CSC_KEY_PASSWORD (code-signing certificate). `dist:unsigned --allow-unconfigured` makes a local
 // test installer without them (it talks to http://localhost:4000 and never auto-updates).
 import { execSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
 const allowUnconfigured = process.argv.includes('--allow-unconfigured');
 const required = ['DELYFORGE_API_URL', 'DELYFORGE_ENTITLEMENT_PUBLIC_KEY', 'DELYFORGE_UPDATE_URL'];
@@ -20,6 +21,9 @@ if (!allowUnconfigured && (missing.length || notHttps.length)) {
   process.exit(1);
 }
 if (!process.env.CSC_LINK) console.warn('⚠ No code-signing certificate (CSC_LINK): Windows will show a SmartScreen warning to customers.');
+
+// Personal/test builds update themselves from this PC's installer folder (the app watches it for newer versions).
+if (allowUnconfigured) process.env.DELYFORGE_LOCAL_UPDATE_DIR = fileURLToPath(new URL('../release/', import.meta.url));
 
 const run = (cmd, env = process.env) => execSync(cmd, { stdio: 'inherit', env });
 run('pnpm --filter @delyforge/shared build');
