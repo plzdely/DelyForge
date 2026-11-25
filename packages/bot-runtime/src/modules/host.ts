@@ -1,7 +1,7 @@
 import { type BotModules, type Builders, type LogLevel, type ModuleConfigs, resolveGuildModules } from '@delyforge/shared';
 import { type ButtonInteraction, type ChatInputCommandInteraction, type Client, type CommandInteraction, Events, type Guild, MessageFlags, type ModalSubmitInteraction, type StringSelectMenuInteraction } from 'discord.js';
 import { BotStore, planCommandSync } from '../store.js';
-import { commandKey, customCommandJSON, matchingWorkflows, runCustomCommand, runWorkflow } from './builders.js';
+import { commandKey, customCommandJSON, dueScheduledWorkflows, matchingWorkflows, runCustomCommand, runWorkflow } from './builders.js';
 import { commandHash, desiredCommands } from './commands.js';
 import type { ModuleContext } from './context.js';
 import * as logging from './logging.js';
@@ -103,6 +103,9 @@ export class ModuleHost {
     for (const guild of this.client.guilds.cache.values()) {
       if (!this.store) return;
       await runScheduled(this.ctx, guild).catch((e: Error) => this.log('error', `Scheduled messages: ${e.message}`));
+      for (const w of dueScheduledWorkflows(this.builders.workflows.filter((x) => x.enabled && x.guildId === guild.id), guild.id, new Date())) {
+        void runWorkflow(this.ctx, this.builders, w, { guild, user: null, member: null });
+      }
       await checkBirthdays(this.ctx, guild).catch((e: Error) => this.log('error', `Birthdays: ${e.message}`));
       if (slowDue) {
         await updateStats(this.ctx, guild).catch((e: Error) => this.log('error', `Server stats: ${e.message}`));
@@ -239,6 +242,7 @@ export class ModuleHost {
         for (const role of after.roles.cache.values()) {
           if (!before.roles.cache.has(role.id)) startWorkflows(after.guild, { type: 'roleAdded', roleId: role.id }, { user: after.user, member: after });
         }
+        if (!before.premiumSince && after.premiumSince) startWorkflows(after.guild, { type: 'memberBoost' }, { user: after.user, member: after });
       }),
     );
     c.on(
@@ -246,6 +250,25 @@ export class ModuleHost {
       safe('Workflows', async (m) => {
         if (!m.inGuild() || m.author.bot) return;
         startWorkflows(m.guild, { type: 'messageContains', text: m.content, channelId: m.channelId }, { user: m.author, member: m.member, message: m });
+      }),
+    );
+    c.on(
+      Events.MessageReactionAdd,
+      safe('Workflows', async (reaction, user) => {
+        if (user.bot || !this.builders.workflows.some((w) => w.enabled && w.trigger.type === 'reactionAdded')) return;
+        const r = reaction.partial ? await reaction.fetch().catch(() => null) : reaction;
+        const message = r && (r.message.partial ? await r.message.fetch().catch(() => null) : r.message);
+        if (!r || !message?.inGuild()) return;
+        const member = await message.guild.members.fetch(user.id).catch(() => null);
+        const u = user.partial ? await user.fetch() : user;
+        startWorkflows(message.guild, { type: 'reactionAdded', emoji: r.emoji, channelId: message.channelId }, { user: u, member, message });
+      }),
+    );
+    c.on(
+      Events.VoiceStateUpdate,
+      safe('Workflows', async (before, after) => {
+        if (!after.channelId || before.channelId === after.channelId || !after.member || after.member.user.bot) return;
+        startWorkflows(after.guild, { type: 'voiceJoin', channelId: after.channelId }, { user: after.member.user, member: after.member });
       }),
     );
     c.on(Events.MessageCreate, safe('Auto-moderation', (m) => automodCheck(ctx, m)));

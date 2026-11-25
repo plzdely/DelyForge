@@ -8,6 +8,7 @@ import {
   INTENTS,
   INTENT_BITS,
   type Workflow,
+  type WorkflowCondition,
   type WorkflowStep,
   type WorkflowTrigger,
   blankEmbed,
@@ -17,6 +18,7 @@ import {
   hasFeature,
   lowestPlanWithFeature,
   newItemId,
+  conditionAllowed,
   stepAllowed,
 } from '@delyforge/shared';
 import { ArrowDown, ArrowUp, CircleCheck, CircleX, Copy, Lock, Plus, Trash2, TriangleAlert } from 'lucide-react';
@@ -24,7 +26,7 @@ import { type ReactNode, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { DiscordMessage, EmbedPreview } from '@/components/builders/discord-preview';
 import { RoleSelect, TemplateField } from '@/components/modules/fields';
-import { ChannelSelect, NumberField, ToggleRow } from '@/components/modules/pickers';
+import { ChannelSelect, LinesInput, NumberField, ToggleRow } from '@/components/modules/pickers';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardBody, CardHeader } from '@/components/ui/card';
@@ -488,7 +490,53 @@ const TRIGGERS: { type: WorkflowTrigger['type']; label: string }[] = [
   { type: 'memberLeave', label: 'A member leaves' },
   { type: 'messageContains', label: 'A message contains a word' },
   { type: 'roleAdded', label: 'A member gets a role' },
+  { type: 'reactionAdded', label: 'Someone reacts with an emoji' },
+  { type: 'memberBoost', label: 'A member boosts the server' },
+  { type: 'voiceJoin', label: 'A member joins a voice channel' },
+  { type: 'schedule', label: 'On a schedule (days and time)' },
 ];
+
+const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+function defaultTrigger(type: WorkflowTrigger['type'], guild: GuildInfo): WorkflowTrigger {
+  switch (type) {
+    case 'messageContains':
+      return { type, keyword: 'help', channelId: null };
+    case 'roleAdded':
+      return { type, roleId: guild.roles[0]?.id ?? guild.id };
+    case 'reactionAdded':
+      return { type, emoji: '✅', channelId: null };
+    case 'voiceJoin':
+      return { type, channelId: null };
+    case 'schedule':
+      return { type, time: '09:00', days: [], timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC' };
+    default:
+      return { type };
+  }
+}
+
+/** How deep each step sits inside If blocks (for indenting). */
+function stepDepths(steps: readonly WorkflowStep[]): number[] {
+  let depth = 0;
+  return steps.map((s) => {
+    if (s.type === 'endIf' || s.type === 'else') depth = Math.max(0, depth - 1);
+    const d = depth;
+    if (s.type === 'if' || s.type === 'else') depth++;
+    return d;
+  });
+}
+
+const CONDITION_LABELS: Record<WorkflowCondition['kind'], string> = {
+  hasRole: 'the member has a role',
+  accountOlderThan: 'the account is old enough',
+  text: 'a text or variable matches',
+};
+
+function defaultCondition(kind: WorkflowCondition['kind'], guild: GuildInfo): WorkflowCondition {
+  if (kind === 'hasRole') return { kind, roleId: guild.roles[0]?.id ?? guild.id, negate: false };
+  if (kind === 'accountOlderThan') return { kind, days: 7 };
+  return { kind, text: '{var:count}', op: 'greaterThan', value: '10', negate: false };
+}
 
 const STEP_LABELS: Record<WorkflowStep['type'], string> = {
   sendMessage: 'Send a message to a channel',
@@ -500,6 +548,13 @@ const STEP_LABELS: Record<WorkflowStep['type'], string> = {
   wait: 'Wait',
   ifHasRole: 'Only continue if the member has / doesn’t have a role',
   ifAccountOlderThan: 'Only continue if the account is old enough',
+  createThread: 'Start a thread on the message',
+  timeout: 'Time out the member',
+  sendRandom: 'Send one random message from a list',
+  setVariable: 'Save a variable',
+  if: 'If …',
+  else: 'Otherwise',
+  endIf: 'End if',
 };
 
 function defaultStep(type: WorkflowStep['type'], guild: GuildInfo): WorkflowStep {
@@ -523,10 +578,70 @@ function defaultStep(type: WorkflowStep['type'], guild: GuildInfo): WorkflowStep
       return { type, roleId: role, negate: false };
     case 'ifAccountOlderThan':
       return { type, days: 7 };
+    case 'createThread':
+      return { type, name: 'Talk with {user.name}' };
+    case 'timeout':
+      return { type, minutes: 10 };
+    case 'sendRandom':
+      return { type, channelId: channel, texts: ['Hello {user}!', 'Hey {user}, welcome!'] };
+    case 'setVariable':
+      return { type, name: 'count', mode: 'add', value: '1' };
+    case 'if':
+      return { type, check: defaultCondition('text', guild) };
+    case 'else':
+    case 'endIf':
+      return { type };
   }
 }
 
-function StepEditor({ step, set, guild, embeds }: { step: WorkflowStep; set: (s: WorkflowStep) => void; guild: GuildInfo; embeds: EmbedTemplate[] }) {
+function ConditionEditor({ check, set, guild, trigger }: { check: WorkflowCondition; set: (c: WorkflowCondition) => void; guild: GuildInfo; trigger: WorkflowTrigger['type'] }) {
+  return (
+    <div className="space-y-3">
+      <Field label="Check that" htmlFor="st-cond">
+        <Select id="st-cond" value={check.kind} onChange={(e) => set(defaultCondition(e.target.value as WorkflowCondition['kind'], guild))}>
+          {(Object.keys(CONDITION_LABELS) as WorkflowCondition['kind'][])
+            .filter((k) => conditionAllowed(trigger, k))
+            .map((k) => (
+              <option key={k} value={k}>
+                {CONDITION_LABELS[k]}
+              </option>
+            ))}
+        </Select>
+      </Field>
+      {check.kind === 'hasRole' ? (
+        <>
+          <RoleSelect id="st-cond-role" label="Role" guild={guild} allowNone={false} value={check.roleId} onChange={(v) => v && set({ ...check, roleId: v })} />
+          <ToggleRow title="Pass when they DON’T have it" checked={check.negate} onChange={(v) => set({ ...check, negate: v })} />
+        </>
+      ) : null}
+      {check.kind === 'accountOlderThan' ? <NumberField id="st-cond-days" label="Account at least" suffix="days old" value={check.days} min={0} max={3650} onChange={(v) => set({ ...check, days: v })} /> : null}
+      {check.kind === 'text' ? (
+        <>
+          <div className="grid grid-cols-[1fr_9rem_1fr] items-end gap-2">
+            <Field label="Text" htmlFor="st-cond-a">
+              <Input id="st-cond-a" maxLength={200} value={check.text} onChange={(e) => set({ ...check, text: e.target.value })} />
+            </Field>
+            <Field label="Is" htmlFor="st-cond-op">
+              <Select id="st-cond-op" value={check.op} onChange={(e) => set({ ...check, op: e.target.value as typeof check.op })}>
+                <option value="equals">equal to</option>
+                <option value="contains">containing</option>
+                <option value="greaterThan">more than</option>
+                <option value="lessThan">less than</option>
+              </Select>
+            </Field>
+            <Field label="Value" htmlFor="st-cond-b">
+              <Input id="st-cond-b" maxLength={200} value={check.value} onChange={(e) => set({ ...check, value: e.target.value })} />
+            </Field>
+          </div>
+          <ToggleRow title="Pass when it does NOT match" checked={check.negate} onChange={(v) => set({ ...check, negate: v })} />
+          <p className="text-xs text-fg-subtle">Use variables like {'{var:count}'} or {'{user.name}'}. “More than” and “less than” compare numbers.</p>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+function StepEditor({ step, set, guild, embeds, trigger }: { step: WorkflowStep; set: (s: WorkflowStep) => void; guild: GuildInfo; embeds: EmbedTemplate[]; trigger: WorkflowTrigger['type'] }) {
   switch (step.type) {
     case 'sendMessage':
       return (
@@ -564,6 +679,45 @@ function StepEditor({ step, set, guild, embeds }: { step: WorkflowStep; set: (s:
       return <NumberField id="st-wait" label="Wait" suffix="seconds (max 3600)" value={step.seconds} min={1} max={3600} onChange={(v) => set({ ...step, seconds: v })} />;
     case 'deleteMessage':
       return <p className="text-xs text-fg-subtle">Deletes the message that started this workflow.</p>;
+    case 'createThread':
+      return <TemplateField id="st-thread" label="Thread name" max={100} value={step.name} onChange={(v) => set({ ...step, name: v })} />;
+    case 'timeout':
+      return <NumberField id="st-timeout" label="Time out for" suffix="minutes (max 28 days)" value={step.minutes} min={1} max={40320} onChange={(v) => set({ ...step, minutes: v })} />;
+    case 'sendRandom':
+      return (
+        <div className="space-y-3">
+          <ChannelSelect id="st-ch" label="Channel" guild={guild} value={step.channelId} onChange={(v) => v && set({ ...step, channelId: v })} />
+          <LinesInput id="st-texts" label="Messages" hint="One message per line (2–10). Variables like {user} work." value={step.texts} onChange={(v) => set({ ...step, texts: v.slice(0, 10) })} />
+        </div>
+      );
+    case 'setVariable':
+      return (
+        <div className="space-y-3">
+          <div className="grid grid-cols-[1fr_10rem] items-end gap-2">
+            <Field label="Variable name" htmlFor="st-var">
+              <Input id="st-var" maxLength={32} value={step.name} onChange={(e) => set({ ...step, name: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '') })} />
+            </Field>
+            <Field label="How" htmlFor="st-var-mode">
+              <Select id="st-var-mode" value={step.mode} onChange={(e) => set({ ...step, mode: e.target.value as 'set' | 'add' })}>
+                <option value="set">Set it to</option>
+                <option value="add">Add a number</option>
+              </Select>
+            </Field>
+          </div>
+          <Field label={step.mode === 'add' ? 'Number to add' : 'Value'} htmlFor="st-var-value">
+            <Input id="st-var-value" maxLength={200} value={step.value} onChange={(e) => set({ ...step, value: e.target.value })} />
+          </Field>
+          <p className="text-xs text-fg-subtle">
+            Saved for this server and kept between runs. Use it in later messages as <code className="text-fg">{`{var:${step.name || 'name'}}`}</code>.
+          </p>
+        </div>
+      );
+    case 'if':
+      return <ConditionEditor check={step.check} guild={guild} trigger={trigger} set={(check) => set({ ...step, check })} />;
+    case 'else':
+      return <p className="text-xs text-fg-subtle">The steps from here to “End if” run when the check above didn’t pass.</p>;
+    case 'endIf':
+      return <p className="text-xs text-fg-subtle">Steps after this run either way.</p>;
   }
 }
 
@@ -666,9 +820,10 @@ export function AutomationsTab() {
                           value={w.trigger.type}
                           onChange={(e) => {
                             const type = e.target.value as WorkflowTrigger['type'];
-                            const trigger: WorkflowTrigger =
-                              type === 'messageContains' ? { type, keyword: 'help', channelId: null } : type === 'roleAdded' ? { type, roleId: guild.roles[0]?.id ?? guild.id } : { type };
-                            set({ ...w, trigger, steps: w.steps.filter((s) => stepAllowed(type, s.type)).length ? w.steps.filter((s) => stepAllowed(type, s.type)) : [defaultStep('sendDM', guild)] });
+                            const kept = w.steps.filter((s) => stepAllowed(type, s.type) && (s.type !== 'if' || conditionAllowed(type, s.check.kind)));
+                            // Dropping a step can break If blocks; then keep only the plain steps.
+                            const steps = kept.length === w.steps.length ? kept : kept.filter((s) => s.type !== 'if' && s.type !== 'else' && s.type !== 'endIf');
+                            set({ ...w, trigger: defaultTrigger(type, guild), steps: steps.length ? steps : [defaultStep(type === 'schedule' ? 'sendMessage' : 'sendDM', guild)] });
                           }}
                         >
                           {TRIGGERS.map((t) => (
@@ -686,7 +841,50 @@ export function AutomationsTab() {
                       {w.trigger.type === 'roleAdded' ? (
                         <RoleSelect id="wf-role" label="Role" guild={guild} allowNone={false} value={w.trigger.roleId} onChange={(v) => v && set({ ...w, trigger: { type: 'roleAdded', roleId: v } })} />
                       ) : null}
+                      {w.trigger.type === 'reactionAdded' ? (
+                        <Field label="Emoji" htmlFor="wf-emoji" hint="An emoji like ✅, or a custom emoji’s name.">
+                          <Input id="wf-emoji" maxLength={64} value={w.trigger.emoji} onChange={(e) => w.trigger.type === 'reactionAdded' && set({ ...w, trigger: { ...w.trigger, emoji: e.target.value } })} />
+                        </Field>
+                      ) : null}
+                      {w.trigger.type === 'voiceJoin' ? (
+                        <ChannelSelect id="wf-voice" label="Voice channel" emptyLabel="— Any voice channel —" kinds={['voice']} guild={guild} value={w.trigger.channelId} onChange={(v) => w.trigger.type === 'voiceJoin' && set({ ...w, trigger: { ...w.trigger, channelId: v } })} />
+                      ) : null}
+                      {w.trigger.type === 'schedule' ? (
+                        <Field label="Time" htmlFor="wf-time">
+                          <Input id="wf-time" type="time" value={w.trigger.time} onChange={(e) => w.trigger.type === 'schedule' && e.target.value && set({ ...w, trigger: { ...w.trigger, time: e.target.value } })} />
+                        </Field>
+                      ) : null}
                     </div>
+                    {w.trigger.type === 'schedule' ? (
+                      <div className="mt-3 space-y-3">
+                        <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Days">
+                          {DAY_NAMES.map((name, day) => {
+                            const t = w.trigger.type === 'schedule' ? w.trigger : null;
+                            const on = t?.days.includes(day) ?? false;
+                            return (
+                              <button
+                                key={name}
+                                type="button"
+                                aria-pressed={on}
+                                onClick={() => t && set({ ...w, trigger: { ...t, days: on ? t.days.filter((x) => x !== day) : [...t.days, day].sort() } })}
+                                className={cn('rounded-md border px-2 py-1 text-xs', on ? 'border-primary-border bg-primary-soft text-fg' : 'border-border text-fg-muted hover:text-fg')}
+                              >
+                                {name}
+                              </button>
+                            );
+                          })}
+                          {w.trigger.days.length ? null : <span className="text-xs text-fg-muted">Every day</span>}
+                        </div>
+                        <Field label="Time zone" htmlFor="wf-tz" hint="For example America/Chicago.">
+                          <Input id="wf-tz" maxLength={64} value={w.trigger.timezone} onChange={(e) => w.trigger.type === 'schedule' && set({ ...w, trigger: { ...w.trigger, timezone: e.target.value } })} />
+                        </Field>
+                      </div>
+                    ) : null}
+                    {w.trigger.type === 'reactionAdded' ? (
+                      <div className="mt-3">
+                        <ChannelSelect id="wf-react-ch" label="Only in channel (optional)" guild={guild} value={w.trigger.channelId} onChange={(v) => w.trigger.type === 'reactionAdded' && set({ ...w, trigger: { ...w.trigger, channelId: v } })} />
+                      </div>
+                    ) : null}
                     {w.trigger.type === 'messageContains' ? (
                       <div className="mt-3">
                         <ChannelSelect id="wf-kw-ch" label="Only in channel (optional)" guild={guild} value={w.trigger.channelId} onChange={(v) => w.trigger.type === 'messageContains' && set({ ...w, trigger: { ...w.trigger, channelId: v } })} />
@@ -695,10 +893,10 @@ export function AutomationsTab() {
                   </FlowNode>
 
                   {w.steps.map((s, i) => (
+                    <div key={i} style={{ marginLeft: `${stepDepths(w.steps)[i]! * 1.5}rem` }}>
                     <FlowNode
-                      key={i}
-                      tone={s.type.startsWith('if') ? 'warning' : s.type === 'wait' ? 'neutral' : 'success'}
-                      title={`${i + 1}. ${STEP_LABELS[s.type]}`}
+                      tone={s.type.startsWith('if') || s.type === 'else' || s.type === 'endIf' ? 'warning' : s.type === 'wait' ? 'neutral' : 'success'}
+                      title={`${i + 1}. ${s.type === 'if' ? `If ${CONDITION_LABELS[s.check.kind]}` : STEP_LABELS[s.type]}`}
                       subtitle={s.type === 'wait' ? `${s.seconds}s` : undefined}
                       open={openStep === i}
                       onToggle={() => setOpenStep(openStep === i ? -1 : i)}
@@ -716,8 +914,9 @@ export function AutomationsTab() {
                         </>
                       }
                     >
-                      <StepEditor step={s} guild={guild} embeds={b.embeds} set={(x) => set({ ...w, steps: w.steps.map((y, j) => (j === i ? x : y)) })} />
+                      <StepEditor step={s} guild={guild} embeds={b.embeds} trigger={w.trigger.type} set={(x) => set({ ...w, steps: w.steps.map((y, j) => (j === i ? x : y)) })} />
                     </FlowNode>
+                    </div>
                   ))}
 
                   {w.steps.length < 20 ? (
@@ -728,7 +927,10 @@ export function AutomationsTab() {
                         className="w-80"
                         onChange={(e) => {
                           if (!e.target.value) return;
-                          set({ ...w, steps: [...w.steps, defaultStep(e.target.value as WorkflowStep['type'], guild)] });
+                          const type = e.target.value as WorkflowStep['type'];
+                          // A new "If" comes with its "End if", so the blocks always line up.
+                          const added = type === 'if' ? [defaultStep('if', guild), defaultStep('endIf', guild)] : [defaultStep(type, guild)];
+                          set({ ...w, steps: [...w.steps, ...added].slice(0, 20) });
                           setOpenStep(w.steps.length);
                         }}
                       >
@@ -774,7 +976,7 @@ export function AutomationsTab() {
         ) : null}
       </ListEditor>
       <p className="text-2xs text-fg-subtle">
-        Limits keep automations safe: up to 20 steps, at most 1 hour of waiting per run, and 30 runs per minute per workflow. A run that is waiting when the bot stops is not resumed.
+        Limits keep automations safe: up to 20 steps, at most 1 hour of waiting per run, and 30 runs per minute per workflow. A run that is waiting when the bot stops is not resumed. Steps between “If” and “End if” run only when the check passes; “Otherwise” steps run when it doesn’t.
       </p>
       <SaveBar dirty={d.dirty} saving={d.saving} onSave={d.submit} onDiscard={d.discard} />
     </div>

@@ -21,6 +21,10 @@ const TRIGGERS: Record<string, string> = {
   memberLeave: 'when someone leaves',
   messageContains: 'when a message contains a keyword',
   roleAdded: 'when a role is added',
+  schedule: 'on a schedule',
+  reactionAdded: 'when someone reacts',
+  memberBoost: 'when someone boosts',
+  voiceJoin: 'when someone joins voice',
 };
 const moduleName = (id: string) => MODULES.find((m) => m.id === id)?.name ?? id;
 

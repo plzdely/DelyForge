@@ -155,12 +155,30 @@ export const COMMAND_VARIABLES = [
 
 export const WORKFLOW_LIMITS = { steps: 20, totalWaitSeconds: 3600, runsPerMinute: 30 } as const;
 
+const clockTime = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Use a time like 09:30');
+
 const trigger = z.discriminatedUnion('type', [
   z.object({ type: z.literal('memberJoin') }).strict(),
   z.object({ type: z.literal('memberLeave') }).strict(),
   z.object({ type: z.literal('messageContains'), keyword: z.string().trim().min(1).max(100), channelId: snowflakeSchema.nullable() }).strict(),
   z.object({ type: z.literal('roleAdded'), roleId: snowflakeSchema }).strict(),
+  /** On chosen days (0 = Sunday; none = every day) at a time in a time zone. There is no member. */
+  z.object({ type: z.literal('schedule'), time: clockTime, days: z.array(z.number().int().min(0).max(6)).max(7), timezone: z.string().trim().min(1).max(64) }).strict(),
+  /** Someone reacts with this emoji (a unicode emoji, or a custom emoji's name or ID). */
+  z.object({ type: z.literal('reactionAdded'), emoji: z.string().trim().min(1).max(64), channelId: snowflakeSchema.nullable() }).strict(),
+  z.object({ type: z.literal('memberBoost') }).strict(),
+  z.object({ type: z.literal('voiceJoin'), channelId: snowflakeSchema.nullable() }).strict(),
 ]);
+
+/** A check used by "If … / Otherwise / End if" blocks. */
+const condition = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('hasRole'), roleId: snowflakeSchema, negate: z.boolean() }).strict(),
+  z.object({ kind: z.literal('accountOlderThan'), days: z.number().int().min(0).max(3650) }).strict(),
+  /** Compares text with variables filled in, e.g. {var:joins} greaterThan 100. Numbers compare as numbers. */
+  z.object({ kind: z.literal('text'), text: z.string().max(200), op: z.enum(['equals', 'contains', 'greaterThan', 'lessThan']), value: z.string().max(200), negate: z.boolean() }).strict(),
+]);
+export type WorkflowCondition = z.infer<typeof condition>;
+const varName = z.string().regex(/^[a-z0-9_]{1,32}$/, 'Variable names: 1–32 lowercase letters, numbers or _');
 
 const step = z.discriminatedUnion('type', [
   z.object({ type: z.literal('sendMessage'), channelId: snowflakeSchema, text: z.string().max(2000), embedId: z.union([z.literal(''), itemId]) }).strict(),
@@ -173,15 +191,53 @@ const step = z.discriminatedUnion('type', [
   /** Conditions: the run stops here if the check fails. */
   z.object({ type: z.literal('ifHasRole'), roleId: snowflakeSchema, negate: z.boolean() }).strict(),
   z.object({ type: z.literal('ifAccountOlderThan'), days: z.number().int().min(0).max(3650) }).strict(),
+  z.object({ type: z.literal('createThread'), name: z.string().trim().min(1).max(100) }).strict(),
+  z.object({ type: z.literal('timeout'), minutes: z.number().int().min(1).max(40320) }).strict(),
+  z.object({ type: z.literal('sendRandom'), channelId: snowflakeSchema, texts: z.array(z.string().trim().min(1).max(2000)).min(2, 'Add at least two messages').max(10) }).strict(),
+  /** Saved per server and kept between runs; use it anywhere as {var:name}. "add" adds a number (e.g. a counter). */
+  z.object({ type: z.literal('setVariable'), name: varName, mode: z.enum(['set', 'add']), value: z.string().max(200) }).strict(),
+  /** Blocks: the steps after "If" run only when the check passes; "Otherwise" steps run when it doesn't. */
+  z.object({ type: z.literal('if'), check: condition }).strict(),
+  z.object({ type: z.literal('else') }).strict(),
+  z.object({ type: z.literal('endIf') }).strict(),
 ]);
 export type WorkflowStep = z.infer<typeof step>;
 export type WorkflowTrigger = z.infer<typeof trigger>;
 
 /** Which steps make sense for a trigger (message steps need a message, member steps need a member). */
 export function stepAllowed(t: WorkflowTrigger['type'], s: WorkflowStep['type']): boolean {
-  if (s === 'reply' || s === 'deleteMessage') return t === 'messageContains';
-  if (s === 'addRole' || s === 'removeRole' || s === 'ifHasRole') return t !== 'memberLeave';
+  if (s === 'reply' || s === 'deleteMessage' || s === 'createThread') return t === 'messageContains' || t === 'reactionAdded';
+  if (s === 'addRole' || s === 'removeRole' || s === 'ifHasRole' || s === 'timeout') return t !== 'memberLeave' && t !== 'schedule';
+  if (s === 'sendDM' || s === 'ifAccountOlderThan') return t !== 'schedule';
   return true;
+}
+
+/** Same rule for the check inside an "If" block. */
+export function conditionAllowed(t: WorkflowTrigger['type'], c: WorkflowCondition['kind']): boolean {
+  if (c === 'hasRole') return stepAllowed(t, 'ifHasRole');
+  if (c === 'accountOlderThan') return stepAllowed(t, 'ifAccountOlderThan');
+  return true;
+}
+
+/** For each "If": where its "Otherwise" (or null) and "End if" are. Null if the blocks don't line up. */
+export function workflowBlocks(steps: readonly Pick<WorkflowStep, 'type'>[]): Map<number, { else: number | null; end: number }> | null {
+  const blocks = new Map<number, { else: number | null; end: number }>();
+  const open: { at: number; else: number | null }[] = [];
+  for (const [i, s] of steps.entries()) {
+    if (s.type === 'if') {
+      if (open.length >= 5) return null; // at most 5 levels deep
+      open.push({ at: i, else: null });
+    } else if (s.type === 'else') {
+      const top = open[open.length - 1];
+      if (!top || top.else !== null) return null;
+      top.else = i;
+    } else if (s.type === 'endIf') {
+      const top = open.pop();
+      if (!top) return null;
+      blocks.set(top.at, { else: top.else, end: i });
+    }
+  }
+  return open.length ? null : blocks;
 }
 
 export const workflowSchema = z
@@ -199,7 +255,9 @@ export const workflowSchema = z
     if (waited > WORKFLOW_LIMITS.totalWaitSeconds) ctx.addIssue({ code: 'custom', path: ['steps'], message: 'Waits can add up to at most 1 hour per run' });
     w.steps.forEach((s, i) => {
       if (!stepAllowed(w.trigger.type, s.type)) ctx.addIssue({ code: 'custom', path: ['steps', i], message: `“${s.type}” can’t be used with this trigger` });
+      if (s.type === 'if' && !conditionAllowed(w.trigger.type, s.check.kind)) ctx.addIssue({ code: 'custom', path: ['steps', i], message: 'That check needs a member, and this trigger has none' });
     });
+    if (!workflowBlocks(w.steps)) ctx.addIssue({ code: 'custom', path: ['steps'], message: 'Every “If” needs one “End if” (with at most one “Otherwise” between), up to 5 levels deep' });
   });
 export type Workflow = z.infer<typeof workflowSchema>;
 
@@ -249,8 +307,13 @@ export function builderIntents(b: Pick<Builders, 'workflows'>, intentBits: Recor
   let bits = 0;
   for (const w of b.workflows) {
     if (!w.enabled) continue;
-    if (w.trigger.type === 'messageContains') bits |= (intentBits['GuildMessages'] ?? 0) | (intentBits['MessageContent'] ?? 0);
-    else bits |= intentBits['GuildMembers'] ?? 0;
+    const t = w.trigger.type;
+    if (t === 'messageContains') bits |= (intentBits['GuildMessages'] ?? 0) | (intentBits['MessageContent'] ?? 0);
+    else if (t === 'reactionAdded') bits |= (intentBits['GuildMessageReactions'] ?? 0) | (intentBits['GuildMessages'] ?? 0);
+    else if (t === 'voiceJoin') bits |= intentBits['GuildVoiceStates'] ?? 0;
+    else if (t !== 'schedule') bits |= intentBits['GuildMembers'] ?? 0;
+    // Member steps on reaction/voice triggers read the member list.
+    if ((t === 'reactionAdded' || t === 'voiceJoin') && w.steps.some((s) => s.type === 'addRole' || s.type === 'removeRole' || s.type === 'timeout')) bits |= intentBits['GuildMembers'] ?? 0;
   }
   return bits;
 }

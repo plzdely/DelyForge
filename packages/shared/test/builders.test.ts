@@ -112,3 +112,25 @@ describe('templates', () => {
     }
   });
 });
+
+describe('workflow blocks and new steps', () => {
+  const base = { id: 'w9', name: 'x', enabled: true, guildId: '123456789012345678' };
+  const ok = (trigger: unknown, steps: unknown[]) => workflowSchema.safeParse({ ...base, trigger, steps }).success;
+  it('needs If blocks to line up', () => {
+    const check = { kind: 'text', text: '{var:a}', op: 'equals', value: '1', negate: false };
+    expect(ok({ type: 'memberJoin' }, [{ type: 'if', check }, { type: 'sendDM', text: 'a' }, { type: 'else' }, { type: 'sendDM', text: 'b' }, { type: 'endIf' }])).toBe(true);
+    expect(ok({ type: 'memberJoin' }, [{ type: 'if', check }, { type: 'sendDM', text: 'a' }])).toBe(false);
+    expect(ok({ type: 'memberJoin' }, [{ type: 'endIf' }])).toBe(false);
+    expect(ok({ type: 'memberJoin' }, [{ type: 'if', check }, { type: 'else' }, { type: 'else' }, { type: 'endIf' }])).toBe(false);
+  });
+  it('keeps member-only steps away from scheduled runs', () => {
+    const sched = { type: 'schedule', time: '09:00', days: [], timezone: 'UTC' };
+    expect(ok(sched, [{ type: 'sendRandom', channelId: '123456789012345678', texts: ['a', 'b'] }])).toBe(true);
+    expect(ok(sched, [{ type: 'sendDM', text: 'hi' }])).toBe(false);
+    expect(ok(sched, [{ type: 'timeout', minutes: 5 }])).toBe(false);
+    expect(ok(sched, [{ type: 'if', check: { kind: 'hasRole', roleId: '123456789012345678', negate: false } }, { type: 'endIf' }])).toBe(false);
+    expect(ok({ type: 'reactionAdded', emoji: '✅', channelId: null }, [{ type: 'createThread', name: 'Talk about {user.name}' }])).toBe(true);
+    expect(ok({ type: 'memberJoin' }, [{ type: 'createThread', name: 'x' }])).toBe(false);
+  });
+});
+

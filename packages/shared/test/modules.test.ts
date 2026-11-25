@@ -110,6 +110,7 @@ describe('templates', () => {
       'Hi <@1>, welcome to Aurora (#42) {oops}',
     );
     expect(renderTemplate('{user.name}', { 'user.name': 'Dely' })).toBe('Dely');
+    expect(renderTemplate('{option:max_count} {var:joins}', { 'option:max_count': 5, 'var:joins': '12' })).toBe('5 12');
   });
 });
 

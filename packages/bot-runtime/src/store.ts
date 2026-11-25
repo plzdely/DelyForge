@@ -205,6 +205,12 @@ export class BotStore {
         unban_at INTEGER NOT NULL,
         PRIMARY KEY (guild_id, user_id)
       );
+      CREATE TABLE IF NOT EXISTS workflow_vars (
+        guild_id TEXT NOT NULL,
+        name     TEXT NOT NULL,
+        value    TEXT NOT NULL,
+        PRIMARY KEY (guild_id, name)
+      );
       CREATE TABLE IF NOT EXISTS channel_locks (
         channel_id TEXT PRIMARY KEY,
         guild_id   TEXT NOT NULL,
@@ -510,6 +516,17 @@ export class BotStore {
   caseByNumber(guildId: string, number: number): ModCase | null {
     const r = this.db.prepare('SELECT * FROM mod_cases WHERE guild_id = ? AND number = ?').get(guildId, number) as Parameters<typeof BotStore.toCase>[0] | undefined;
     return r ? BotStore.toCase(r) : null;
+  }
+
+  // ─── Workflow variables ({var:name}, kept between runs) ─────────────────────────────────────────────────────────
+
+  workflowVars(guildId: string): Record<string, string> {
+    const rows = this.db.prepare('SELECT name, value FROM workflow_vars WHERE guild_id = ?').all(guildId) as { name: string; value: string }[];
+    return Object.fromEntries(rows.map((r) => [r.name, r.value]));
+  }
+
+  setWorkflowVar(guildId: string, name: string, value: string): void {
+    this.db.prepare('INSERT OR REPLACE INTO workflow_vars (guild_id, name, value) VALUES (?, ?, ?)').run(guildId, name, value);
   }
 
   // ─── Channel locks (what /lock changed, so /unlock can put it back) ──────────────────────────────────────────────

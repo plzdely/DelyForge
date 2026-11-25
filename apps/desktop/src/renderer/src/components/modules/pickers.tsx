@@ -1,6 +1,6 @@
 import type { GuildChannelKind, GuildInfo } from '@delyforge/shared';
 import { RefreshCw } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { type ReactNode, useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Field } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
@@ -150,14 +150,23 @@ export function LinesInput({
   onChange: (v: string[]) => void;
   placeholder?: string;
 }) {
+  const clean = (t: string) => t.split('\n').map((s) => s.trim()).filter(Boolean);
+  const [text, setText] = useState(value.join('\n'));
+  // Follow changes made elsewhere (discard, load), but keep blank lines the user is typing.
+  useEffect(() => {
+    setText((t) => (clean(t).join('\n') === value.join('\n') ? t : value.join('\n')));
+  }, [value]);
   return (
     <Field label={label} htmlFor={id} hint={hint}>
       <textarea
         id={id}
         className="min-h-24 w-full resize-y rounded-md border border-border-strong bg-bg-subtle px-3 py-2 font-mono text-xs text-fg outline-none focus:border-primary focus:shadow-[0_0_0_3px_var(--df-primary-soft)]"
         placeholder={placeholder}
-        value={value.join('\n')}
-        onChange={(e) => onChange(e.target.value.split('\n').map((s) => s.trim()).filter(Boolean))}
+        value={text}
+        onChange={(e) => {
+          setText(e.target.value);
+          onChange(clean(e.target.value));
+        }}
       />
     </Field>
   );

@@ -4,8 +4,10 @@ import {
   type EmbedTemplate,
   WORKFLOW_LIMITS,
   type Workflow,
+  type WorkflowCondition,
   type WorkflowStep,
   renderTemplate,
+  workflowBlocks,
 } from '@delyforge/shared';
 import {
   type APIEmbed,
@@ -24,6 +26,8 @@ import {
 } from 'discord.js';
 import { type ModuleContext, hexToInt, sendableChannel } from './context.js';
 import { assignable } from './roles.js';
+import { localParts } from './scheduled.js';
+import { emojiMatches } from './starboard.js';
 
 type Vars = Record<string, string | number>;
 
@@ -125,7 +129,8 @@ export async function runCustomCommand(ctx: ModuleContext, builders: Builders, i
 
 export interface WorkflowEvent {
   guild: Guild;
-  user: User;
+  /** Null for scheduled runs (nobody started them). */
+  user: User | null;
   member: GuildMember | null;
   message?: Message;
   roleId?: string;
@@ -145,15 +150,64 @@ export function allowRun(workflowId: string, now: number, map: Map<string, numbe
   return true;
 }
 
+export type TriggerEvent =
+  | { type: 'memberJoin' | 'memberLeave' | 'memberBoost' }
+  | { type: 'messageContains'; text: string; channelId: string }
+  | { type: 'roleAdded'; roleId: string }
+  | { type: 'reactionAdded'; emoji: { id: string | null; name: string | null }; channelId: string }
+  | { type: 'voiceJoin'; channelId: string }
+  | { type: 'schedule'; at: { day: number; time: string } };
+
 /** Workflows a Discord event should start. */
-export function matchingWorkflows(workflows: readonly Workflow[], guildId: string, event: { type: 'memberJoin' | 'memberLeave' | 'messageContains' | 'roleAdded'; text?: string; channelId?: string; roleId?: string }): Workflow[] {
+export function matchingWorkflows(workflows: readonly Workflow[], guildId: string, event: TriggerEvent): Workflow[] {
   return workflows.filter((w) => {
     if (!w.enabled || w.guildId !== guildId || w.trigger.type !== event.type) return false;
     const t = w.trigger;
-    if (t.type === 'messageContains') return (!t.channelId || t.channelId === event.channelId) && (event.text ?? '').toLowerCase().includes(t.keyword.toLowerCase());
-    if (t.type === 'roleAdded') return t.roleId === event.roleId;
+    if (t.type === 'messageContains' && event.type === 'messageContains') return (!t.channelId || t.channelId === event.channelId) && event.text.toLowerCase().includes(t.keyword.toLowerCase());
+    if (t.type === 'roleAdded' && event.type === 'roleAdded') return t.roleId === event.roleId;
+    if (t.type === 'reactionAdded' && event.type === 'reactionAdded') return (!t.channelId || t.channelId === event.channelId) && emojiMatches(t.emoji, event.emoji);
+    if (t.type === 'voiceJoin' && event.type === 'voiceJoin') return !t.channelId || t.channelId === event.channelId;
+    if (t.type === 'schedule' && event.type === 'schedule') return t.time === event.at.time && (!t.days.length || t.days.includes(event.at.day));
     return true;
   });
+}
+
+/** Scheduled workflows due now in their own time zone (checked every 30 s; each runs once per minute). */
+const scheduleSent = new Set<string>();
+export function dueScheduledWorkflows(workflows: readonly Workflow[], guildId: string, now: Date, sent = scheduleSent): Workflow[] {
+  if (sent.size > 2000) sent.clear();
+  return workflows.filter((w) => {
+    if (w.trigger.type !== 'schedule') return false;
+    const at = localParts(now, w.trigger.timezone) ?? localParts(now, 'UTC')!;
+    if (!matchingWorkflows([w], guildId, { type: 'schedule', at }).length) return false;
+    const key = `${w.id}:${at.date} ${at.time}`;
+    if (sent.has(key)) return false;
+    sent.add(key);
+    return true;
+  });
+}
+
+/** Checks for "If" blocks: hasRole / accountOlderThan / text comparison. */
+export function checkCondition(c: WorkflowCondition, ev: Pick<WorkflowEvent, 'user' | 'member'>, vars: Vars, now = Date.now()): boolean {
+  switch (c.kind) {
+    case 'hasRole':
+      return (ev.member?.roles.cache.has(c.roleId) ?? false) !== c.negate;
+    case 'accountOlderThan':
+      return ev.user ? (now - ev.user.createdTimestamp) / 86_400_000 >= c.days : false;
+    case 'text': {
+      const a = renderTemplate(c.text, vars).trim();
+      const b = renderTemplate(c.value, vars).trim();
+      const na = Number(a);
+      const nb = Number(b);
+      const numbers = a !== '' && b !== '' && Number.isFinite(na) && Number.isFinite(nb);
+      const result =
+        c.op === 'equals' ? (numbers ? na === nb : a.toLowerCase() === b.toLowerCase())
+        : c.op === 'contains' ? a.toLowerCase().includes(b.toLowerCase())
+        : c.op === 'greaterThan' ? numbers && na > nb
+        : numbers && na < nb;
+      return result !== c.negate;
+    }
+  }
 }
 
 export async function runWorkflow(ctx: ModuleContext, builders: Builders, w: Workflow, ev: WorkflowEvent, sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))): Promise<void> {
@@ -161,22 +215,46 @@ export async function runWorkflow(ctx: ModuleContext, builders: Builders, w: Wor
     ctx.workflowRun({ workflowId: w.id, ok: false, steps: 0, message: 'Skipped: ran too often in the last minute (limit 30).' });
     return;
   }
-  const vars: Vars = { ...memberVars(ev.guild, ev.user, ev.member?.displayName ?? ev.user.username), channel: ev.message ? `<#${ev.message.channelId}>` : '' };
+  const vars: Vars = ev.user
+    ? { ...memberVars(ev.guild, ev.user, ev.member?.displayName ?? ev.user.username), channel: ev.message ? `<#${ev.message.channelId}>` : '' }
+    : { server: ev.guild.name, memberCount: ev.guild.memberCount, channel: '' };
+  for (const [name, value] of Object.entries(ctx.store.workflowVars(ev.guild.id))) vars[`var:${name}`] = value;
+  const blocks = workflowBlocks(w.steps) ?? new Map();
+  const who = ev.user ? ` for ${ev.user.username}` : '';
   let done = 0;
   try {
-    for (const step of w.steps) {
-      const stop = await runStep(ctx, builders, step, ev, vars, sleep);
+    for (let pc = 0; pc < w.steps.length; ) {
+      const step = w.steps[pc]!;
       done++;
+      if (step.type === 'if') {
+        const block = blocks.get(pc);
+        const pass = checkCondition(step.check, ev, vars);
+        pc = pass || !block ? pc + 1 : (block.else ?? block.end) + 1;
+        continue;
+      }
+      if (step.type === 'else') {
+        // Reached the end of the "If" part: skip the "Otherwise" part.
+        const owner = [...blocks.values()].find((b) => b.else === pc);
+        pc = owner ? owner.end + 1 : pc + 1;
+        continue;
+      }
+      const stop = await runStep(ctx, builders, step, ev, vars, sleep);
       if (stop) {
-        ctx.workflowRun({ workflowId: w.id, ok: true, steps: done, message: `Stopped at step ${done}: ${stop}` });
+        ctx.workflowRun({ workflowId: w.id, ok: true, steps: done, message: `Stopped at step ${pc + 1}: ${stop}` });
         return;
       }
+      pc++;
     }
-    ctx.workflowRun({ workflowId: w.id, ok: true, steps: done, message: `Completed ${done} step(s) for ${ev.user.username}.` });
+    ctx.workflowRun({ workflowId: w.id, ok: true, steps: done, message: `Completed ${done} step(s)${who}.` });
   } catch (e) {
-    ctx.workflowRun({ workflowId: w.id, ok: false, steps: done, message: `Step ${done + 1} failed: ${(e as Error).message}` });
+    ctx.workflowRun({ workflowId: w.id, ok: false, steps: done - 1, message: `Step failed: ${(e as Error).message}` });
   }
 }
+
+const needMember = (ev: WorkflowEvent) => {
+  if (!ev.member) throw new Error('member not available');
+  return ev.member;
+};
 
 /** Runs one step. Returns a reason string if the workflow should stop here (a condition wasn't met). */
 async function runStep(ctx: ModuleContext, builders: Builders, s: WorkflowStep, ev: WorkflowEvent, vars: Vars, sleep: (ms: number) => Promise<unknown>): Promise<string | null> {
@@ -184,9 +262,14 @@ async function runStep(ctx: ModuleContext, builders: Builders, s: WorkflowStep, 
     case 'wait':
       await sleep(s.seconds * 1000);
       return null;
-    case 'sendMessage': {
+    case 'sendMessage':
+    case 'sendRandom': {
       const channel = await sendableChannel(ctx, ev.guild, s.channelId, 'Workflow');
       if (!channel) throw new Error('channel not available');
+      if (s.type === 'sendRandom') {
+        await channel.send({ content: renderTemplate(s.texts[Math.floor(Math.random() * s.texts.length)]!, vars), allowedMentions: { parse: ['users'] } });
+        return null;
+      }
       const embed = s.embedId ? builders.embeds.find((e) => e.id === s.embedId) : undefined;
       await channel.send({ content: s.text ? renderTemplate(s.text, vars) : undefined, embeds: embed ? [renderEmbed(embed, vars)] : undefined, allowedMentions: { parse: ['users'] } });
       return null;
@@ -195,17 +278,36 @@ async function runStep(ctx: ModuleContext, builders: Builders, s: WorkflowStep, 
       await ev.message?.reply({ content: renderTemplate(s.text, vars), allowedMentions: { parse: ['users'] } });
       return null;
     case 'sendDM':
-      await ev.user.send({ content: renderTemplate(s.text, vars), allowedMentions: { parse: [] } }).catch(() => null); // DMs may be closed
+      await ev.user?.send({ content: renderTemplate(s.text, vars), allowedMentions: { parse: [] } }).catch(() => null); // DMs may be closed
       return null;
     case 'deleteMessage':
       await ev.message?.delete();
       return null;
+    case 'createThread': {
+      if (!ev.message) throw new Error('message not available');
+      if (ev.message.hasThread) return null;
+      await ev.message.startThread({ name: renderTemplate(s.name, vars).slice(0, 100) || 'Thread', reason: 'DelyForge workflow' });
+      return null;
+    }
     case 'addRole':
     case 'removeRole': {
-      if (!ev.member) throw new Error('member not available');
-      if (!assignable(ev.member, [s.roleId]).length) throw new Error('the role is above the bot’s role or managed');
-      if (s.type === 'addRole') await ev.member.roles.add(s.roleId, 'DelyForge workflow');
-      else await ev.member.roles.remove(s.roleId, 'DelyForge workflow');
+      const member = needMember(ev);
+      if (!assignable(member, [s.roleId]).length) throw new Error('the role is above the bot’s role or managed');
+      if (s.type === 'addRole') await member.roles.add(s.roleId, 'DelyForge workflow');
+      else await member.roles.remove(s.roleId, 'DelyForge workflow');
+      return null;
+    }
+    case 'timeout': {
+      const member = needMember(ev);
+      if (!member.moderatable) throw new Error('the bot can’t time out this member (role too high, or it lacks Timeout Members)');
+      await member.timeout(s.minutes * 60_000, 'DelyForge workflow');
+      return null;
+    }
+    case 'setVariable': {
+      const value = renderTemplate(s.value, vars);
+      const next = s.mode === 'add' ? String((Number(vars[`var:${s.name}`]) || 0) + (Number(value) || 0)) : value.slice(0, 200);
+      ctx.store.setWorkflowVar(ev.guild.id, s.name, next);
+      vars[`var:${s.name}`] = next;
       return null;
     }
     case 'ifHasRole': {
@@ -213,8 +315,12 @@ async function runStep(ctx: ModuleContext, builders: Builders, s: WorkflowStep, 
       return has !== s.negate ? null : s.negate ? 'member has the role' : 'member doesn’t have the role';
     }
     case 'ifAccountOlderThan': {
-      const days = (Date.now() - ev.user.createdTimestamp) / 86_400_000;
+      const days = ev.user ? (Date.now() - ev.user.createdTimestamp) / 86_400_000 : 0;
       return days >= s.days ? null : `account younger than ${s.days} day(s)`;
     }
+    case 'if':
+    case 'else':
+    case 'endIf':
+      return null; // handled by runWorkflow
   }
 }

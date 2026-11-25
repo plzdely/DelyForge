@@ -770,7 +770,8 @@ export const TEMPLATE_VARIABLES = [
 
 /** Replaces {variables}; unknown ones are left untouched so typos are visible. */
 export function renderTemplate(template: string, vars: Record<string, string | number>): string {
-  return template.replace(/\{([a-zA-Z.]+)\}/g, (match, key: string) =>
+  // Keys like {user.name}, {option:NAME} and {var:name}; unknown ones are left as written.
+  return template.replace(/\{([a-zA-Z][\w.:-]*)\}/g, (match, key: string) =>
     Object.prototype.hasOwnProperty.call(vars, key) ? String(vars[key]) : match,
   );
 }
