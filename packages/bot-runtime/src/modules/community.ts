@@ -274,6 +274,22 @@ export async function handleGiveaway(ctx: ModuleContext, i: ChatInputCommandInte
     return void (await ephemeral(i, `Giveaway #${id} started: ${msg.url}`));
   }
 
+  if (sub === 'list') {
+    const running = ctx.store.runningGiveaways(i.guildId);
+    if (!running.length) return void (await ephemeral(i, 'No giveaways are running right now.'));
+    return void (await i.reply({
+      embeds: [
+        {
+          title: '🎉 Running giveaways',
+          description: running.map((g) => `**#${g.id}** ${truncate(g.prize, 80)} — <#${g.channelId}> · ends <t:${Math.floor(g.endsAt / 1000)}:R> · ${g.entries} entered`).join('\n'),
+          color: hexToInt(c.color),
+        },
+      ],
+      flags: MessageFlags.Ephemeral,
+      allowedMentions: { parse: [] },
+    }));
+  }
+
   const id = i.options.getInteger('id', true);
   const g = ctx.store.giveaway(id);
   if (!g || g.guildId !== i.guildId) return void (await ephemeral(i, `There’s no giveaway #${id} in this server.`));

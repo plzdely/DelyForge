@@ -91,6 +91,21 @@ function WelcomeForm({ c, set, guild }: { c: WelcomeConfig; set: (c: WelcomeConf
           <>
             <ChannelSelect id="welcome-channel" label="Channel" guild={guild} value={c.welcome.channelId} onChange={(v) => set({ ...c, welcome: { ...c.welcome, channelId: v } })} />
             <TemplateField id="welcome-message" label="Message" value={c.welcome.message} onChange={(v) => set({ ...c, welcome: { ...c.welcome, message: v } })} />
+            {c.welcome.extraMessages.map((m, n) => (
+              <div key={n} className="flex items-start gap-2">
+                <div className="flex-1">
+                  <TemplateField id={`welcome-extra-${n}`} label={`Another version ${n + 1}`} value={m} onChange={(v) => set({ ...c, welcome: { ...c.welcome, extraMessages: c.welcome.extraMessages.map((x, i) => (i === n ? v : x)) } })} />
+                </div>
+                <Button size="icon" variant="ghost" className="mt-6" aria-label="Remove this version" onClick={() => set({ ...c, welcome: { ...c.welcome, extraMessages: c.welcome.extraMessages.filter((_, i) => i !== n) } })}>
+                  <Trash2 />
+                </Button>
+              </div>
+            ))}
+            {c.welcome.extraMessages.length < 10 ? (
+              <Button size="sm" onClick={() => set({ ...c, welcome: { ...c.welcome, extraMessages: [...c.welcome.extraMessages, 'Hey {user}, welcome to {server}! 👋'] } })}>
+                <Plus /> Add another version (one is picked at random)
+              </Button>
+            ) : null}
             <ToggleRow
               title="Show as a card (embed)"
               description="A coloured card with the member’s avatar."

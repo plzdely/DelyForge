@@ -37,6 +37,7 @@ export function templateVars(member: GuildMember | { user: User; guild: Guild; d
     'user.id': member.user.id,
     server: member.guild.name,
     memberCount: member.guild.memberCount,
+    'user.created': `<t:${Math.floor(member.user.createdTimestamp / 1000)}:R>`,
   };
 }
 

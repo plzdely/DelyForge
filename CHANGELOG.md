@@ -5,6 +5,19 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-11-25
+
+### Added
+- **Tickets:** up to 5 extra ticket panels (e.g. Support, Report, Appeal), each with its own button, category, staff
+  roles, first message and channel names; choose whether staff are pinged.
+- **Welcome:** up to 10 extra versions of the welcome message — each new member gets one at random.
+- **Temporary voice:** up to 5 extra “join to create” channels, each with its own name and limit (e.g. Duo, Squad).
+- **Moderation:** `/unwarn` removes a single warning. **Giveaways:** `/giveaway list` shows the running ones.
+- New message variable `{user.created}` (when the account was made, e.g. “3 years ago”).
+
+### Fixed
+- `/remind` only posts where the member can still talk themselves (otherwise it DMs them).
+
 ## [0.4.0] - 2026-11-25
 
 Every module got deeper. No new modules — new options and commands inside the ones you have.

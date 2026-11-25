@@ -69,6 +69,8 @@ export const welcomeConfigSchema = z
         style: messageStyleSchema,
         /** Up to 3 link buttons under the welcome message (e.g. Rules, Website). */
         buttons: z.array(linkButton).max(3).default([]),
+        /** More versions of the message; each join gets one of them (or the main one) at random. */
+        extraMessages: z.array(template().refine((t) => t.trim() !== '', 'Write the message')).max(10).default([]),
       })
       .strict(),
     dm: z.object({ enabled: z.boolean(), message: template() }).strict(),
@@ -485,6 +487,19 @@ export const tempVoiceConfigSchema = z
     userLimit: z.number().int().min(0).max(99),
     /** Owners can use /voice lock, unlock, limit, rename and claim. */
     ownerCommands: z.boolean().default(true),
+    /** More "join to create" channels, each with its own name and limit (e.g. Duo = 2, Squad = 4). */
+    extraHubs: z
+      .array(
+        z
+          .object({
+            hubChannelId: snowflakeSchema,
+            nameTemplate: z.string().trim().min(1, 'Give the channels a name').max(90),
+            userLimit: z.number().int().min(0).max(99),
+          })
+          .strict(),
+      )
+      .max(5)
+      .default([]),
   })
   .strict();
 export type TempVoiceConfig = z.infer<typeof tempVoiceConfigSchema>;
@@ -689,6 +704,7 @@ export const DEFAULT_MODULE_CONFIGS: ModuleConfigs = {
       message: 'Welcome to **{server}**, {user}! You are member #{memberCount}. 🎉',
       style: { embed: true, color: '#7c5cff', title: 'Welcome!', imageUrl: '' },
       buttons: [],
+      extraMessages: [],
     },
     dm: { enabled: false, message: 'Hi {user.name}, welcome to {server}! Make sure to read the rules.' },
     goodbye: { enabled: false, channelId: null, message: '**{user.name}** has left the server. 👋', embed: false, color: '#f04d5e' },
@@ -775,7 +791,7 @@ export const DEFAULT_MODULE_CONFIGS: ModuleConfigs = {
   giveaways: { enabled: false, managerRoleIds: [], color: '#f5a524', bonusRoles: [] },
   invites: { enabled: false, channelId: null, message: '{user} joined using {inviter}’s invite — that’s {invites} so far.', rewards: [] },
   starboard: { enabled: false, channelId: null, emoji: '⭐', threshold: 3, selfStar: false, ignoredChannelIds: [] },
-  tempVoice: { enabled: false, hubChannelId: null, categoryId: null, nameTemplate: '{user}’s channel', userLimit: 0, ownerCommands: true },
+  tempVoice: { enabled: false, hubChannelId: null, categoryId: null, nameTemplate: '{user}’s channel', userLimit: 0, ownerCommands: true, extraHubs: [] },
   antiRaid: { enabled: false, alertChannelId: null, joinThreshold: 10, perSeconds: 30, raidAction: 'alert', raidMinutes: 10, minAccountAgeDays: 0, lockdown: false },
   sticky: { enabled: false, messages: [], quietSeconds: 5 },
   serverStats: { enabled: false, counters: [] },
@@ -817,7 +833,7 @@ export interface ModuleInfo {
 
 export const MODULES: readonly ModuleInfo[] = [
   { id: 'welcome', name: 'Welcome', summary: 'Greet new members, say goodbye, send a DM and give roles automatically.', feature: 'modules.basic', available: true, commands: [] },
-  { id: 'moderation', name: 'Moderation', summary: 'Staff commands with numbered cases and history, temporary bans, channel lockdown, and auto-moderation for spam, scams, mentions and more.', feature: 'modules.basic', available: true, commands: ['/warn', '/warnings', '/clearwarnings', '/history', '/case', '/note', '/timeout', '/untimeout', '/kick', '/ban', '/unban', '/softban', '/purge', '/lock', '/unlock', '/slowmode', '/role', '/nick'] },
+  { id: 'moderation', name: 'Moderation', summary: 'Staff commands with numbered cases and history, temporary bans, channel lockdown, and auto-moderation for spam, scams, mentions and more.', feature: 'modules.basic', available: true, commands: ['/warn', '/warnings', '/unwarn', '/clearwarnings', '/history', '/case', '/note', '/timeout', '/untimeout', '/kick', '/ban', '/unban', '/softban', '/purge', '/lock', '/unlock', '/slowmode', '/role', '/nick'] },
   { id: 'logging', name: 'Logging', summary: 'Who did what: deleted and edited messages, joins and leaves, and every staff change with who made it.', feature: 'modules.standard', available: true, commands: [] },
   { id: 'utility', name: 'Utility', summary: 'Handy commands: server info, user info, avatars and native Discord polls.', feature: 'modules.basic', available: true, commands: ['/serverinfo', '/userinfo', '/avatar', '/poll', '/remind', '/roll'] },
   { id: 'leveling', name: 'Leveling', summary: 'XP for chatting, levels, leaderboards and role rewards.', feature: 'modules.standard', available: true, commands: ['/rank', '/leaderboard', '/xp'] },
@@ -924,6 +940,7 @@ export const TEMPLATE_VARIABLES = [
   { key: '{user.id}', description: 'Member’s ID' },
   { key: '{server}', description: 'Server name' },
   { key: '{memberCount}', description: 'Number of members' },
+  { key: '{user.created}', description: 'When their account was made (e.g. “3 years ago”)' },
 ] as const;
 
 /** Replaces {variables}; unknown ones are left untouched so typos are visible. */

@@ -1,6 +1,6 @@
 # Development Status
 
-_Last updated: 2026-11-25 — v0.4.0: every module deepened (about 60 new options and 12 new commands), unsaved-changes prompt._
+_Last updated: 2026-11-25 — v0.4.1: several ticket panels, random welcome messages, extra voice hubs, /unwarn, /giveaway list (on top of v0.4.0: every module deepened)._
 
 > **Current mode: Personal edition** (`PERSONAL_EDITION = true` in `packages/shared/src/brand.ts`). Selling is on hold:
 > every feature is unlocked on this PC with no limits and no sign-in, and the screens that need a paid DelyForge server

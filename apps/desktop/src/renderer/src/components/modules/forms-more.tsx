@@ -65,6 +65,33 @@ export function TempVoiceForm({ c, set, guild }: Props<'tempVoice'>) {
         <NumberField id="tv-limit" label="User limit (0 = none)" min={0} max={99} value={c.userLimit} onChange={(v) => set({ ...c, userLimit: v })} />
       </div>
       <ToggleRow title="Owner commands" description="Owners can use /voice lock, unlock, limit and rename; anyone can /voice claim a channel whose owner left." checked={c.ownerCommands} onChange={(v) => set({ ...c, ownerCommands: v })} />
+      {c.extraHubs.map((h, n) => {
+        const update = (patch: Partial<typeof h>) => set({ ...c, extraHubs: c.extraHubs.map((x, m) => (m === n ? { ...x, ...patch } : x)) });
+        return (
+          <div key={n} className="grid grid-cols-[1fr_1fr_7rem_auto] items-end gap-2 rounded-lg border border-border p-3">
+            <ChannelSelect id={`tv-xhub-${n}`} label={`Extra hub ${n + 1}`} kinds={['voice']} guild={guild} value={h.hubChannelId} onChange={(v) => v && update({ hubChannelId: v })} />
+            <Field label="Channel name" htmlFor={`tv-xname-${n}`}>
+              <Input id={`tv-xname-${n}`} maxLength={90} value={h.nameTemplate} onChange={(e) => update({ nameTemplate: e.target.value })} />
+            </Field>
+            <NumberField id={`tv-xlimit-${n}`} label="Limit" min={0} max={99} value={h.userLimit} onChange={(v) => update({ userLimit: v })} />
+            <Button size="icon" variant="ghost" aria-label="Remove hub" onClick={() => set({ ...c, extraHubs: c.extraHubs.filter((_, m) => m !== n) })}>
+              <Trash2 />
+            </Button>
+          </div>
+        );
+      })}
+      {c.extraHubs.length < 5 ? (
+        <Button
+          size="sm"
+          disabled={!guild.channels.some((ch) => ch.kind === 'voice' && ch.id !== c.hubChannelId && !c.extraHubs.some((h) => h.hubChannelId === ch.id))}
+          onClick={() => {
+            const free = guild.channels.find((ch) => ch.kind === 'voice' && ch.id !== c.hubChannelId && !c.extraHubs.some((h) => h.hubChannelId === ch.id));
+            if (free) set({ ...c, extraHubs: [...c.extraHubs, { hubChannelId: free.id, nameTemplate: '{user}’s squad', userLimit: 4 }] });
+          }}
+        >
+          <Plus /> Add another “join to create” channel (e.g. Duo, Squad)
+        </Button>
+      ) : null}
     </Section>
   );
 }

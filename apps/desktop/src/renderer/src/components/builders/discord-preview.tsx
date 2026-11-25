@@ -8,6 +8,7 @@ const SAMPLE = {
   'user.id': '123456789012345678',
   server: 'Your Server',
   memberCount: 128,
+  'user.created': '3 years ago',
   channel: '#general',
   target: '@Someone',
   level: 5,

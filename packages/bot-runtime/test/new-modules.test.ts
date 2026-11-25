@@ -341,3 +341,21 @@ describe('v0.4 utility and feeds', () => {
     store.close();
   });
 });
+
+describe('0.4.1 small additions', () => {
+  it('removes one warning, and lists running giveaways', () => {
+    const store = new BotStore(join(mkdtempSync(join(tmpdir(), 'df-041-')), 'b.db'));
+    store.addWarning('g', 'u', 'm', 'first');
+    store.addWarning('g', 'u', 'm', 'second');
+    const [newest] = store.warnings('g', 'u');
+    expect(store.removeWarning('g', 'someoneElse', newest!.id)).toBe(false);
+    expect(store.removeWarning('g', 'u', newest!.id)).toBe(true);
+    expect(store.warnings('g', 'u').map((w) => w.reason)).toEqual(['first']);
+    const id = store.addGiveaway({ guildId: 'g', channelId: 'c', prize: 'Nitro', winners: 1, hostId: 'h', endsAt: Date.now() + 60_000, requiredRoleId: null });
+    store.toggleEntry(id, 'a');
+    expect(store.runningGiveaways('g')).toMatchObject([{ id, prize: 'Nitro', entries: 1 }]);
+    store.endGiveaway(id, []);
+    expect(store.runningGiveaways('g')).toEqual([]);
+    store.close();
+  });
+});

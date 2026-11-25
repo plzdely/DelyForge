@@ -28,6 +28,14 @@ const MODERATION: CommandJSON[] = [
     .addUserOption((o) => o.setName('member').setDescription('Whose warnings').setRequired(true))
     .toJSON(),
   new SlashCommandBuilder()
+    .setName('unwarn')
+    .setDescription('Remove one warning (see the numbers in /warnings)')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
+    .setDMPermission(false)
+    .addUserOption((o) => o.setName('member').setDescription('Whose warning').setRequired(true))
+    .addIntegerOption((o) => o.setName('number').setDescription('Which warning, as numbered in /warnings').setRequired(true).setMinValue(1).setMaxValue(25))
+    .toJSON(),
+  new SlashCommandBuilder()
     .setName('clearwarnings')
     .setDescription('Remove all of a member’s warnings')
     .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
@@ -324,6 +332,7 @@ const GIVEAWAY: CommandJSON = new SlashCommandBuilder()
       .setDescription('Pick another winner')
       .addIntegerOption((o) => o.setName('id').setDescription('Giveaway number').setRequired(true).setMinValue(1)),
   )
+  .addSubcommand((s) => s.setName('list').setDescription('Show the giveaways that are running'))
   .toJSON();
 
 export function desiredCommands(config: ModuleConfigs): CommandJSON[] {

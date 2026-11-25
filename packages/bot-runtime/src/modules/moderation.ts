@@ -27,6 +27,7 @@ export const MODERATION_COMMANDS = new Set([
   'warn',
   'warnings',
   'clearwarnings',
+  'unwarn',
   'history',
   'case',
   'note',
@@ -254,6 +255,18 @@ export async function handleModerationCommand(ctx: ModuleContext, i: ChatInputCo
       await modLog(ctx, guild, { title: 'Slowmode', description: `<#${channel.id}>: ${seconds ? `${seconds}s` : 'off'} — by <@${actor.id}>`, color: COLORS.info });
       await reply(i, seconds ? `🐢 Slowmode in <#${channel.id}>: one message every ${seconds}s.` : `Slowmode is off in <#${channel.id}>.`);
       return;
+    }
+    case 'unwarn': {
+      const user = i.options.getUser('member', true);
+      if (user.id === actor.id) return void (await reply(i, 'You can’t remove your own warnings.'));
+      const member = await fetchTarget();
+      const problem = member ? hierarchyProblem(guild, actor, member) : null;
+      if (problem) return void (await reply(i, problem));
+      // Numbers match /warnings (newest first, active ones only).
+      const w = ctx.store.warnings(guild.id, user.id, since)[i.options.getInteger('number', true) - 1];
+      if (!w || !ctx.store.removeWarning(guild.id, user.id, w.id)) return void (await reply(i, 'There’s no warning with that number — check /warnings.'));
+      await modLog(ctx, guild, { title: 'Warning removed', description: `<@${user.id}>: “${truncate(w.reason, 200)}” removed by <@${actor.id}>.`, color: COLORS.info });
+      return void (await reply(i, `Removed the warning “${truncate(w.reason, 80)}” from **${user.username}**.`));
     }
     case 'clearwarnings': {
       const user = i.options.getUser('member', true);

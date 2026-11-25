@@ -286,6 +286,22 @@ export class BotStore {
     return (this.db.prepare('SELECT COUNT(*) AS n FROM warnings WHERE guild_id = ? AND user_id = ? AND created_at >= ?').get(guildId, userId, new Date(sinceMs).toISOString()) as { n: number }).n;
   }
 
+  /** Removes one warning by its ID; false if it isn't this member's. */
+  removeWarning(guildId: string, userId: string, id: number): boolean {
+    return Number(this.db.prepare('DELETE FROM warnings WHERE id = ? AND guild_id = ? AND user_id = ?').run(id, guildId, userId).changes) === 1;
+  }
+
+  /** Giveaways still running in a server, soonest to end first. */
+  runningGiveaways(guildId: string): { id: number; prize: string; channelId: string; endsAt: number; entries: number }[] {
+    const rows = this.db
+      .prepare(
+        `SELECT g.id, g.prize, g.channel_id, g.ends_at, (SELECT COUNT(*) FROM giveaway_entries e WHERE e.giveaway_id = g.id) AS entries
+         FROM giveaways g WHERE g.guild_id = ? AND g.ended = 0 ORDER BY g.ends_at LIMIT 20`,
+      )
+      .all(guildId) as { id: number; prize: string; channel_id: string; ends_at: number; entries: number }[];
+    return rows.map((r) => ({ id: r.id, prize: r.prize, channelId: r.channel_id, endsAt: r.ends_at, entries: r.entries }));
+  }
+
   clearWarnings(guildId: string, userId: string): number {
     return Number(this.db.prepare('DELETE FROM warnings WHERE guild_id = ? AND user_id = ?').run(guildId, userId).changes);
   }

@@ -28,7 +28,13 @@ export async function onVoiceState(ctx: ModuleContext, before: VoiceState, after
     await removeIfEmpty(ctx, guild, before.channelId);
   }
   const config = ctx.config(guild.id).tempVoice;
-  if (!config.enabled || !config.hubChannelId || after.channelId !== config.hubChannelId || before.channelId === after.channelId) return;
+  if (!config.enabled || !after.channelId || before.channelId === after.channelId) return;
+  // Which "join to create" channel they joined: the main one, or one of the extra ones with its own name and limit.
+  const hub =
+    after.channelId === config.hubChannelId
+      ? { nameTemplate: config.nameTemplate, userLimit: config.userLimit }
+      : config.extraHubs.find((h) => h.hubChannelId === after.channelId);
+  if (!hub) return;
   const member = after.member;
   if (!member || member.user.bot) return;
   const own = ctx.store.tempChannelOf(guild.id, member.id);
@@ -42,10 +48,10 @@ export async function onVoiceState(ctx: ModuleContext, before: VoiceState, after
   // Created inside the category without explicit permissions, so it keeps the category's (e.g. private) settings.
   const created = await guild.channels
     .create({
-      name: tempChannelName(config.nameTemplate, member.displayName),
+      name: tempChannelName(hub.nameTemplate, member.displayName),
       type: ChannelType.GuildVoice,
       parent,
-      ...(config.userLimit ? { userLimit: config.userLimit } : {}),
+      ...(hub.userLimit ? { userLimit: hub.userLimit } : {}),
       reason: `Temporary voice channel for ${member.user.tag}`,
     })
     .catch((e: Error) => {

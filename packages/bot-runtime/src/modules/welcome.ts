@@ -1,3 +1,4 @@
+import { randomInt } from 'node:crypto';
 import { renderTemplate } from '@delyforge/shared';
 import { ButtonStyle, ComponentType, type GuildMember, type PartialGuildMember } from 'discord.js';
 import { type ModuleContext, SAFE_MENTIONS, hexToInt, sendableChannel, templateVars, tryDM } from './context.js';
@@ -45,7 +46,8 @@ export async function sendWelcome(ctx: ModuleContext, member: GuildMember): Prom
   if (config.welcome.enabled) {
     const channel = await sendableChannel(ctx, member.guild, config.welcome.channelId, 'Welcome message');
     if (channel) {
-      const text = renderTemplate(config.welcome.message, vars);
+      const versions = [config.welcome.message, ...config.welcome.extraMessages];
+      const text = renderTemplate(versions[randomInt(versions.length)]!, vars);
       const style = config.welcome.style;
       const buttons = config.welcome.buttons.length
         ? [{ type: ComponentType.ActionRow as const, components: config.welcome.buttons.map((b) => ({ type: ComponentType.Button as const, style: ButtonStyle.Link as const, label: b.label, url: b.url })) }]
