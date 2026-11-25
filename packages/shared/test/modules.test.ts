@@ -260,3 +260,13 @@ describe('settings saved by v0.3 keep loading after the v0.4 additions', () => {
     expect((parsed['tickets']!.data as { claimButton: boolean }).claimButton).toBe(true);
   });
 });
+
+describe('send a message as the bot', () => {
+  it('needs text or an embed, and a real user or channel ID', async () => {
+    const { sendMessageContentSchema } = await import('../src/index.js');
+    const dm = { kind: 'dm', userId: '123456789012345678' };
+    expect(sendMessageContentSchema.safeParse({ target: dm, content: '  ', embedId: '', allowPings: false }).success).toBe(false);
+    expect(sendMessageContentSchema.safeParse({ target: dm, content: '', embedId: 'i1', allowPings: false }).success).toBe(true);
+    expect(sendMessageContentSchema.safeParse({ target: { kind: 'dm', userId: 'bob' }, content: 'hi', embedId: '', allowPings: false }).success).toBe(false);
+  });
+});

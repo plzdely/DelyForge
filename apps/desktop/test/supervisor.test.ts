@@ -345,6 +345,21 @@ describe('BotSupervisor — runtime messages', () => {
     expect((dms[0] as { text: string }).text).toMatch(/lost permissions.*Send Messages/s);
   });
 
+  it('sends a message as the bot through the running process', async () => {
+    const { supervisor, addBot } = setup();
+    const id = addBot('Aurora');
+    const message = { target: { kind: 'dm' as const, userId: '123456789012345678' }, content: 'Hello!', embedId: '', allowPings: false };
+    expect((await supervisor.sendMessage(id, message)).ok).toBe(false); // not running
+    supervisor.start(id);
+    const p = FakeProcess.all[0]!;
+    p.ready();
+    const answer = supervisor.sendMessage(id, message);
+    const req = p.received.find((m) => m.type === 'send-message') as { requestId: string; message: unknown };
+    expect(req.message).toEqual(message);
+    p.send({ type: 'send-result', requestId: req.requestId, ok: true, message: 'Sent to dely by DM.', url: 'https://discord.com/channels/@me/1/2' });
+    expect(await answer).toEqual({ ok: true, message: 'Sent to dely by DM.', url: 'https://discord.com/channels/@me/1/2' });
+  });
+
   it('keeps the crash DM until the bot is back online', async () => {
     const { supervisor, addBot } = setup();
     const id = addBot('Aurora');

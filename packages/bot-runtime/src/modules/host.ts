@@ -1,7 +1,7 @@
-import { type BotModules, type Builders, type LogLevel, type ModuleConfigs, resolveGuildModules } from '@delyforge/shared';
-import { type ButtonInteraction, type ChatInputCommandInteraction, type Client, type CommandInteraction, Events, type Guild, MessageFlags, type ModalSubmitInteraction, type StringSelectMenuInteraction } from 'discord.js';
+import { type BotModules, type Builders, type LogLevel, type ModuleConfigs, type SendMessageInput, resolveGuildModules } from '@delyforge/shared';
+import { type ButtonInteraction, type ChatInputCommandInteraction, type Client, type CommandInteraction, Events, type Guild, MessageFlags, type ModalSubmitInteraction, PermissionFlagsBits, type StringSelectMenuInteraction } from 'discord.js';
 import { BotStore, planCommandSync } from '../store.js';
-import { commandKey, customCommandJSON, dueScheduledWorkflows, matchingWorkflows, runCustomCommand, runWorkflow } from './builders.js';
+import { commandKey, customCommandJSON, dueScheduledWorkflows, matchingWorkflows, renderEmbed, runCustomCommand, runWorkflow } from './builders.js';
 import { commandHash, desiredCommands } from './commands.js';
 import type { ModuleContext } from './context.js';
 import * as logging from './logging.js';
@@ -215,6 +215,39 @@ export class ModuleHost {
     const guild = this.client.guilds.cache.get(guildId);
     if (!guild) return { ok: false, message: 'The bot isn’t in that server (or is still starting).', issues: [] };
     return { ok: true, message: '', issues: diagnose(doctorInput(guild, this.config(guildId))) };
+  }
+
+  /** "Send message" from the app: posts in a channel or DMs someone, as the bot. */
+  async sendMessage(m: SendMessageInput): Promise<{ ok: boolean; message: string; url: string | null }> {
+    if (!this.client.isReady()) return { ok: false, message: 'The bot is still starting.', url: null };
+    const embed = m.embedId ? this.builders.embeds.find((e) => e.id === m.embedId) : undefined;
+    if (m.embedId && !embed) return { ok: false, message: 'That embed was deleted.', url: null };
+    const payload = {
+      content: m.content.trim() || undefined,
+      embeds: embed ? [renderEmbed(embed, {})] : undefined,
+      allowedMentions: m.allowPings ? { parse: ['users' as const, 'roles' as const, 'everyone' as const] } : { parse: [] as [] },
+    };
+    if (m.target.kind === 'dm') {
+      const user = await this.client.users.fetch(m.target.userId).catch(() => null);
+      if (!user) return { ok: false, message: 'No Discord user has that ID.', url: null };
+      if (user.bot) return { ok: false, message: 'Bots can’t receive DMs from other bots.', url: null };
+      const sent = await user.send(payload).catch(() => null);
+      return sent
+        ? { ok: true, message: `Sent to ${user.username} by DM.`, url: sent.url }
+        : { ok: false, message: `${user.username} doesn’t accept DMs from the bot (they need to share a server with it and allow DMs).`, url: null };
+    }
+    const guild = this.client.guilds.cache.get(m.target.guildId);
+    if (!guild) return { ok: false, message: 'The bot isn’t in that server.', url: null };
+    const channel = guild.channels.cache.get(m.target.channelId);
+    if (!channel?.isSendable()) return { ok: false, message: 'That channel doesn’t exist any more, or isn’t a text channel.', url: null };
+    const me = guild.members.me;
+    const perms = me && 'permissionsFor' in channel ? channel.permissionsFor(me) : null;
+    if (!perms?.has([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages])) return { ok: false, message: `The bot can’t post in #${channel.name} — give its role Send Messages there.`, url: null };
+    if (embed && !perms.has(PermissionFlagsBits.EmbedLinks)) return { ok: false, message: `The bot needs Embed Links in #${channel.name} to send an embed.`, url: null };
+    const sent = await channel.send(payload).catch((e: Error) => e);
+    if (sent instanceof Error) return { ok: false, message: `Discord refused it: ${sent.message}`, url: null };
+    this.log('info', `Sent a message in #${channel.name} (“${guild.name}”) from DelyForge.`);
+    return { ok: true, message: `Posted in #${channel.name}.`, url: sent.url };
   }
 
   notifyOwner(text: string): Promise<boolean> {

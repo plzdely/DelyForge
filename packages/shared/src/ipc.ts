@@ -21,7 +21,7 @@ import {
 import type { Entitlements } from './entitlements.js';
 import { type BotModules, type GuildInfo, type ModuleUpdateResult, updateModuleSchema } from './modules.js';
 import { type Builders, type WorkflowRun, saveBuildersSchema } from './builders.js';
-import { type DoctorIssue, doctorInputSchema, moduleTestSchema } from './runtime.js';
+import { type DoctorIssue, doctorInputSchema, moduleTestSchema, sendMessageInputSchema } from './runtime.js';
 import {
   type AccountStatus,
   type InvoiceInfo,
@@ -83,6 +83,7 @@ export const IPC_CHANNELS = {
   modulesUpdate: 'modules:update',
   modulesTest: 'modules:test',
   modulesDoctor: 'modules:doctor',
+  messagesSend: 'messages:send',
   buildersGet: 'builders:get',
   buildersSave: 'builders:save',
   workflowRuns: 'builders:workflow-runs',
@@ -209,6 +210,7 @@ export const ipcInputSchemas = {
   [IPC_CHANNELS.modulesUpdate]: updateModuleSchema,
   [IPC_CHANNELS.modulesTest]: moduleTestSchema,
   [IPC_CHANNELS.modulesDoctor]: doctorInputSchema,
+  [IPC_CHANNELS.messagesSend]: sendMessageInputSchema,
   [IPC_CHANNELS.buildersGet]: botIdInputSchema,
   [IPC_CHANNELS.buildersSave]: saveBuildersSchema,
   [IPC_CHANNELS.workflowRuns]: botIdInputSchema,
@@ -431,6 +433,10 @@ export interface DelyForgeBridge {
     test(input: z.input<typeof moduleTestSchema>): Promise<IpcResult<{ ok: boolean; message: string }>>;
     /** Setup Doctor: the running bot checks a server's channels, roles and permissions against the saved settings. */
     doctor(input: z.input<typeof doctorInputSchema>): Promise<IpcResult<{ ok: boolean; message: string; issues: DoctorIssue[] }>>;
+  };
+  messages: {
+    /** The running bot sends a message you wrote, to a server channel or as a DM. */
+    send(input: z.input<typeof sendMessageInputSchema>): Promise<IpcResult<{ ok: boolean; message: string; url: string | null }>>;
   };
   builders: {
     get(id: string): Promise<IpcResult<Builders>>;

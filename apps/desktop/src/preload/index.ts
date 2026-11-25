@@ -139,6 +139,9 @@ const bridge: DelyForgeBridge = {
     test: (input) => invoke(IPC_CHANNELS.modulesTest, input),
     doctor: (input) => invoke(IPC_CHANNELS.modulesDoctor, input),
   },
+  messages: {
+    send: (input) => invoke(IPC_CHANNELS.messagesSend, input),
+  },
   builders: {
     get: (id) => invoke(IPC_CHANNELS.buildersGet, { id }),
     save: (id, builders) => invoke(IPC_CHANNELS.buildersSave, { id, builders }),

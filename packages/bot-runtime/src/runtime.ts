@@ -4,6 +4,7 @@ import {
   type BotPresence,
   type FromRuntime,
   type DoctorIssue,
+  type SendMessageInput,
   type LogLevel,
   type ModuleTest,
   type RuntimeFatalCode,
@@ -32,6 +33,7 @@ export interface BotClient {
   runTest(guildId: string, test: ModuleTest): Promise<{ ok: boolean; message: string }>;
   notifyOwner(text: string): Promise<boolean>;
   doctor(guildId: string): { ok: boolean; message: string; issues: DoctorIssue[] };
+  sendMessage(message: SendMessageInput): Promise<{ ok: boolean; message: string; url: string | null }>;
   ping(): number | null;
   guildCount(): number;
 }
@@ -159,6 +161,14 @@ export function createBotRuntime(deps: RuntimeDeps) {
         result = { ok: false, message: (e as Error).message, issues: [] };
       }
       deps.send({ type: 'doctor-result', requestId: msg.requestId, ok: result.ok, message: redact(result.message).slice(0, 500), issues: result.issues });
+      return;
+    }
+
+    if (msg.type === 'send-message') {
+      const result = client
+        ? await client.sendMessage(msg.message).catch((e: Error) => ({ ok: false, message: e.message, url: null }))
+        : { ok: false, message: 'The bot isn’t running.', url: null };
+      deps.send({ type: 'send-result', requestId: msg.requestId, ok: result.ok, message: redact(result.message).slice(0, 500), url: result.url });
       return;
     }
 

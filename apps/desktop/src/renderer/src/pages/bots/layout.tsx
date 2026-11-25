@@ -36,6 +36,7 @@ const TABS = [
   { to: 'commands', label: 'Commands', end: false },
   { to: 'embeds', label: 'Embeds', end: false },
   { to: 'automations', label: 'Automations', end: false },
+  { to: 'send', label: 'Send message', end: false },
   { to: 'console', label: 'Console', end: false },
   { to: 'settings', label: 'Settings', end: false },
 ];

@@ -39,6 +39,25 @@ export const doctorIssueSchema = z.object({
 export type DoctorIssue = z.infer<typeof doctorIssueSchema>;
 export const doctorInputSchema = z.object({ id: z.uuid(), guildId: z.string().regex(/^\d{17,20}$/) }).strict();
 
+/** "Send message": the bot posts something you wrote, in a server channel or as a DM. */
+export const sendMessageTargetSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('channel'), guildId: z.string().regex(/^\d{17,20}$/), channelId: z.string().regex(/^\d{17,20}$/) }).strict(),
+  z.object({ kind: z.literal('dm'), userId: z.string().regex(/^\d{17,20}$/, 'Paste a user ID (17–20 digits)') }).strict(),
+]);
+export const sendMessageContentSchema = z
+  .object({
+    target: sendMessageTargetSchema,
+    content: z.string().max(2000),
+    /** One of the bot's saved embeds (or '' for none). */
+    embedId: z.union([z.literal(''), z.string().regex(/^[a-z0-9]{1,16}$/)]),
+    /** Let @user, @role and @everyone mentions in the text actually ping. */
+    allowPings: z.boolean(),
+  })
+  .strict()
+  .refine((m) => m.content.trim() !== '' || m.embedId !== '', 'Write a message or choose an embed');
+export const sendMessageInputSchema = z.object({ id: z.uuid(), message: sendMessageContentSchema }).strict();
+export type SendMessageInput = z.infer<typeof sendMessageContentSchema>;
+
 export const moduleTestSchema = z
   .object({ id: z.uuid(), guildId: z.string().regex(/^\d{17,20}$/), test: z.enum(MODULE_TESTS) })
   .strict();
@@ -55,6 +74,7 @@ export const toRuntimeSchema = z.discriminatedUnion('type', [
   /** DM the bot's owner (the person who owns the application in the Developer Portal) about a problem. */
   z.object({ type: z.literal('notify-owner'), text: z.string().min(1).max(1800) }),
   z.object({ type: z.literal('doctor'), requestId: z.string().min(1).max(40), guildId: z.string().regex(/^\d{17,20}$/) }),
+  z.object({ type: z.literal('send-message'), requestId: z.string().min(1).max(40), message: sendMessageContentSchema }),
 ]);
 export type ToRuntime = z.infer<typeof toRuntimeSchema>;
 
@@ -92,6 +112,7 @@ export const fromRuntimeSchema = z.discriminatedUnion('type', [
     message: z.string().max(500),
   }),
   z.object({ type: z.literal('test-result'), requestId: z.string().max(40), ok: z.boolean(), message: z.string().max(500) }),
+  z.object({ type: z.literal('send-result'), requestId: z.string().max(40), ok: z.boolean(), message: z.string().max(500), url: z.string().max(300).nullable() }),
   z.object({ type: z.literal('doctor-result'), requestId: z.string().max(40), ok: z.boolean(), message: z.string().max(500), issues: z.array(doctorIssueSchema).max(100) }),
   /** Something the owner should fix, e.g. the bot lost permissions a module needs. */
   z.object({ type: z.literal('problem'), kind: z.enum(['permissions']), message: z.string().max(1000) }),

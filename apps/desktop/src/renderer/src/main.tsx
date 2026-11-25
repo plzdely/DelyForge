@@ -12,6 +12,7 @@ import { AccountPage } from '@/pages/account';
 import { BotConsole } from '@/pages/bots/console';
 import { AiBuilderPage } from '@/pages/ai-builder';
 import { BotMembers } from '@/pages/bots/members';
+import { SendMessageTab } from '@/pages/bots/send';
 import { MarketplacePage } from '@/pages/marketplace';
 import { AnalyticsPage } from '@/pages/analytics';
 import { TeamPage } from '@/pages/team';
@@ -62,6 +63,7 @@ const router = createHashRouter([
           { path: 'commands', element: <CommandsTab /> },
           { path: 'embeds', element: <EmbedsTab /> },
           { path: 'automations', element: <AutomationsTab /> },
+          { path: 'send', element: <SendMessageTab /> },
           { path: 'console', element: <BotConsole /> },
           { path: 'settings', element: <BotSettings /> },
           { path: 'connect', element: <ConnectWizard /> },

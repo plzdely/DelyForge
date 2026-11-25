@@ -7,6 +7,7 @@ import {
   type DoctorIssue,
   type FromRuntime,
   type ModuleTest,
+  type SendMessageInput,
   type NotificationType,
   type RuntimeOptions,
   type ToRuntime,
@@ -319,6 +320,14 @@ export class BotSupervisor {
     return { ok: r.ok, message: r.message };
   }
 
+  /** "Send message": the running bot posts what you wrote. */
+  async sendMessage(botId: string, message: SendMessageInput): Promise<{ ok: boolean; message: string; url: string | null }> {
+    const r = await this.ask(botId, (requestId) => ({ type: 'send-message', requestId, message }));
+    if (r === 'offline') return { ok: false, message: 'Start the bot first — messages are sent by the running bot.', url: null };
+    if (r?.type !== 'send-result') return { ok: false, message: 'The bot stopped or didn’t answer within 20 seconds.', url: null };
+    return { ok: r.ok, message: r.message, url: r.url };
+  }
+
   /** Setup Doctor: the running bot checks a server against the saved settings. */
   async doctor(botId: string, guildId: string): Promise<{ ok: boolean; message: string; issues: DoctorIssue[] }> {
     const r = await this.ask(botId, (requestId) => ({ type: 'doctor', requestId, guildId }));
@@ -456,6 +465,7 @@ export class BotSupervisor {
         break;
       case 'test-result':
       case 'doctor-result':
+      case 'send-result':
         h.requests.get(msg.requestId)?.(msg);
         break;
       case 'problem':

@@ -5,6 +5,13 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-11-25
+
+### Added
+- **Send message** tab on every bot: write a message (optionally with a saved embed), pick a server channel or paste
+  someone's user ID for a DM, and the running bot sends it as itself. Live preview, a choice whether mentions ping,
+  clear reasons when it can't be sent, and links to what was sent this session.
+
 ## [0.4.1] - 2026-11-25
 
 ### Added
