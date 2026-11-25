@@ -1,5 +1,5 @@
-import { type BotProject, isWithinLimit } from '@delyforge/shared';
-import { ArrowLeft, Bot, Star } from 'lucide-react';
+import { type BotProject, buildInviteUrl, isWithinLimit } from '@delyforge/shared';
+import { ArrowLeft, Bot, Star, UserPlus } from 'lucide-react';
 import { createContext, useContext, useMemo } from 'react';
 import { Link, NavLink, Outlet, useNavigate, useParams } from 'react-router';
 import { BotIdentityAvatar, botBanner } from '@/components/bots/bot-avatar';
@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { EmptyState, Skeleton } from '@/components/ui/misc';
+import { call } from '@/lib/bridge';
 import { cn } from '@/lib/cn';
 import { useEntitlements } from '@/lib/entitlements';
 import { useBot, useBots } from '@/lib/queries';
@@ -111,6 +112,16 @@ export function BotLayout() {
             </div>
             </div>
             <div className="flex items-center gap-1 pb-0.5">
+              {b.discordApplicationId ? (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  title="Opens Discord in your browser to add this bot to a server you manage"
+                  onClick={() => void call((x) => x.shell.openExternal(buildInviteUrl(b.discordApplicationId!, b.permissions)))}
+                >
+                  <UserPlus /> Add to server
+                </Button>
+              ) : null}
               <BotControls bot={b} />
               <BotActionsMenu bot={b} actions={actions} canAdd={canAdd} />
             </div>

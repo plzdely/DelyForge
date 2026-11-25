@@ -1,6 +1,7 @@
-import { type BotModules, type Builders, type LogLevel, type ModuleConfigs, type SendMessageInput, resolveGuildModules } from '@delyforge/shared';
-import { type ButtonInteraction, type ChatInputCommandInteraction, type Client, type CommandInteraction, Events, type Guild, MessageFlags, type ModalSubmitInteraction, PermissionFlagsBits, type StringSelectMenuInteraction } from 'discord.js';
+import { type BotModules, type Builders, DM_ROLE_LIMITS, type LogLevel, type ModuleConfigs, type SendMessageInput, renderTemplate, resolveGuildModules } from '@delyforge/shared';
+import { type APIEmbed, type ButtonInteraction, type ChatInputCommandInteraction, type Client, type CommandInteraction, Events, type Guild, type GuildMember, MessageFlags, type ModalSubmitInteraction, PermissionFlagsBits, type StringSelectMenuInteraction } from 'discord.js';
 import { BotStore, planCommandSync } from '../store.js';
+import { templateVars } from './context.js';
 import { commandKey, customCommandJSON, dueScheduledWorkflows, matchingWorkflows, renderEmbed, runCustomCommand, runWorkflow } from './builders.js';
 import { commandHash, desiredCommands } from './commands.js';
 import type { ModuleContext } from './context.js';
@@ -227,6 +228,7 @@ export class ModuleHost {
       embeds: embed ? [renderEmbed(embed, {})] : undefined,
       allowedMentions: m.allowPings ? { parse: ['users' as const, 'roles' as const, 'everyone' as const] } : { parse: [] as [] },
     };
+    if (m.target.kind === 'role') return this.dmRole(m.target.guildId, m.target.roleId, m, embed ? renderEmbed(embed, {}) : undefined);
     if (m.target.kind === 'dm') {
       const user = await this.client.users.fetch(m.target.userId).catch(() => null);
       if (!user) return { ok: false, message: 'No Discord user has that ID.', url: null };
@@ -248,6 +250,58 @@ export class ModuleHost {
     if (sent instanceof Error) return { ok: false, message: `Discord refused it: ${sent.message}`, url: null };
     this.log('info', `Sent a message in #${channel.name} (“${guild.name}”) from DelyForge.`);
     return { ok: true, message: `Posted in #${channel.name}.`, url: sent.url };
+  }
+
+  /** Servers with a "DM a role" run going (one at a time per server). */
+  private dmRuns = new Set<string>();
+
+  /** Starts DMing every member with a role, in the background. Answers straight away with how many it will reach. */
+  private async dmRole(guildId: string, roleId: string, m: SendMessageInput, embed: APIEmbed | undefined): Promise<{ ok: boolean; message: string; url: string | null }> {
+    const guild = this.client.guilds.cache.get(guildId);
+    if (!guild) return { ok: false, message: 'The bot isn’t in that server.', url: null };
+    if (this.dmRuns.has(guildId)) return { ok: false, message: 'A DM run is already going in this server — wait for it to finish (see the console).', url: null };
+    const everyone = roleId === guildId;
+    if (!everyone && !guild.roles.cache.has(roleId)) return { ok: false, message: 'That role doesn’t exist any more.', url: null };
+    // The member list comes over the API, which needs the Server Members intent switched on in the Developer Portal.
+    const members: GuildMember[] = [];
+    try {
+      let after: string | undefined;
+      for (let page = 0; page < 50; page++) {
+        const batch = await guild.members.list({ limit: 1000, after });
+        members.push(...batch.values());
+        if (batch.size < 1000) break;
+        after = batch.lastKey();
+      }
+    } catch {
+      return { ok: false, message: 'Discord didn’t share the member list. Turn on “Server Members Intent” in the Developer Portal (your app → Bot), then try again.', url: null };
+    }
+    const all = members.filter((x) => !x.user.bot && (everyone || x.roles.cache.has(roleId)));
+    if (!all.length) return { ok: false, message: 'Nobody (apart from bots) has that role.', url: null };
+    const targets = all.slice(0, DM_ROLE_LIMITS.maxRecipients);
+    const label = everyone ? 'everyone' : `@${guild.roles.cache.get(roleId)?.name ?? 'role'}`;
+    this.dmRuns.add(guildId);
+    this.log('info', `DM run started in “${guild.name}”: ${targets.length} member(s) with ${label}.`);
+    void (async () => {
+      let sent = 0;
+      let failed = 0;
+      try {
+        for (const [n, member] of targets.entries()) {
+          if (!this.client.isReady()) break;
+          const content = m.content.trim() ? renderTemplate(m.content, templateVars(member)) : undefined;
+          const ok = await member.send({ content, embeds: embed ? [embed] : undefined, allowedMentions: { parse: [] } }).then(() => true, () => false);
+          if (ok) sent++;
+          else failed++;
+          if ((n + 1) % 50 === 0) this.log('info', `DM run in “${guild.name}”: ${n + 1} of ${targets.length} done.`);
+          await new Promise((r) => setTimeout(r, DM_ROLE_LIMITS.pauseMs));
+        }
+      } finally {
+        this.dmRuns.delete(guildId);
+        this.log('info', `DM run in “${guild.name}” finished: ${sent} delivered, ${failed} couldn’t be reached (DMs closed).`);
+      }
+    })();
+    const minutes = Math.max(1, Math.ceil((targets.length * DM_ROLE_LIMITS.pauseMs) / 60_000));
+    const capped = all.length > targets.length ? ` (the first ${targets.length} of ${all.length} — the limit per run)` : '';
+    return { ok: true, message: `Sending to ${targets.length} member(s) with ${label}${capped}. It takes about ${minutes} min; progress shows in the Console tab.`, url: null };
   }
 
   notifyOwner(text: string): Promise<boolean> {

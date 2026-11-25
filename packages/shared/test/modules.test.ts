@@ -270,3 +270,14 @@ describe('send a message as the bot', () => {
     expect(sendMessageContentSchema.safeParse({ target: { kind: 'dm', userId: 'bob' }, content: 'hi', embedId: '', allowPings: false }).success).toBe(false);
   });
 });
+
+describe('DM a role', () => {
+  it('needs a server and a role, and has safety limits', async () => {
+    const { sendMessageContentSchema, DM_ROLE_LIMITS } = await import('../src/index.js');
+    const ok = sendMessageContentSchema.safeParse({ target: { kind: 'role', guildId: '123456789012345678', roleId: '123456789012345678' }, content: 'Hi {user.name}!', embedId: '', allowPings: false });
+    expect(ok.success).toBe(true);
+    expect(sendMessageContentSchema.safeParse({ target: { kind: 'role', guildId: '123456789012345678' }, content: 'Hi', embedId: '', allowPings: false }).success).toBe(false);
+    expect(DM_ROLE_LIMITS.maxRecipients).toBeLessThanOrEqual(1000);
+    expect(DM_ROLE_LIMITS.pauseMs).toBeGreaterThanOrEqual(1000);
+  });
+});

@@ -1,5 +1,5 @@
-import { type SendMessageInput, sendMessageContentSchema } from '@delyforge/shared';
-import { ExternalLink, Lock, Send } from 'lucide-react';
+import { DM_ROLE_LIMITS, type SendMessageInput, sendMessageContentSchema } from '@delyforge/shared';
+import { ExternalLink, Lock, Send, TriangleAlert } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { DiscordMessage, EmbedPreview } from '@/components/builders/discord-preview';
@@ -7,6 +7,7 @@ import { ChannelSelect, GuildPicker, ToggleRow } from '@/components/modules/pick
 import { Button } from '@/components/ui/button';
 import { Card, CardBody, CardHeader } from '@/components/ui/card';
 import { Field, Input, Textarea } from '@/components/ui/input';
+import { ConfirmDialog } from '@/components/ui/dialog';
 import { EmptyState, Skeleton } from '@/components/ui/misc';
 import { Segmented } from '@/components/ui/segmented';
 import { Select } from '@/components/ui/select';
@@ -26,7 +27,9 @@ export function SendMessageTab() {
   const guilds = useGuilds(bot.id, bot.hasToken);
   const refresh = useRefreshGuilds(bot.id);
   const builders = useBuilders(bot.id);
-  const [kind, setKind] = useState<'channel' | 'dm'>('channel');
+  const [kind, setKind] = useState<'channel' | 'dm' | 'role'>('channel');
+  const [roleId, setRoleId] = useState('');
+  const [confirming, setConfirming] = useState(false);
   const [guildId, setGuildId] = useState<string | null>(null);
   const [channelId, setChannelId] = useState<string | null>(null);
   const [userId, setUserId] = useState('');
@@ -38,7 +41,10 @@ export function SendMessageTab() {
 
   const list = guilds.data ?? [];
   const guild = list.find((g) => g.id === guildId) ?? list[0];
-  useEffect(() => setChannelId(null), [guild?.id]);
+  useEffect(() => {
+    setChannelId(null);
+    setRoleId('');
+  }, [guild?.id]);
 
   if (!bot.hasToken) {
     return (
@@ -53,14 +59,26 @@ export function SendMessageTab() {
   const embed = embeds.find((e) => e.id === embedId);
   const online = state.status === 'online';
   const target: SendMessageInput['target'] | null =
-    kind === 'dm' ? (/^\d{17,20}$/.test(userId.trim()) ? { kind: 'dm', userId: userId.trim() } : null) : guild && channelId ? { kind: 'channel', guildId: guild.id, channelId } : null;
+    kind === 'dm'
+      ? /^\d{17,20}$/.test(userId.trim())
+        ? { kind: 'dm', userId: userId.trim() }
+        : null
+      : kind === 'role'
+        ? guild && roleId
+          ? { kind: 'role', guildId: guild.id, roleId }
+          : null
+        : guild && channelId
+          ? { kind: 'channel', guildId: guild.id, channelId }
+          : null;
   const draft = target ? sendMessageContentSchema.safeParse({ target, content, embedId, allowPings }) : null;
   const problem = !online
     ? 'Start the bot to send messages.'
     : !target
       ? kind === 'dm'
         ? 'Paste the person’s user ID.'
-        : 'Choose a channel.'
+        : kind === 'role'
+          ? 'Choose who gets the DM.'
+          : 'Choose a channel.'
       : draft && !draft.success
         ? (draft.error.issues[0]?.message ?? 'Check the message.')
         : null;
@@ -68,7 +86,12 @@ export function SendMessageTab() {
   const send = () => {
     if (!draft?.success) return;
     setSending(true);
-    const where = target?.kind === 'dm' ? `DM to ${userId.trim()}` : `#${guild?.channels.find((c) => c.id === channelId)?.name ?? 'channel'} in ${guild?.name ?? 'server'}`;
+    const where =
+      target?.kind === 'dm'
+        ? `DM to ${userId.trim()}`
+        : target?.kind === 'role'
+          ? `DMs to ${roleId === guild?.id ? 'everyone' : `@${guild?.roles.find((r) => r.id === roleId)?.name ?? 'role'}`} in ${guild?.name ?? 'server'}`
+          : `#${guild?.channels.find((c) => c.id === channelId)?.name ?? 'channel'} in ${guild?.name ?? 'server'}`;
     call((b) => b.messages.send({ id: bot.id, message: draft.data }))
       .then((r) => {
         if (!r.ok) return void toast.error('Not sent', { description: r.message });
@@ -92,9 +115,36 @@ export function SendMessageTab() {
             options={[
               { value: 'channel', label: 'Server channel' },
               { value: 'dm', label: 'Direct message' },
+              { value: 'role', label: 'DM a role' },
             ]}
           />
-          {kind === 'channel' ? (
+          {kind === 'role' ? (
+            guild ? (
+              <div className="space-y-3">
+                <GuildPicker guilds={list} value={guild.id} onChange={setGuildId} onRefresh={() => refresh.mutate()} refreshing={refresh.isPending} />
+                <Field label="Send a DM to" htmlFor="send-role" hint={`Everyone with this role gets their own DM — about one every ${DM_ROLE_LIMITS.pauseMs / 1000} s, up to ${DM_ROLE_LIMITS.maxRecipients} people per run. {user} and {user.name} are filled in for each person.`}>
+                  <Select id="send-role" value={roleId} onChange={(e) => setRoleId(e.target.value)}>
+                    <option value="">— Choose a role —</option>
+                    <option value={guild.id}>@everyone (every member)</option>
+                    {guild.roles.map((r) => (
+                      <option key={r.id} value={r.id}>
+                        @{r.name}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                <div className="flex gap-3 rounded-lg border border-warning/30 bg-warning-soft px-4 py-3 text-xs text-fg-muted">
+                  <TriangleAlert className="mt-0.5 size-4 shrink-0 text-warning" />
+                  <div>
+                    Discord doesn’t allow unwanted mass DMs — if members report them, Discord can disable your bot. Safest: make an opt-in role (e.g. “Announcements”) and DM only that.
+                    It also needs <strong>Server Members Intent</strong> switched on in the Developer Portal.
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-fg-muted">Invite the bot to a server first.</p>
+            )
+          ) : kind === 'channel' ? (
             guild ? (
               <div className="space-y-3">
                 <GuildPicker guilds={list} value={guild.id} onChange={setGuildId} onRefresh={() => refresh.mutate()} refreshing={refresh.isPending} />
@@ -128,13 +178,24 @@ export function SendMessageTab() {
           <ToggleRow title="Let mentions ping" description="Off: @names in the text show but don’t notify anyone. On: @user, @role and @everyone really ping." checked={allowPings} onChange={setAllowPings} />
           <div className="flex items-center justify-end gap-3">
             {problem ? <span className="mr-auto text-xs text-fg-subtle">{problem}</span> : null}
-            <Button variant="primary" disabled={!!problem || sending} onClick={send}>
+            <Button variant="primary" disabled={!!problem || sending} onClick={() => (kind === 'role' ? setConfirming(true) : send())}>
               <Send /> {sending ? 'Sending…' : 'Send'}
             </Button>
           </div>
         </CardBody>
       </Card>
 
+      <ConfirmDialog
+        open={confirming}
+        onOpenChange={setConfirming}
+        title="Send this as a DM to everyone in the role?"
+        description={`Each member ${roleId === guild?.id ? 'of the server' : 'with the role'} gets their own copy, slowly, over the next minutes (bots are skipped, at most ${DM_ROLE_LIMITS.maxRecipients}). This can’t be undone, and unwanted mass DMs can get a bot disabled by Discord.`}
+        confirmLabel="Send the DMs"
+        onConfirm={() => {
+          setConfirming(false);
+          send();
+        }}
+      />
       <div className="space-y-3">
         <Card>
           <CardHeader title="Preview" />

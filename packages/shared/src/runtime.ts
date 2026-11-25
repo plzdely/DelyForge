@@ -43,7 +43,12 @@ export const doctorInputSchema = z.object({ id: z.uuid(), guildId: z.string().re
 export const sendMessageTargetSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('channel'), guildId: z.string().regex(/^\d{17,20}$/), channelId: z.string().regex(/^\d{17,20}$/) }).strict(),
   z.object({ kind: z.literal('dm'), userId: z.string().regex(/^\d{17,20}$/, 'Paste a user ID (17–20 digits)') }).strict(),
+  /** DM every member with a role (the server's own ID = @everyone), slowly, at most 1,000 per run. */
+  z.object({ kind: z.literal('role'), guildId: z.string().regex(/^\d{17,20}$/), roleId: z.string().regex(/^\d{17,20}$/) }).strict(),
 ]);
+
+/** Most members one "DM a role" run reaches, and the pause between DMs (keeps Discord's spam filters calm). */
+export const DM_ROLE_LIMITS = { maxRecipients: 1000, pauseMs: 1500 } as const;
 export const sendMessageContentSchema = z
   .object({
     target: sendMessageTargetSchema,

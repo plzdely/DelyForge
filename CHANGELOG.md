@@ -5,6 +5,14 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-11-25
+
+### Added
+- **Add to server** button on every bot: opens Discord's invite page to add the bot to another server.
+- **DM a role** in the Send message tab: every member with a role (or everyone) gets their own DM, with {user} filled in.
+  Safety: a confirmation, one DM every 1.5 s, bots skipped, at most 1,000 people per run, one run per server at a time,
+  and progress in the Console. Needs Server Members Intent; unwanted mass DMs can get a bot disabled by Discord.
+
 ## [0.4.2] - 2026-11-25
 
 ### Added
