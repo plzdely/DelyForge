@@ -20,6 +20,7 @@ import { Switch } from '@/components/ui/switch';
 import { call } from '@/lib/bridge';
 import { timeAgo } from '@/lib/format';
 import { queryKeys, useUpdateBot } from '@/lib/queries';
+import { useUnsavedChangesGuard } from '@/lib/unsaved';
 import { useBotContext } from './layout';
 
 const toValues = (b: BotProject): BotDetailsValues => ({
@@ -49,6 +50,7 @@ function GeneralSettings({ bot, groups }: { bot: BotProject; groups: string[] })
   const saved = toValues(bot);
   const dirty =
     values.name.trim() !== saved.name || values.description.trim() !== saved.description || values.groupName.trim() !== saved.groupName;
+  const guard = useUnsavedChangesGuard(dirty);
 
   // Pick up changes made elsewhere without losing unsaved edits.
   useEffect(() => {
@@ -79,6 +81,7 @@ function GeneralSettings({ bot, groups }: { bot: BotProject; groups: string[] })
   return (
     <Card>
       <form onSubmit={submit} noValidate>
+        {guard}
         <CardHeader title="General" description="How this project appears in DelyForge." />
         <CardBody>
           <BotDetailsFields values={values} errors={errors} onChange={setValues} groups={groups} />

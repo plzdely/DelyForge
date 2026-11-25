@@ -40,6 +40,7 @@ import { useEntitlements } from '@/lib/entitlements';
 import { timeAgo } from '@/lib/format';
 import { useGuilds } from '@/lib/modules';
 import { useRuntimeControls } from '@/lib/runtime';
+import { useUnsavedChangesGuard } from '@/lib/unsaved';
 import { useBotContext } from './layout';
 
 // ─── Shared draft + save bar ──────────────────────────────────────────────────────────────────────────────────────
@@ -73,8 +74,10 @@ function useBuildersDraft() {
 }
 
 function SaveBar({ dirty, saving, onSave, onDiscard }: { dirty: boolean; saving: boolean; onSave: () => void; onDiscard: () => void }) {
+  const guard = useUnsavedChangesGuard(dirty);
   return (
     <div className="sticky bottom-0 flex items-center justify-end gap-2 rounded-xl border border-border bg-surface-raised/95 px-4 py-3 shadow-pop backdrop-blur">
+      {guard}
       <span className="mr-auto text-xs text-fg-subtle">{dirty ? 'Unsaved changes' : 'All changes saved'}</span>
       <Button disabled={!dirty || saving} onClick={onDiscard}>
         Discard

@@ -49,6 +49,7 @@ import { call } from '@/lib/bridge';
 import { useEntitlements } from '@/lib/entitlements';
 import { useUpdateModule } from '@/lib/modules';
 import { useRuntimeControls, useRuntimeState } from '@/lib/runtime';
+import { useUnsavedChangesGuard } from '@/lib/unsaved';
 import { ModuleWorkspaceGate, useModuleWorkspace } from './modules';
 
 type Draft = ModuleConfigs[ImplementedModuleId];
@@ -349,6 +350,7 @@ export function ModuleSettings() {
   // Reset the draft when switching server or module, or when saved data first arrives.
   const savedKey = JSON.stringify(saved);
   useEffect(() => setDraft(saved), [guild?.id, id, ws.modules.isSuccess]); // eslint-disable-line react-hooks/exhaustive-deps
+  const guard = useUnsavedChangesGuard(draft !== null && JSON.stringify(draft) !== savedKey);
 
   if (!id) return <Card className="p-5 text-sm text-fg-muted">This module isn’t available yet.</Card>;
   const info = moduleInfo(id);
@@ -387,6 +389,7 @@ export function ModuleSettings() {
 
   return (
     <ModuleWorkspaceGate ws={ws} route={route}>
+      {guard}
       {guild && draft ? (
         <div className="space-y-3 pb-16" data-route-ready={route}>
           <div className="flex items-center justify-between gap-4">
