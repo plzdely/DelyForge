@@ -5,6 +5,7 @@ import {
   INTENT_BITS,
   applyEntitlementsToModules,
   botModulesSchema,
+  guildModulesSchema,
   computeIntents,
   containsInvite,
   disallowedLinks,
@@ -63,6 +64,12 @@ describe('computeIntents', () => {
     for (const k of ['Guilds', 'GuildMembers', 'GuildMessages', 'MessageContent']) {
       expect(intents & INTENT_BITS[k]!, k).not.toBe(0);
     }
+  });
+
+  it('loads logging settings saved before newer events existed (no settings are lost)', () => {
+    const old = { enabled: true, channelId: null, ignoredChannelIds: [], events: { messageDelete: true, messageEdit: false, memberJoin: true, memberLeave: true, memberRoles: true, channels: true, bans: true, voice: false } };
+    const parsed = guildModulesSchema.parse({ logging: old });
+    expect(parsed.logging).toMatchObject({ channelOverrides: {}, events: { messageEdit: false, roles: true, server: true, voice: false } });
   });
 
   it('only asks logging for what its enabled events need', () => {

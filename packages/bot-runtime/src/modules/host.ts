@@ -190,7 +190,6 @@ export class ModuleHost {
         await logging.onMemberLeaveLog(ctx, m);
       }),
     );
-    c.on(Events.GuildMemberUpdate, safe('Member update', (a, b) => logging.onMemberUpdateLog(ctx, a, b)));
 
     // Automation workflows
     const startWorkflows = (guild: Guild, event: Parameters<typeof matchingWorkflows>[2], ev: Omit<Parameters<typeof runWorkflow>[3], 'guild'>) => {
@@ -218,15 +217,8 @@ export class ModuleHost {
     c.on(Events.MessageCreate, safe('Leveling', (m) => onMessageXp(ctx, m)));
     c.on(Events.MessageDelete, safe('Message delete log', (m) => logging.onMessageDelete(ctx, m)));
     c.on(Events.MessageUpdate, safe('Message edit log', (a, b) => logging.onMessageEdit(ctx, a, b)));
-    c.on(Events.ChannelCreate, safe('Channel log', (ch) => logging.onChannelChange(ctx, ch, 'created')));
-    c.on(
-      Events.ChannelDelete,
-      safe('Channel log', async (ch) => {
-        if (!ch.isDMBased()) await logging.onChannelChange(ctx, ch, 'deleted');
-      }),
-    );
-    c.on(Events.GuildBanAdd, safe('Ban log', (b) => logging.onBan(ctx, b, 'banned')));
-    c.on(Events.GuildBanRemove, safe('Ban log', (b) => logging.onBan(ctx, b, 'unbanned')));
+    // Who did what: channels, roles, permissions, members, bans, server settings… (needs View Audit Log).
+    c.on(Events.GuildAuditLogEntryCreate, safe('Audit log', (entry, guild) => logging.onAuditEntry(ctx, entry, guild)));
     c.on(Events.VoiceStateUpdate, safe('Voice log', (a, b) => logging.onVoice(ctx, a, b)));
 
     c.on(Events.InteractionCreate, async (i) => {

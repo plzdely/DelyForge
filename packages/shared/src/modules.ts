@@ -116,14 +116,37 @@ export type ModerationConfig = z.infer<typeof moderationConfigSchema>;
 
 // ─── Logging ──────────────────────────────────────────────────────────────────────────────────────────────────────
 
-export const LOG_EVENTS = ['messageDelete', 'messageEdit', 'memberJoin', 'memberLeave', 'memberRoles', 'channels', 'bans', 'voice'] as const;
+export const LOG_EVENTS = [
+  'messageDelete',
+  'messageEdit',
+  'memberJoin',
+  'memberLeave',
+  'memberRoles',
+  'members',
+  'bans',
+  'channels',
+  'roles',
+  'server',
+  'invites',
+  'messageActions',
+  'voice',
+  'other',
+] as const;
 export type LogEvent = (typeof LOG_EVENTS)[number];
+
+/** Logged from Discord's audit log, which says who did it (needs the View Audit Log permission). */
+export const AUDIT_LOG_EVENTS: readonly LogEvent[] = ['messageDelete', 'memberRoles', 'members', 'bans', 'channels', 'roles', 'server', 'invites', 'messageActions', 'other'];
+
+/** Default on/off per event. Every key has a default so settings saved before an event existed still load. */
+const LOG_EVENT_DEFAULTS: Record<LogEvent, boolean> = Object.fromEntries(LOG_EVENTS.map((e) => [e, e !== 'voice'])) as Record<LogEvent, boolean>;
 
 export const loggingConfigSchema = z
   .object({
     enabled: z.boolean(),
     channelId: channel,
-    events: z.object(Object.fromEntries(LOG_EVENTS.map((e) => [e, z.boolean()])) as Record<LogEvent, z.ZodBoolean>).strict(),
+    events: z.object(Object.fromEntries(LOG_EVENTS.map((e) => [e, z.boolean().default(LOG_EVENT_DEFAULTS[e])])) as Record<LogEvent, z.ZodDefault<z.ZodBoolean>>).strict(),
+    /** Optional: send some events to their own channel instead of the main one. */
+    channelOverrides: z.partialRecord(z.enum(LOG_EVENTS), snowflakeSchema).default({}),
     ignoredChannelIds: z.array(snowflakeSchema).max(50),
   })
   .strict();
@@ -342,16 +365,8 @@ export const DEFAULT_MODULE_CONFIGS: ModuleConfigs = {
   logging: {
     enabled: false,
     channelId: null,
-    events: {
-      messageDelete: true,
-      messageEdit: true,
-      memberJoin: true,
-      memberLeave: true,
-      memberRoles: true,
-      channels: true,
-      bans: true,
-      voice: false,
-    },
+    events: LOG_EVENT_DEFAULTS,
+    channelOverrides: {},
     ignoredChannelIds: [],
   },
   utility: {
@@ -425,7 +440,7 @@ export interface ModuleInfo {
 export const MODULES: readonly ModuleInfo[] = [
   { id: 'welcome', name: 'Welcome', summary: 'Greet new members, say goodbye, send a DM and give roles automatically.', feature: 'modules.basic', available: true, commands: [] },
   { id: 'moderation', name: 'Moderation', summary: 'Kick, ban, timeout and warn with staff-only commands, warning thresholds and auto-moderation.', feature: 'modules.basic', available: true, commands: ['/warn', '/warnings', '/clearwarnings', '/timeout', '/untimeout', '/kick', '/ban', '/unban', '/purge'] },
-  { id: 'logging', name: 'Logging', summary: 'Record deleted and edited messages, joins, leaves, role, channel, ban and voice changes.', feature: 'modules.standard', available: true, commands: [] },
+  { id: 'logging', name: 'Logging', summary: 'Who did what: deleted and edited messages, joins and leaves, and every staff change with who made it.', feature: 'modules.standard', available: true, commands: [] },
   { id: 'utility', name: 'Utility', summary: 'Handy commands: server info, user info, avatars and native Discord polls.', feature: 'modules.basic', available: true, commands: ['/serverinfo', '/userinfo', '/avatar', '/poll'] },
   { id: 'leveling', name: 'Leveling', summary: 'XP for chatting, levels, leaderboards and role rewards.', feature: 'modules.standard', available: true, commands: ['/rank', '/leaderboard'] },
   { id: 'tickets', name: 'Tickets', summary: 'A support panel that opens private ticket channels, with transcripts when closed.', feature: 'modules.standard', available: true, commands: ['/ticket add', '/ticket close'] },
@@ -453,8 +468,9 @@ export function moduleIntents<K extends ImplementedModuleId>(id: K, config: Modu
       const e = (config as LoggingConfig).events;
       let bits = 0;
       if (e.messageDelete || e.messageEdit) bits |= I('GuildMessages', 'MessageContent');
-      if (e.memberJoin || e.memberLeave || e.memberRoles) bits |= I('GuildMembers');
-      if (e.bans) bits |= I('GuildModeration');
+      if (e.memberJoin || e.memberLeave) bits |= I('GuildMembers');
+      // Discord's live audit-log feed (who did what) arrives with the Moderation intent.
+      if (AUDIT_LOG_EVENTS.some((k) => e[k])) bits |= I('GuildModeration');
       if (e.voice) bits |= I('GuildVoiceStates');
       return bits;
     }

@@ -48,6 +48,7 @@ export function ChannelSelect({
   label,
   hint,
   error,
+  emptyLabel = '— Choose a channel —',
 }: {
   guild: GuildInfo;
   value: string | null;
@@ -56,6 +57,8 @@ export function ChannelSelect({
   label: string;
   hint?: ReactNode;
   error?: string;
+  /** What "no channel" means here. */
+  emptyLabel?: string;
 }) {
   const textual = guild.channels.filter((c) => c.kind === 'text' || c.kind === 'announcement');
   const categories = guild.channels.filter((c) => c.kind === 'category');
@@ -67,7 +70,7 @@ export function ChannelSelect({
   return (
     <Field label={label} htmlFor={id} hint={hint} error={error ?? (missing ? 'This channel no longer exists — pick another.' : undefined)}>
       <Select id={id} value={value ?? ''} onChange={(e) => onChange(e.target.value || null)}>
-        <option value="">— Choose a channel —</option>
+        <option value="">{emptyLabel}</option>
         {groups.map((g) =>
           g.name ? (
             <optgroup key={g.name} label={g.name}>

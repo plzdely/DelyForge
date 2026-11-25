@@ -133,7 +133,7 @@ export async function handleModerationCommand(ctx: ModuleContext, i: ChatInputCo
         const user = i.options.getUser('member', true);
         if (user.id === actor.id) return void (await reply(i, 'You can’t do that to yourself.'));
         try {
-          await guild.bans.create(user.id, { reason: `${reason} (by ${actor.user.tag})`, deleteMessageSeconds: i.options.getInteger('delete_messages') ?? 0 });
+          await guild.bans.create(user.id, { reason: `${reason} (by ${actor.user.tag} · ${actor.id})`, deleteMessageSeconds: i.options.getInteger('delete_messages') ?? 0 });
         } catch (e) {
           return void (await reply(i, `Couldn’t ban: ${(e as Error).message}`));
         }
@@ -149,10 +149,10 @@ export async function handleModerationCommand(ctx: ModuleContext, i: ChatInputCo
       const verb = i.commandName === 'timeout' ? `timed out for ${minutes} min` : i.commandName === 'kick' ? 'kicked' : 'banned';
       if (config.dmMembers) await tryDM(target.user, `You were ${verb} in **${guild.name}**: ${reason}`);
       try {
-        if (i.commandName === 'timeout') await target.timeout(minutes * 60_000, `${reason} (by ${actor.user.tag})`);
-        if (i.commandName === 'kick') await target.kick(`${reason} (by ${actor.user.tag})`);
+        if (i.commandName === 'timeout') await target.timeout(minutes * 60_000, `${reason} (by ${actor.user.tag} · ${actor.id})`);
+        if (i.commandName === 'kick') await target.kick(`${reason} (by ${actor.user.tag} · ${actor.id})`);
         if (i.commandName === 'ban') {
-          await target.ban({ reason: `${reason} (by ${actor.user.tag})`, deleteMessageSeconds: i.options.getInteger('delete_messages') ?? 0 });
+          await target.ban({ reason: `${reason} (by ${actor.user.tag} · ${actor.id})`, deleteMessageSeconds: i.options.getInteger('delete_messages') ?? 0 });
         }
       } catch (e) {
         return void (await reply(i, `Couldn’t do that: ${(e as Error).message}`));
@@ -179,7 +179,7 @@ export async function handleModerationCommand(ctx: ModuleContext, i: ChatInputCo
       const userId = i.options.getString('user_id', true).trim();
       if (!/^\d{17,20}$/.test(userId)) return void (await reply(i, 'That isn’t a valid user ID.'));
       try {
-        await guild.bans.remove(userId, `${reason} (by ${actor.user.tag})`);
+        await guild.bans.remove(userId, `${reason} (by ${actor.user.tag} · ${actor.id})`);
       } catch {
         return void (await reply(i, 'That user isn’t banned, or I don’t have permission to unban.'));
       }

@@ -4,7 +4,6 @@ import {
   type GuildInfo,
   INTENTS,
   type ImplementedModuleId,
-  LOG_EVENTS,
   type LogEvent,
   type LoggingConfig,
   type ModerationConfig,
@@ -212,27 +211,58 @@ function ModerationForm({ c, set, guild, automodLocked }: { c: ModerationConfig;
 }
 
 const LOG_LABELS: Record<LogEvent, [string, string]> = {
-  messageDelete: ['Deleted messages', 'Who deleted what, where'],
-  messageEdit: ['Edited messages', 'Before and after'],
-  memberJoin: ['Members joining', 'Including account age'],
-  memberLeave: ['Members leaving', ''],
-  memberRoles: ['Role changes', 'Roles added to or removed from members'],
-  channels: ['Channels', 'Channels created or deleted'],
-  bans: ['Bans', 'Bans and unbans, with who did it'],
-  voice: ['Voice', 'Joining, leaving and moving between voice channels'],
+  messageDelete: ['Deleted messages', 'The text, the author and — when a moderator deleted it — who did'],
+  messageEdit: ['Edited messages', 'Before and after, with a link to the message'],
+  messageActions: ['Bulk deletes and pins', 'Who purged messages, pinned or unpinned them'],
+  memberJoin: ['Members joining', 'With account age and a warning for brand-new accounts'],
+  memberLeave: ['Members leaving', 'With how long they stayed and the roles they had'],
+  memberRoles: ['Roles given or taken', 'Which roles a member got or lost, and who changed them'],
+  members: ['Member changes', 'Nicknames, timeouts, kicks, voice moves and bots added — and who did it'],
+  bans: ['Bans', 'Bans and unbans, who did it and why'],
+  voice: ['Voice activity', 'Joining, leaving and moving between voice channels'],
+  channels: ['Channels', 'Created, edited or deleted channels and permission changes, with who did it'],
+  roles: ['Roles', 'Roles created, edited (name, colour, permissions) or deleted, with who did it'],
+  server: ['Server settings', 'Name, icon, verification level and other settings, with who changed them'],
+  invites: ['Invites', 'Who created or deleted invite links'],
+  other: ['Everything else', 'Emojis, stickers, webhooks, events, threads, integrations and AutoMod rules'],
 };
 
+const LOG_GROUPS: { title: string; description: string; events: LogEvent[] }[] = [
+  { title: 'Messages', description: 'What people wrote and what happened to it.', events: ['messageDelete', 'messageEdit', 'messageActions'] },
+  { title: 'Members', description: 'People coming and going, and what staff did to them.', events: ['memberJoin', 'memberLeave', 'memberRoles', 'members', 'bans', 'voice'] },
+  { title: 'Staff & server changes', description: 'Who changed the server itself, and what exactly changed.', events: ['channels', 'roles', 'server', 'invites', 'other'] },
+];
+
 function LoggingForm({ c, set, guild }: { c: LoggingConfig; set: (c: LoggingConfig) => void; guild: GuildInfo }) {
+  // A group's separate channel applies to every event in it.
+  const setGroupChannel = (events: LogEvent[], channelId: string | null) => {
+    const overrides = { ...c.channelOverrides };
+    for (const e of events) {
+      if (channelId) overrides[e] = channelId;
+      else delete overrides[e];
+    }
+    set({ ...c, channelOverrides: overrides });
+  };
   return (
     <>
-      <Section title="Log channel" description="Use a private channel only staff can see.">
+      <Section title="Log channel" description="Use a private channel only staff can see. “Who did it” comes from Discord’s audit log, so the bot needs the View Audit Log permission.">
         <ChannelSelect id="log-channel" label="Channel" guild={guild} value={c.channelId} onChange={(v) => set({ ...c, channelId: v })} />
       </Section>
-      <Section title="What to log">
-        {LOG_EVENTS.map((e) => (
-          <ToggleRow key={e} title={LOG_LABELS[e][0]} description={LOG_LABELS[e][1]} checked={c.events[e]} onChange={(v) => set({ ...c, events: { ...c.events, [e]: v } })} />
-        ))}
-      </Section>
+      {LOG_GROUPS.map((g) => (
+        <Section key={g.title} title={g.title} description={g.description}>
+          {g.events.map((e) => (
+            <ToggleRow key={e} title={LOG_LABELS[e][0]} description={LOG_LABELS[e][1]} checked={c.events[e]} onChange={(v) => set({ ...c, events: { ...c.events, [e]: v } })} />
+          ))}
+          <ChannelSelect
+            id={`log-channel-${g.events[0]}`}
+            label="Send these to their own channel (optional)"
+            emptyLabel="Same as the main log channel"
+            guild={guild}
+            value={c.channelOverrides[g.events[0]!] ?? null}
+            onChange={(v) => setGroupChannel(g.events, v)}
+          />
+        </Section>
+      ))}
       <Section title="Ignored channels" description="Message deletes and edits in these channels are not logged.">
         <ChannelChecklist guild={guild} value={c.ignoredChannelIds} onChange={(ids) => set({ ...c, ignoredChannelIds: ids })} />
       </Section>
