@@ -24,10 +24,26 @@ const tag = (block: string, name: string) => {
   return m ? decode(m[1]!) : '';
 };
 
-/** Reads an RSS or Atom feed (YouTube feeds are Atom). Newest first, as feeds list them. */
+/** The first `max` <name>…</name> blocks, found with linear scans (no backtracking on hostile feeds), each cut to 20 KB. */
+function blocksOf(xml: string, name: string, max: number): { blocks: string[]; first: number } {
+  const open = new RegExp(`<${name}[\\s>]`, 'gi');
+  const blocks: string[] = [];
+  let first = -1;
+  for (let m = open.exec(xml); m && blocks.length < max; m = open.exec(xml)) {
+    if (first < 0) first = m.index;
+    const end = xml.indexOf(`</${name}>`, m.index);
+    if (end < 0) break;
+    blocks.push(xml.slice(m.index, Math.min(end, m.index + 20_000)));
+    open.lastIndex = end;
+  }
+  return { blocks, first };
+}
+
+/** Reads an RSS or Atom feed (YouTube feeds are Atom). Newest first, as feeds list them; at most 15 items. */
 export function parseFeed(xml: string): FeedItem[] {
-  const blocks = xml.match(/<entry[\s>][\s\S]*?<\/entry>/gi) ?? xml.match(/<item[\s>][\s\S]*?<\/item>/gi) ?? [];
-  const feedTitle = tag(xml.replace(/<(entry|item)[\s>][\s\S]*$/i, ''), 'title');
+  const atom = blocksOf(xml, 'entry', 15);
+  const { blocks, first } = atom.blocks.length ? atom : blocksOf(xml, 'item', 15);
+  const feedTitle = tag(xml.slice(0, first < 0 ? 20_000 : Math.min(first, 20_000)), 'title');
   return blocks
     .map((b) => {
       const atomLink = /<link[^>]*rel=["']alternate["'][^>]*href=["']([^"']+)["']/i.exec(b)?.[1] ?? /<link[^>]*href=["']([^"']+)["']/i.exec(b)?.[1];
@@ -42,12 +58,26 @@ export function parseFeed(xml: string): FeedItem[] {
 /** A YouTube channel ID (UC…) written anywhere in the text, e.g. youtube.com/channel/UC…, or null. */
 export const youtubeChannelId = (source: string) => /\b(UC[\w-]{22})\b/.exec(source)?.[1] ?? null;
 
-async function fetchText(url: string): Promise<string> {
+/** Downloads at most 1 MB (a feed is a few KB; a YouTube channel page has its ID near the top). */
+async function fetchText(url: string, limit = 1_000_000): Promise<string> {
   if (!/^https?:\/\//i.test(url)) throw new Error('the address must start with https://');
   const res = await fetch(url, { headers: { 'user-agent': 'Mozilla/5.0 DelyForge feed reader' }, signal: AbortSignal.timeout(15_000) });
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-  const text = await res.text();
-  return text.slice(0, 2_000_000);
+  const reader = res.body?.getReader();
+  if (!reader) return '';
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    size += value.byteLength;
+    if (size >= limit) {
+      await reader.cancel();
+      break;
+    }
+  }
+  return new TextDecoder().decode(Buffer.concat(chunks)).slice(0, limit);
 }
 
 /** youtube.com/@name links are turned into the channel ID once (read from the channel page) and remembered. */
@@ -76,7 +106,7 @@ export async function pollFeeds(ctx: ModuleContext, guild: Guild): Promise<void>
   for (const feed of config.feeds) {
     const key = `${feed.kind}:${feed.source}`;
     try {
-      const items = parseFeed(await fetchText(await feedUrl(feed))).slice(0, 15);
+      const items = parseFeed(await fetchText(await feedUrl(feed)));
       const seen = ctx.store.seenFeedItems(guild.id, key);
       // First check: remember what's there already instead of posting the whole history.
       if (seen === null) {

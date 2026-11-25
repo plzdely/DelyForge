@@ -139,6 +139,11 @@ describe('social alerts', () => {
     expect(parseFeed(rss)).toEqual([{ id: 'p1', title: 'Post 1', link: 'https://blog.example/1', author: 'Blog' }]);
     expect(youtubeChannelId('https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv')).toBe('UCabcdefghijklmnopqrstuv');
     expect(youtubeChannelId('https://youtube.com/@someone')).toBeNull();
+    // A hostile feed (endless unclosed tags) is read quickly, and at most 15 items count.
+    const start = Date.now();
+    expect(parseFeed('<entry <link '.repeat(80_000))).toEqual([]);
+    expect(parseFeed('<rss>' + '<item><guid>x</guid><link>https://a.b/</link></item>'.repeat(50))).toHaveLength(15);
+    expect(Date.now() - start).toBeLessThan(1000);
   });
 
   it('remembers a feed’s existing posts on the first check, then only new ones count', () => {
