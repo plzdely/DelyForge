@@ -1,5 +1,5 @@
 import { randomInt } from 'node:crypto';
-import { type ChatInputCommandInteraction, ChannelType, type Client, MessageFlags } from 'discord.js';
+import { type ChatInputCommandInteraction, ChannelType, type Client, MessageFlags, PermissionFlagsBits } from 'discord.js';
 import { parseDuration } from './community.js';
 import { BRAND_COLOR, type ModuleContext, truncate, tryDM } from './context.js';
 
@@ -80,6 +80,9 @@ export async function handleUtilityCommand(ctx: ModuleContext, i: ChatInputComma
       if (!i.guildId || !i.channelId) return;
       const ms = parseDuration(i.options.getString('in', true));
       if (!ms) return void (await i.reply({ content: 'Use a time like `10m`, `2h`, `1d` or `1h30m` (1 minute to 30 days).', flags: MessageFlags.Ephemeral }));
+      if (!i.inCachedGuild() || !i.channel?.permissionsFor(i.member).has(PermissionFlagsBits.SendMessages)) {
+        return void (await i.reply({ content: 'You can only set reminders in channels where you can post.', flags: MessageFlags.Ephemeral }));
+      }
       if (ctx.store.pendingReminders(i.guildId, i.user.id) >= 25) return void (await i.reply({ content: 'You already have 25 reminders waiting here.', flags: MessageFlags.Ephemeral }));
       const dueAt = Date.now() + ms;
       ctx.store.addReminder({ guildId: i.guildId, channelId: i.channelId, userId: i.user.id, text: truncate(i.options.getString('text', true), 500), dueAt });
@@ -117,8 +120,14 @@ export async function handleUtilityCommand(ctx: ModuleContext, i: ChatInputComma
 export async function deliverReminders(ctx: ModuleContext, client: Client): Promise<void> {
   for (const r of ctx.store.takeDueReminders(Date.now())) {
     const text = `⏰ <@${r.userId}> here’s your reminder: ${r.text}`;
-    const channel = client.guilds.cache.get(r.guildId)?.channels.cache.get(r.channelId);
-    const posted = channel?.isSendable() ? await channel.send({ content: text, allowedMentions: { users: [r.userId] } }).then(() => true, () => false) : false;
+    const guild = client.guilds.cache.get(r.guildId);
+    const channel = guild?.channels.cache.get(r.channelId);
+    // Only post where the member could post themselves right now (still here, allowed to talk, not timed out);
+    // otherwise the bot would carry their text into a read-only channel. Fall back to a DM.
+    const member = guild ? await guild.members.fetch(r.userId).catch(() => null) : null;
+    const mayPost =
+      member && !member.isCommunicationDisabled() && channel?.isSendable() && channel.permissionsFor(member)?.has([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages]);
+    const posted = mayPost ? await channel.send({ content: text, allowedMentions: { users: [r.userId] } }).then(() => true, () => false) : false;
     if (!posted) {
       const user = await client.users.fetch(r.userId).catch(() => null);
       if (user) await tryDM(user, `⏰ Reminder: ${r.text}`);
