@@ -94,12 +94,14 @@ export async function onMessageEdit(ctx: ModuleContext, before: Message | Partia
   );
 }
 
-export async function onMemberJoinLog(ctx: ModuleContext, member: GuildMember): Promise<void> {
+export async function onMemberJoinLog(ctx: ModuleContext, member: GuildMember, invitedBy: { inviterId: string | null; code: string | null } | null = null): Promise<void> {
   const created = member.user.createdTimestamp;
   const isNew = Date.now() - created < 7 * 86_400_000;
+  // Filled in when the Invite Tracker module is on.
+  const invite = !invitedBy ? '' : invitedBy.inviterId ? `\nInvited by <@${invitedBy.inviterId}> (\`${invitedBy.code}\`)` : invitedBy.code ? `\nJoined with the custom link \`${invitedBy.code}\`` : '\nInvite: unknown';
   await post(ctx, member.guild, 'memberJoin', {
     title: 'Member joined',
-    description: `<@${member.id}> (${member.user.tag})\nAccount created ${ts(created)}${isNew ? ' ⚠️ **new account**' : ''}\nMember #${member.guild.memberCount}`,
+    description: `<@${member.id}> (${member.user.tag})\nAccount created ${ts(created)}${isNew ? ' ⚠️ **new account**' : ''}\nMember #${member.guild.memberCount}${invite}`,
     color: COLORS.success,
     thumbnail: { url: member.user.displayAvatarURL({ size: 128 }) },
     footer: { text: `User ${member.id}` },

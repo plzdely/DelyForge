@@ -27,6 +27,7 @@ import { toast } from 'sonner';
 import { InviteLink } from '@/components/bots/permissions-editor';
 import { Section, TemplateField } from '@/components/modules/fields';
 import { GiveawaysForm, LevelingForm, ReactionRolesForm, SuggestionsForm, TicketsForm, VerificationForm } from '@/components/modules/forms';
+import { AntiRaidForm, BirthdaysForm, InvitesForm, ServerStatsForm, StarboardForm, StickyForm, TempVoiceForm } from '@/components/modules/forms-more';
 import {
   ChannelChecklist,
   ChannelSelect,
@@ -421,6 +422,13 @@ export function ModuleSettings() {
             {id === 'reactionRoles' ? <ReactionRolesForm c={draft as ModuleConfigs['reactionRoles']} set={setDraft} guild={guild} /> : null}
             {id === 'suggestions' ? <SuggestionsForm c={draft as ModuleConfigs['suggestions']} set={setDraft} guild={guild} /> : null}
             {id === 'giveaways' ? <GiveawaysForm c={draft as ModuleConfigs['giveaways']} set={setDraft} guild={guild} /> : null}
+            {id === 'invites' ? <InvitesForm c={draft as ModuleConfigs['invites']} set={setDraft} guild={guild} /> : null}
+            {id === 'starboard' ? <StarboardForm c={draft as ModuleConfigs['starboard']} set={setDraft} guild={guild} /> : null}
+            {id === 'tempVoice' ? <TempVoiceForm c={draft as ModuleConfigs['tempVoice']} set={setDraft} guild={guild} /> : null}
+            {id === 'antiRaid' ? <AntiRaidForm c={draft as ModuleConfigs['antiRaid']} set={setDraft} guild={guild} /> : null}
+            {id === 'sticky' ? <StickyForm c={draft as ModuleConfigs['sticky']} set={setDraft} guild={guild} /> : null}
+            {id === 'serverStats' ? <ServerStatsForm c={draft as ModuleConfigs['serverStats']} set={setDraft} guild={guild} /> : null}
+            {id === 'birthdays' ? <BirthdaysForm c={draft as ModuleConfigs['birthdays']} set={setDraft} guild={guild} /> : null}
           </fieldset>
 
           <div className="sticky bottom-0 -mx-1 flex items-center justify-end gap-2 rounded-xl border border-border bg-surface-raised/95 px-4 py-3 shadow-pop backdrop-blur">

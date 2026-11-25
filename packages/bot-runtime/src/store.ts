@@ -154,6 +154,35 @@ export class BotStore {
         user_id     TEXT NOT NULL,
         PRIMARY KEY (giveaway_id, user_id)
       );
+      CREATE TABLE IF NOT EXISTS invite_joins (
+        guild_id   TEXT NOT NULL,
+        user_id    TEXT NOT NULL,
+        inviter_id TEXT,
+        code       TEXT,
+        joined_at  INTEGER NOT NULL,
+        left_at    INTEGER,
+        PRIMARY KEY (guild_id, user_id)
+      );
+      CREATE INDEX IF NOT EXISTS invite_joins_inviter_idx ON invite_joins (guild_id, inviter_id);
+      CREATE TABLE IF NOT EXISTS starboard (
+        guild_id        TEXT NOT NULL,
+        message_id      TEXT NOT NULL,
+        star_message_id TEXT NOT NULL,
+        PRIMARY KEY (guild_id, message_id)
+      );
+      CREATE TABLE IF NOT EXISTS temp_channels (
+        channel_id TEXT PRIMARY KEY,
+        guild_id   TEXT NOT NULL,
+        owner_id   TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS birthdays (
+        guild_id       TEXT NOT NULL,
+        user_id        TEXT NOT NULL,
+        month          INTEGER NOT NULL,
+        day            INTEGER NOT NULL,
+        announced_year INTEGER,
+        PRIMARY KEY (guild_id, user_id)
+      );
     `);
     // Columns added after the first release: create them in databases made by older versions.
     this.addColumnIfMissing('giveaways', 'required_role_id', 'TEXT');
@@ -413,6 +442,99 @@ export class BotStore {
 
   setWinners(id: number, winnerIds: string[]): void {
     this.db.prepare('UPDATE giveaways SET winner_ids = ? WHERE id = ?').run(JSON.stringify(winnerIds), id);
+  }
+
+  // ─── Invite tracker ──────────────────────────────────────────────────────────────────────────────────────────────
+
+  /** Records who invited a member (a rejoin replaces the old record). Returns the inviter's count of members who stayed. */
+  recordInviteJoin(guildId: string, userId: string, inviterId: string | null, code: string | null, at = Date.now()): number {
+    this.db
+      .prepare('INSERT OR REPLACE INTO invite_joins (guild_id, user_id, inviter_id, code, joined_at, left_at) VALUES (?, ?, ?, ?, ?, NULL)')
+      .run(guildId, userId, inviterId, code, at);
+    return inviterId ? this.inviteCounts(guildId, inviterId).stayed : 0;
+  }
+
+  recordInviteLeave(guildId: string, userId: string, at = Date.now()): void {
+    this.db.prepare('UPDATE invite_joins SET left_at = ? WHERE guild_id = ? AND user_id = ? AND left_at IS NULL').run(at, guildId, userId);
+  }
+
+  inviteCounts(guildId: string, inviterId: string): { stayed: number; left: number } {
+    const r = this.db
+      .prepare('SELECT SUM(left_at IS NULL) AS stayed, SUM(left_at IS NOT NULL) AS left FROM invite_joins WHERE guild_id = ? AND inviter_id = ?')
+      .get(guildId, inviterId) as { stayed: number | null; left: number | null };
+    return { stayed: r.stayed ?? 0, left: r.left ?? 0 };
+  }
+
+  invitedBy(guildId: string, userId: string): { inviterId: string | null; code: string | null } | null {
+    const r = this.db.prepare('SELECT inviter_id, code FROM invite_joins WHERE guild_id = ? AND user_id = ?').get(guildId, userId) as
+      | { inviter_id: string | null; code: string | null }
+      | undefined;
+    return r ? { inviterId: r.inviter_id, code: r.code } : null;
+  }
+
+  inviteLeaderboard(guildId: string, limit = 10): { inviterId: string; stayed: number; left: number }[] {
+    const rows = this.db
+      .prepare(
+        `SELECT inviter_id, SUM(left_at IS NULL) AS stayed, SUM(left_at IS NOT NULL) AS left FROM invite_joins
+         WHERE guild_id = ? AND inviter_id IS NOT NULL GROUP BY inviter_id ORDER BY stayed DESC, left ASC LIMIT ?`,
+      )
+      .all(guildId, limit) as { inviter_id: string; stayed: number; left: number }[];
+    return rows.map((r) => ({ inviterId: r.inviter_id, stayed: r.stayed, left: r.left }));
+  }
+
+  // ─── Starboard ───────────────────────────────────────────────────────────────────────────────────────────────────
+
+  starPost(guildId: string, messageId: string): string | null {
+    const r = this.db.prepare('SELECT star_message_id FROM starboard WHERE guild_id = ? AND message_id = ?').get(guildId, messageId) as { star_message_id: string } | undefined;
+    return r?.star_message_id ?? null;
+  }
+
+  setStarPost(guildId: string, messageId: string, starMessageId: string | null): void {
+    if (starMessageId) this.db.prepare('INSERT OR REPLACE INTO starboard (guild_id, message_id, star_message_id) VALUES (?, ?, ?)').run(guildId, messageId, starMessageId);
+    else this.db.prepare('DELETE FROM starboard WHERE guild_id = ? AND message_id = ?').run(guildId, messageId);
+  }
+
+  // ─── Temporary voice ─────────────────────────────────────────────────────────────────────────────────────────────
+
+  addTempChannel(guildId: string, channelId: string, ownerId: string): void {
+    this.db.prepare('INSERT OR REPLACE INTO temp_channels (channel_id, guild_id, owner_id) VALUES (?, ?, ?)').run(channelId, guildId, ownerId);
+  }
+
+  isTempChannel(channelId: string): boolean {
+    return this.db.prepare('SELECT 1 FROM temp_channels WHERE channel_id = ?').get(channelId) !== undefined;
+  }
+
+  tempChannels(guildId: string): string[] {
+    return (this.db.prepare('SELECT channel_id FROM temp_channels WHERE guild_id = ?').all(guildId) as { channel_id: string }[]).map((r) => r.channel_id);
+  }
+
+  removeTempChannel(channelId: string): void {
+    this.db.prepare('DELETE FROM temp_channels WHERE channel_id = ?').run(channelId);
+  }
+
+  // ─── Birthdays ───────────────────────────────────────────────────────────────────────────────────────────────────
+
+  setBirthday(guildId: string, userId: string, month: number, day: number): void {
+    // Changing the date resets "announced this year", so a corrected date still gets celebrated.
+    this.db.prepare('INSERT OR REPLACE INTO birthdays (guild_id, user_id, month, day, announced_year) VALUES (?, ?, ?, ?, NULL)').run(guildId, userId, month, day);
+  }
+
+  removeBirthday(guildId: string, userId: string): boolean {
+    return Number(this.db.prepare('DELETE FROM birthdays WHERE guild_id = ? AND user_id = ?').run(guildId, userId).changes) > 0;
+  }
+
+  birthdays(guildId: string): { userId: string; month: number; day: number; announcedYear: number | null }[] {
+    const rows = this.db.prepare('SELECT user_id, month, day, announced_year FROM birthdays WHERE guild_id = ?').all(guildId) as {
+      user_id: string;
+      month: number;
+      day: number;
+      announced_year: number | null;
+    }[];
+    return rows.map((r) => ({ userId: r.user_id, month: r.month, day: r.day, announcedYear: r.announced_year }));
+  }
+
+  markBirthdayAnnounced(guildId: string, userId: string, year: number): void {
+    this.db.prepare('UPDATE birthdays SET announced_year = ? WHERE guild_id = ? AND user_id = ?').run(year, guildId, userId);
   }
 
   close(): void {

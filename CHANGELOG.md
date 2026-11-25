@@ -5,6 +5,16 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- Logging now records **who did what**, live from Discord's audit log: channels and permission changes, roles,
+  nicknames, timeouts, kicks, bans, voice moves, server settings, invites, pins, bulk deletes, emojis, webhooks and
+  more — each with what changed (old → new) and the reason. Deleted messages say which moderator deleted them, and
+  DelyForge's own moderation commands are credited to the moderator. Optional separate log channel per group; joins
+  warn about new accounts and show who invited them; leaves show time in the server and roles.
+- Seven new modules: **Invite Tracker** (`/invites`, `/inviteboard`), **Starboard**, **Temporary Voice**
+  (join to create), **Raid Protection** (join-flood alerts, kick/ban during raids, new-account filter),
+  **Sticky Messages**, **Server Stats** counters and **Birthdays** (`/birthday set|remove|upcoming`, birthday role).
+
 ## [0.1.0] - 2026-11-15
 
 First public release: https://github.com/plzdely/DelyForge/releases/tag/v0.1.0

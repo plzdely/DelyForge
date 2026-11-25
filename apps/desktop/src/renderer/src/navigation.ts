@@ -1,6 +1,13 @@
 import { type FeatureKey, PERSONAL_EDITION } from '@delyforge/shared';
 import {
   Activity,
+  AudioLines,
+  Cake,
+  Gauge,
+  Pin,
+  ShieldAlert,
+  Star,
+  UserPlus,
   BadgeCheck,
   Blocks,
   Bell,
@@ -227,12 +234,19 @@ export const MODULE_NAV_ITEMS: NavItem[] = [
   { id: 'welcome', label: 'Welcome', path: '/modules/welcome', icon: DoorOpen, available: true, phase: 4, summary: 'Welcome & goodbye messages, welcome DMs and automatic roles.' },
   { id: 'tickets', label: 'Tickets', path: '/modules/tickets', icon: Ticket, available: true, phase: 4, feature: 'modules.standard', summary: 'A ticket button that opens private support channels, with transcripts when closed.' },
   { id: 'leveling', label: 'Leveling', path: '/modules/leveling', icon: TrendingUp, available: true, phase: 4, feature: 'modules.standard', summary: 'XP, levels, leaderboards and role rewards.' },
-  { id: 'logging', label: 'Logging', path: '/modules/logging', icon: ScrollText, available: true, phase: 4, feature: 'modules.standard', summary: 'Message, member, role, channel and moderation logs.' },
+  { id: 'logging', label: 'Logging', path: '/modules/logging', icon: ScrollText, available: true, phase: 4, feature: 'modules.standard', summary: 'Who did what: messages, joins and leaves, and every staff change with who made it.' },
   { id: 'verification', label: 'Verification', path: '/modules/verification', icon: BadgeCheck, available: true, phase: 4, feature: 'modules.standard', summary: 'A verify button that gives new members access, with an optional minimum account age.' },
   { id: 'utility', label: 'Utility', path: '/modules/utility', icon: Wrench, available: true, phase: 4, summary: 'Server & user info, avatars and native Discord polls.' },
   { id: 'reaction-roles', label: 'Reaction Roles', path: '/modules/reactionRoles', icon: Smile, available: true, phase: 4, feature: 'modules.standard', summary: 'Button and select-menu role panels.' },
   { id: 'suggestions', label: 'Suggestions', path: '/modules/suggestions', icon: Lightbulb, available: true, phase: 4, feature: 'modules.standard', summary: 'Submissions, voting and staff review.' },
   { id: 'giveaways', label: 'Giveaways', path: '/modules/giveaways', icon: Gift, available: true, phase: 4, feature: 'modules.standard', summary: 'Timed giveaways with requirements and rerolls.' },
+  { id: 'invites', label: 'Invite Tracker', path: '/modules/invites', icon: UserPlus, available: true, phase: 4, feature: 'modules.standard', summary: 'Who invited each new member, invite counts and a leaderboard.' },
+  { id: 'starboard', label: 'Starboard', path: '/modules/starboard', icon: Star, available: true, phase: 4, feature: 'modules.standard', summary: 'Showcase messages that get enough ⭐ reactions.' },
+  { id: 'temp-voice', label: 'Temporary Voice', path: '/modules/tempVoice', icon: AudioLines, available: true, phase: 4, feature: 'modules.standard', summary: 'Join to create your own voice channel; deleted when empty.' },
+  { id: 'anti-raid', label: 'Raid Protection', path: '/modules/antiRaid', icon: ShieldAlert, available: true, phase: 4, feature: 'modules.standard', summary: 'Spot join floods and keep brand-new accounts out.' },
+  { id: 'sticky', label: 'Sticky Messages', path: '/modules/sticky', icon: Pin, available: true, phase: 4, feature: 'modules.standard', summary: 'Keep a message at the bottom of a busy channel.' },
+  { id: 'server-stats', label: 'Server Stats', path: '/modules/serverStats', icon: Gauge, available: true, phase: 4, feature: 'modules.standard', summary: 'Channel names showing live member, bot and boost counts.' },
+  { id: 'birthdays', label: 'Birthdays', path: '/modules/birthdays', icon: Cake, available: true, phase: 4, feature: 'modules.standard', summary: 'Celebrate members on their birthday with a message and a role.' },
 ];
 
 export const ALL_NAV_ITEMS: NavItem[] = [...NAV_SECTIONS.flatMap((s) => s.items), ...MODULE_NAV_ITEMS];

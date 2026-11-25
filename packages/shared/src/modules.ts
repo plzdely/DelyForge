@@ -19,6 +19,13 @@ export const MODULE_IDS = [
   'reactionRoles',
   'suggestions',
   'giveaways',
+  'invites',
+  'starboard',
+  'tempVoice',
+  'antiRaid',
+  'sticky',
+  'serverStats',
+  'birthdays',
 ] as const;
 export type ModuleId = (typeof MODULE_IDS)[number];
 
@@ -303,6 +310,126 @@ export const giveawaysConfigSchema = z
   .strict();
 export type GiveawaysConfig = z.infer<typeof giveawaysConfigSchema>;
 
+// ─── Invite tracker ───────────────────────────────────────────────────────────────────────────────────────────────
+
+export const invitesConfigSchema = z
+  .object({
+    enabled: z.boolean(),
+    /** Where to announce who invited each new member (null = only in logs and /invites). */
+    channelId: channel,
+    message: template(500),
+  })
+  .strict();
+export type InvitesConfig = z.infer<typeof invitesConfigSchema>;
+export const INVITE_VARIABLES = [
+  { key: '{user}', description: 'Mentions the new member' },
+  { key: '{inviter}', description: 'Mentions who invited them' },
+  { key: '{invites}', description: 'How many members the inviter has brought in' },
+  { key: '{code}', description: 'The invite code used' },
+] as const;
+
+// ─── Starboard ────────────────────────────────────────────────────────────────────────────────────────────────────
+
+export const starboardConfigSchema = z
+  .object({
+    enabled: z.boolean(),
+    channelId: channel,
+    /** A normal emoji (⭐) or a server emoji written as <:name:id>. */
+    emoji: z.string().trim().min(1, 'Choose an emoji').max(64),
+    threshold: z.number().int().min(1).max(100),
+    /** Whether the author's own reaction counts. */
+    selfStar: z.boolean(),
+    ignoredChannelIds: z.array(snowflakeSchema).max(50),
+  })
+  .strict();
+export type StarboardConfig = z.infer<typeof starboardConfigSchema>;
+
+// ─── Temporary voice channels ─────────────────────────────────────────────────────────────────────────────────────
+
+export const tempVoiceConfigSchema = z
+  .object({
+    enabled: z.boolean(),
+    /** Joining this voice channel creates a new one for the member. */
+    hubChannelId: channel,
+    /** Category for new channels (null = the hub's category). */
+    categoryId: channel,
+    nameTemplate: z.string().trim().min(1, 'Give the channels a name').max(90),
+    /** 0 = no limit. */
+    userLimit: z.number().int().min(0).max(99),
+  })
+  .strict();
+export type TempVoiceConfig = z.infer<typeof tempVoiceConfigSchema>;
+
+// ─── Raid protection ──────────────────────────────────────────────────────────────────────────────────────────────
+
+export const antiRaidConfigSchema = z
+  .object({
+    enabled: z.boolean(),
+    /** Where to alert staff about raids and removed accounts. */
+    alertChannelId: channel,
+    /** A raid is this many joins within `perSeconds`. */
+    joinThreshold: z.number().int().min(3).max(100),
+    perSeconds: z.number().int().min(5).max(600),
+    /** What happens to everyone who joins while a raid is going on. */
+    raidAction: z.enum(['alert', 'kick', 'ban']),
+    raidMinutes: z.number().int().min(1).max(120),
+    /** Accounts younger than this are always removed (0 = off). */
+    minAccountAgeDays: z.number().int().min(0).max(90),
+  })
+  .strict();
+export type AntiRaidConfig = z.infer<typeof antiRaidConfigSchema>;
+
+// ─── Sticky messages ──────────────────────────────────────────────────────────────────────────────────────────────
+
+export const stickyConfigSchema = z
+  .object({
+    enabled: z.boolean(),
+    messages: z
+      .array(z.object({ channelId: snowflakeSchema, text: z.string().trim().min(1, 'Write the sticky message').max(2000) }).strict())
+      .max(10)
+      .refine((m) => new Set(m.map((x) => x.channelId)).size === m.length, 'One sticky message per channel'),
+  })
+  .strict();
+export type StickyConfig = z.infer<typeof stickyConfigSchema>;
+
+// ─── Server stats counters ────────────────────────────────────────────────────────────────────────────────────────
+
+export const STAT_VARIABLES = [
+  { key: '{members}', description: 'Everyone in the server' },
+  { key: '{humans}', description: 'Members who aren’t bots' },
+  { key: '{bots}', description: 'Bots' },
+  { key: '{boosts}', description: 'Server boosts' },
+  { key: '{channels}', description: 'Channels' },
+  { key: '{roles}', description: 'Roles' },
+] as const;
+
+export const serverStatsConfigSchema = z
+  .object({
+    enabled: z.boolean(),
+    /** Channels (usually locked voice channels) whose name shows a live number. */
+    counters: z
+      .array(z.object({ channelId: snowflakeSchema, template: z.string().trim().min(1, 'Write the channel name').max(90) }).strict())
+      .max(5)
+      .refine((c) => new Set(c.map((x) => x.channelId)).size === c.length, 'One counter per channel'),
+  })
+  .strict();
+export type ServerStatsConfig = z.infer<typeof serverStatsConfigSchema>;
+
+// ─── Birthdays ────────────────────────────────────────────────────────────────────────────────────────────────────
+
+export const birthdaysConfigSchema = z
+  .object({
+    enabled: z.boolean(),
+    channelId: channel,
+    message: template(500),
+    /** Given for the day of someone's birthday (null = no role). */
+    roleId: snowflakeSchema.nullable(),
+    /** Hour of the day (UTC) to announce birthdays. */
+    hourUtc: z.number().int().min(0).max(23),
+  })
+  .strict();
+export type BirthdaysConfig = z.infer<typeof birthdaysConfigSchema>;
+
 // ─── Registry — the one list of built modules; everything below is derived from it ────────────────────────────────
 
 export const moduleConfigSchemas = {
@@ -316,6 +443,13 @@ export const moduleConfigSchemas = {
   reactionRoles: reactionRolesConfigSchema,
   suggestions: suggestionsConfigSchema,
   giveaways: giveawaysConfigSchema,
+  invites: invitesConfigSchema,
+  starboard: starboardConfigSchema,
+  tempVoice: tempVoiceConfigSchema,
+  antiRaid: antiRaidConfigSchema,
+  sticky: stickyConfigSchema,
+  serverStats: serverStatsConfigSchema,
+  birthdays: birthdaysConfigSchema,
 } as const;
 export type ImplementedModuleId = keyof typeof moduleConfigSchemas;
 export const IMPLEMENTED_MODULES = Object.keys(moduleConfigSchemas) as [ImplementedModuleId, ...ImplementedModuleId[]];
@@ -404,6 +538,13 @@ export const DEFAULT_MODULE_CONFIGS: ModuleConfigs = {
   reactionRoles: { enabled: false, panels: [] },
   suggestions: { enabled: false, channelId: null, staffRoleIds: [] },
   giveaways: { enabled: false, managerRoleIds: [], color: '#f5a524' },
+  invites: { enabled: false, channelId: null, message: '{user} joined using {inviter}’s invite — that’s {invites} so far.' },
+  starboard: { enabled: false, channelId: null, emoji: '⭐', threshold: 3, selfStar: false, ignoredChannelIds: [] },
+  tempVoice: { enabled: false, hubChannelId: null, categoryId: null, nameTemplate: '{user}’s channel', userLimit: 0 },
+  antiRaid: { enabled: false, alertChannelId: null, joinThreshold: 10, perSeconds: 30, raidAction: 'alert', raidMinutes: 10, minAccountAgeDays: 0 },
+  sticky: { enabled: false, messages: [] },
+  serverStats: { enabled: false, counters: [] },
+  birthdays: { enabled: false, channelId: null, message: '🎂 Happy birthday {user}! Have a great day.', roleId: null, hourUtc: 9 },
 };
 
 /** Settings for one server: any subset of modules (missing ones use defaults). */
@@ -448,6 +589,13 @@ export const MODULES: readonly ModuleInfo[] = [
   { id: 'reactionRoles', name: 'Reaction Roles', summary: 'Panels where members pick their own roles with buttons or a menu.', feature: 'modules.standard', available: true, commands: [] },
   { id: 'suggestions', name: 'Suggestions', summary: 'Members submit ideas, others vote, staff approve or reject.', feature: 'modules.standard', available: true, commands: ['/suggest'] },
   { id: 'giveaways', name: 'Giveaways', summary: 'Timed giveaways with a join button and automatic, fair winner picking.', feature: 'modules.standard', available: true, commands: ['/giveaway start', '/giveaway end', '/giveaway reroll'] },
+  { id: 'invites', name: 'Invite Tracker', summary: 'See who invited each new member, invite counts and a leaderboard.', feature: 'modules.standard', available: true, commands: ['/invites', '/inviteboard'] },
+  { id: 'starboard', name: 'Starboard', summary: 'Messages that get enough ⭐ reactions are showcased in a starboard channel.', feature: 'modules.standard', available: true, commands: [] },
+  { id: 'tempVoice', name: 'Temporary Voice', summary: 'Join a “create channel” voice channel to get your own room; it disappears when empty.', feature: 'modules.standard', available: true, commands: [] },
+  { id: 'antiRaid', name: 'Raid Protection', summary: 'Spots join floods, alerts staff and keeps brand-new accounts out.', feature: 'modules.standard', available: true, commands: [] },
+  { id: 'sticky', name: 'Sticky Messages', summary: 'Keep a message pinned to the bottom of a busy channel.', feature: 'modules.standard', available: true, commands: [] },
+  { id: 'serverStats', name: 'Server Stats', summary: 'Channel names that show live member, bot and boost counts.', feature: 'modules.standard', available: true, commands: [] },
+  { id: 'birthdays', name: 'Birthdays', summary: 'Members save their birthday; the bot celebrates them with a message and a role.', feature: 'modules.standard', available: true, commands: ['/birthday set', '/birthday remove', '/birthday upcoming'] },
 ];
 
 export function moduleInfo(id: ModuleId): ModuleInfo {
@@ -476,6 +624,19 @@ export function moduleIntents<K extends ImplementedModuleId>(id: K, config: Modu
     }
     case 'leveling':
       return I('GuildMessages'); // message events arrive without the privileged content intent
+    case 'invites':
+      return I('GuildInvites', 'GuildMembers');
+    case 'starboard':
+      return I('GuildMessageReactions', 'GuildMessages', 'MessageContent');
+    case 'tempVoice':
+      return I('GuildVoiceStates');
+    case 'antiRaid':
+      return I('GuildMembers');
+    case 'sticky':
+      return I('GuildMessages');
+    case 'serverStats':
+      // Counting humans and bots needs the member list.
+      return (config as ServerStatsConfig).counters.some((c) => /\{(humans|bots)\}/.test(c.template)) ? I('GuildMembers') : 0;
     default:
       return 0;
   }
@@ -674,7 +835,19 @@ export function modulePermissions<K extends ImplementedModuleId>(id: K, config: 
     case 'reactionRoles':
       return base | ROLES;
     case 'giveaways':
+    case 'starboard':
+    case 'sticky':
       return base | HISTORY;
+    case 'invites':
+      return base | P(5n); // Manage Server: needed to read invite links
+    case 'tempVoice':
+      return VIEW | P(4n) | P(20n) | P(24n); // manage channels, connect, move members
+    case 'antiRaid':
+      return base | P(1n) | P(2n); // kick, ban
+    case 'serverStats':
+      return VIEW | P(4n) | P(20n); // rename channels
+    case 'birthdays':
+      return base | ((config as BirthdaysConfig).roleId ? ROLES : 0n);
     default:
       return base;
   }

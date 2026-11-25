@@ -20,7 +20,7 @@ const ACTIVITY_TYPES = {
 /** The real discord.js-backed client used in production. */
 export function createDiscordClient(options: RuntimeOptions, events: BotClientEvents): BotClient {
   // Partials let logging report deletes/edits of messages sent before the bot started.
-  const client = new Client({ intents: options.intents, partials: [Partials.Message, Partials.Channel, Partials.GuildMember] });
+  const client = new Client({ intents: options.intents, partials: [Partials.Message, Partials.Channel, Partials.GuildMember, Partials.Reaction, Partials.User] });
   const modules = new ModuleHost(client, options, events.log, events.command, events.workflowRun);
 
   client.once(Events.ClientReady, async (c) => {

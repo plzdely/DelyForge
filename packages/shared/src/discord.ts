@@ -23,6 +23,7 @@ export const INTENTS: readonly IntentInfo[] = [
   { key: 'GuildMembers', bit: 1 << 1, label: 'Server Members', description: 'See members joining, leaving and changing — needed for welcome messages, auto-roles and logging.', privileged: true },
   { key: 'GuildModeration', bit: 1 << 2, label: 'Moderation', description: 'Receive ban and audit-log events.', privileged: false },
   { key: 'GuildExpressions', bit: 1 << 3, label: 'Emojis & Stickers', description: 'Emoji and sticker updates.', privileged: false },
+  { key: 'GuildInvites', bit: 1 << 6, label: 'Invites', description: 'Know when invite links are created or deleted (invite tracking).', privileged: false },
   { key: 'GuildVoiceStates', bit: 1 << 7, label: 'Voice States', description: 'See who joins or leaves voice channels.', privileged: false },
   { key: 'GuildPresences', bit: 1 << 8, label: 'Presence', description: 'See members’ online status and activities. Rarely needed.', privileged: true },
   { key: 'GuildMessages', bit: 1 << 9, label: 'Server Messages', description: 'Receive message events in servers (for logging, leveling, auto-moderation).', privileged: false },

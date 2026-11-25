@@ -1,6 +1,6 @@
 # Development Status
 
-_Last updated: 2026-11-15 — switched to the free Personal edition (selling on hold)._
+_Last updated: 2026-11-25 — logging records who did what; seven new modules (17 in total)._
 
 > **Current mode: Personal edition** (`PERSONAL_EDITION = true` in `packages/shared/src/brand.ts`). Selling is on hold:
 > every feature is unlocked on this PC with no limits and no sign-in, and the screens that need a paid DelyForge server
@@ -262,6 +262,23 @@ See "Making yourself staff" under Phase 8: set your `role` to `ADMIN` in Prisma 
 ### Not built
 - Banning someone from **your own Discord server** when they're banned in DelyForge (needs a bot with ban permission in
   that server). Unlinking/changing the linked Discord account (staff can unban + the person relinks; ask if needed).
+
+## Modules round 2 (2026-11-25)
+
+| Item | Status | Verification |
+|---|---|---|
+| Logging: every staff action from Discord's live audit log with who, what changed (old → new) and why; moderator credited for deleted messages and for DelyForge commands; 6 new categories (on by default, older settings still load); separate channel per group | ✅ / 🟡 | 9 runtime tests + settings-migration test; **not yet watched in a real server** |
+| Invite Tracker: who invited whom, counts that stayed/left, `/invites`, `/inviteboard`, "Invited by" in the join log | ✅ / 🟡 | detection + store tests; real invites untested |
+| Starboard, Temporary Voice, Raid Protection, Sticky Messages, Server Stats, Birthdays | ✅ / 🟡 | logic tests (emoji matching, raid window, names, counters, birthday dates incl. 29 Feb); settings screens in the smoke test; **not yet run in a real server** |
+
+### Things to know
+- "Who did it" needs the bot's **View Audit Log** permission; the settings page warns when it's missing.
+- Invite Tracker needs **Manage Server** (Discord only shows invite links to that permission). Two members joining in
+  the same second can be credited to the wrong invite — Discord gives no exact link.
+- Server Stats renames channels at most every 10 minutes (Discord allows 2 renames per channel per 10 minutes).
+- Birthdays use a UTC hour; the settings page shows what that is in your local time.
+- If a moderator deletes several messages from the same person quickly, Discord merges them into one audit entry,
+  so only the first delete names the moderator.
 
 ## Known limitations / honest notes
 - Bots run on this PC, so they're online while DelyForge is running. Closing the window keeps it running in the tray

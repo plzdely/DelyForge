@@ -129,6 +129,31 @@ const LEVELING: CommandJSON[] = [
   new SlashCommandBuilder().setName('leaderboard').setDescription('Top members by XP').setDMPermission(false).toJSON(),
 ];
 
+const INVITES: CommandJSON[] = [
+  new SlashCommandBuilder()
+    .setName('invites')
+    .setDescription('How many members someone invited, and who invited them')
+    .setDMPermission(false)
+    .addUserOption((o) => o.setName('member').setDescription('Whose invites (defaults to you)'))
+    .toJSON(),
+  new SlashCommandBuilder().setName('inviteboard').setDescription('Top inviters in this server').setDMPermission(false).toJSON(),
+];
+
+const BIRTHDAY: CommandJSON = new SlashCommandBuilder()
+  .setName('birthday')
+  .setDescription('Your birthday in this server')
+  .setDMPermission(false)
+  .addSubcommand((s) =>
+    s
+      .setName('set')
+      .setDescription('Save your birthday')
+      .addIntegerOption((o) => o.setName('month').setDescription('Month (1–12)').setRequired(true).setMinValue(1).setMaxValue(12))
+      .addIntegerOption((o) => o.setName('day').setDescription('Day (1–31)').setRequired(true).setMinValue(1).setMaxValue(31)),
+  )
+  .addSubcommand((s) => s.setName('remove').setDescription('Forget your birthday'))
+  .addSubcommand((s) => s.setName('upcoming').setDescription('The next birthdays in this server'))
+  .toJSON();
+
 const TICKET: CommandJSON = new SlashCommandBuilder()
   .setName('ticket')
   .setDescription('Manage the ticket in this channel')
@@ -190,5 +215,7 @@ export function desiredCommands(config: ModuleConfigs): CommandJSON[] {
   if (config.tickets.enabled) out.push(TICKET);
   if (config.suggestions.enabled) out.push(SUGGEST);
   if (config.giveaways.enabled) out.push(GIVEAWAY);
+  if (config.invites.enabled) out.push(...INVITES);
+  if (config.birthdays.enabled) out.push(BIRTHDAY);
   return out;
 }

@@ -142,7 +142,11 @@ export async function syncPanels(ctx: ModuleContext, guild: Guild): Promise<numb
     }
   }
 
+  // Sticky messages share this table; keep the ones still configured (they're re-posted by the sticky module).
+  const sticky = ctx.config(guild.id).sticky;
+  const liveSticky = (k: string) => sticky.enabled && sticky.messages.some((m) => k === `sticky:${m.channelId}`);
   for (const stale of existing.values()) {
+    if (liveSticky(stale.key)) continue;
     await deleteOld(stale.channelId, stale.messageId);
     ctx.store.removePanel(guild.id, stale.key);
     changes++;

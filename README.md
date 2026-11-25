@@ -94,7 +94,8 @@ version so you know what to expect:
    and choose a server where you have *Manage Server*.
 5. **Start it.** Click **Start**. Within a few seconds your bot shows as online in Discord. Type `/ping` to check.
 6. **Add features.** Open your bot's **Modules** tab and turn on what you want — welcome messages, moderation, tickets,
-   levels and more.
+   levels, logging (who did what), invite tracking, starboard, temporary voice channels, raid protection, birthdays
+   and more.
 
 > Some modules need extra Discord permissions called *privileged intents* (for example reading message text for
 > auto-moderation). If one is missing, DelyForge tells you exactly which switch to turn on under **Bot** in the

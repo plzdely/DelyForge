@@ -13,6 +13,13 @@ import { CID, syncPanels } from './panels.js';
 import { onRoleButton, onRoleMenu, onVerify } from './roles.js';
 import { TICKET_COMMANDS, handleTicketCommand, onTicketClose, onTicketCloseConfirm, onTicketOpen } from './tickets.js';
 import * as welcome from './welcome.js';
+import * as antiRaid from './antiraid.js';
+import { checkBirthdays, handleBirthdayCommand } from './birthdays.js';
+import * as invites from './invites.js';
+import * as starboard from './starboard.js';
+import { updateStats } from './stats.js';
+import * as sticky from './sticky.js';
+import * as tempVoice from './tempvoice.js';
 
 /**
  * Connects Discord events to the enabled modules, per server, and keeps each server's slash commands in line with
@@ -26,6 +33,9 @@ export class ModuleHost {
   /** Servers whose settings changed during a sync — synced again as soon as it finishes. */
   private resync = new Set<string>();
   private giveawayTimer: ReturnType<typeof setInterval> | null = null;
+  /** Once a minute: birthdays; every 10 minutes: server stats counters (Discord's rename limit). */
+  private minuteTimer: ReturnType<typeof setInterval> | null = null;
+  private minutes = 0;
   private readonly ctx: ModuleContext;
 
   constructor(
@@ -81,10 +91,22 @@ export class ModuleHost {
     this.giveawayTimer = setInterval(() => {
       if (this.store) void endDueGiveaways(this.ctx, this.client).catch((e: Error) => this.log('error', `Giveaways: ${e.message}`));
     }, 15_000);
+    void this.everyMinute();
+    this.minuteTimer = setInterval(() => void this.everyMinute(), 60_000);
+  }
+
+  private async everyMinute(): Promise<void> {
+    const statsDue = this.minutes++ % 10 === 0;
+    for (const guild of this.client.guilds.cache.values()) {
+      if (!this.store) return;
+      await checkBirthdays(this.ctx, guild).catch((e: Error) => this.log('error', `Birthdays: ${e.message}`));
+      if (statsDue) await updateStats(this.ctx, guild).catch((e: Error) => this.log('error', `Server stats: ${e.message}`));
+    }
   }
 
   close(): void {
     if (this.giveawayTimer) clearInterval(this.giveawayTimer);
+    if (this.minuteTimer) clearInterval(this.minuteTimer);
     this.store?.close();
     this.store = null;
   }
@@ -153,6 +175,8 @@ export class ModuleHost {
       }
       const panelChanges = await syncPanels(this.ctx, guild);
       if (panelChanges) this.log('info', `Updated ${panelChanges} panel message(s) in “${guild.name}”.`);
+      await invites.syncInvites(this.ctx, guild);
+      await tempVoice.cleanupTempChannels(this.ctx, guild);
     } catch (e) {
       this.log('warn', `Could not update “${guild.name}” to the new settings: ${(e as Error).message}`);
     } finally {
@@ -179,14 +203,18 @@ export class ModuleHost {
     c.on(
       Events.GuildMemberAdd,
       safe('Member join', async (m) => {
-        await welcome.onMemberJoin(ctx, m);
-        await logging.onMemberJoinLog(ctx, m);
+        // Raid protection first: someone it removes gets no welcome and isn't counted as an invite.
+        const removed = await antiRaid.onMemberJoin(ctx, m);
+        const invitedBy = removed ? null : await invites.onMemberJoin(ctx, m);
+        if (!removed) await welcome.onMemberJoin(ctx, m);
+        await logging.onMemberJoinLog(ctx, m, invitedBy);
       }),
     );
     c.on(
       Events.GuildMemberRemove,
       safe('Member leave', async (m) => {
         await welcome.onMemberLeave(ctx, m);
+        invites.onMemberLeave(ctx, m.guild.id, m.id);
         await logging.onMemberLeaveLog(ctx, m);
       }),
     );
@@ -220,6 +248,12 @@ export class ModuleHost {
     // Who did what: channels, roles, permissions, members, bans, server settings… (needs View Audit Log).
     c.on(Events.GuildAuditLogEntryCreate, safe('Audit log', (entry, guild) => logging.onAuditEntry(ctx, entry, guild)));
     c.on(Events.VoiceStateUpdate, safe('Voice log', (a, b) => logging.onVoice(ctx, a, b)));
+    c.on(Events.VoiceStateUpdate, safe('Temporary voice', (a, b) => tempVoice.onVoiceState(ctx, a, b)));
+    c.on(Events.InviteCreate, safe('Invite tracker', async (inv) => invites.onInviteCreate(inv)));
+    c.on(Events.InviteDelete, safe('Invite tracker', async (inv) => invites.onInviteDelete(inv)));
+    c.on(Events.MessageReactionAdd, safe('Starboard', (r) => starboard.onReaction(ctx, r)));
+    c.on(Events.MessageReactionRemove, safe('Starboard', (r) => starboard.onReaction(ctx, r)));
+    c.on(Events.MessageCreate, safe('Sticky messages', async (m) => sticky.onMessage(ctx, m)));
 
     c.on(Events.InteractionCreate, async (i) => {
       if (!this.store) return;
@@ -244,7 +278,11 @@ export class ModuleHost {
               ? handleSuggest
               : n === 'giveaway'
                 ? handleGiveaway
-                : null;
+                : invites.INVITE_COMMANDS.has(n)
+                  ? invites.handleInvitesCommand
+                  : n === 'birthday'
+                    ? handleBirthdayCommand
+                    : null;
     if (!handler) return this.runCustom(i); // custom command, or e.g. /ping (handled elsewhere)
     const started = Date.now();
     try {

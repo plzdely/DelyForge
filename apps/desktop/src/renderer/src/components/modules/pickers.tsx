@@ -1,4 +1,4 @@
-import type { GuildInfo } from '@delyforge/shared';
+import type { GuildChannelKind, GuildInfo } from '@delyforge/shared';
 import { RefreshCw } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
@@ -49,6 +49,7 @@ export function ChannelSelect({
   hint,
   error,
   emptyLabel = '— Choose a channel —',
+  kinds = ['text', 'announcement'],
 }: {
   guild: GuildInfo;
   value: string | null;
@@ -59,8 +60,10 @@ export function ChannelSelect({
   error?: string;
   /** What "no channel" means here. */
   emptyLabel?: string;
+  /** Which kinds of channel can be picked (text channels by default). */
+  kinds?: readonly GuildChannelKind[];
 }) {
-  const textual = guild.channels.filter((c) => c.kind === 'text' || c.kind === 'announcement');
+  const textual = guild.channels.filter((c) => kinds.includes(c.kind));
   const categories = guild.channels.filter((c) => c.kind === 'category');
   const groups = [
     { name: null as string | null, items: textual.filter((c) => !c.parentId) },
@@ -76,14 +79,14 @@ export function ChannelSelect({
             <optgroup key={g.name} label={g.name}>
               {g.items.map((c) => (
                 <option key={c.id} value={c.id}>
-                  # {c.name}
+                  {c.kind === 'voice' ? '🔊' : '#'} {c.name}
                 </option>
               ))}
             </optgroup>
           ) : (
             g.items.map((c) => (
               <option key={c.id} value={c.id}>
-                # {c.name}
+                {c.kind === 'voice' ? '🔊' : '#'} {c.name}
               </option>
             ))
           ),
