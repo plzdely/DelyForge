@@ -16,22 +16,27 @@ export function audienceFits<T>(viewers: readonly T[], canSeeBoard: (v: T) => bo
 const canView = (ch: GuildBasedChannel, who: Role | GuildMember) => ch.permissionsFor(who)?.has(PermissionFlagsBits.ViewChannel) ?? false;
 const isNsfw = (ch: GuildBasedChannel | null) => Boolean(ch && 'nsfw' in ch && ch.nsfw);
 
+const memberOverwriteIds = (ch: GuildBasedChannel): string[] =>
+  'permissionOverwrites' in ch ? [...ch.permissionOverwrites.cache.filter((o) => o.type === OverwriteType.Member).keys()] : [];
+
 /**
- * Never copy a message somewhere more people can see it (e.g. a staff channel into a members' starboard): every role —
- * and every member given their own access to the starboard — must be able to see the original channel too. Private
- * threads are never copied; age-restricted messages only go to an age-restricted starboard.
+ * Never copy a message somewhere more people can see it (e.g. a staff channel into a members' starboard). Everyone who
+ * can see the starboard must be able to see the original channel too — checked for every role, every member with
+ * their own permissions on either channel, and every member the bot knows about. Private threads are never copied;
+ * age-restricted messages only go to an age-restricted starboard.
  */
 function mayShowcase(source: GuildBasedChannel, board: GuildBasedChannel): boolean {
   if (source.type === ChannelType.PrivateThread) return false;
   const nsfw = isNsfw(source.isThread() ? source.parent : source);
   if (nsfw && !isNsfw(board)) return false;
-  if (!audienceFits([...source.guild.roles.cache.values()], (r) => canView(board, r), (r) => canView(source, r))) return false;
-  const memberGrants = 'permissionOverwrites' in board ? board.permissionOverwrites.cache.filter((o) => o.type === OverwriteType.Member && o.allow.has(PermissionFlagsBits.ViewChannel)) : null;
-  // A member we can't look up is treated as unable to see the source (refuse rather than guess).
-  return !memberGrants || memberGrants.every((o) => {
-    const m = source.guild.members.cache.get(o.id);
-    return Boolean(m && canView(source, m));
-  });
+  const guild = source.guild;
+  if (!audienceFits([...guild.roles.cache.values()], (r) => canView(board, r), (r) => canView(source, r))) return false;
+  // People singled out on either channel: if we can't look one up, refuse rather than guess.
+  const singledOut = new Set([...memberOverwriteIds(board), ...memberOverwriteIds(source), ...(source.isThread() && source.parent ? memberOverwriteIds(source.parent) : [])]);
+  for (const id of singledOut) if (!guild.members.cache.has(id)) return false;
+  // shortcut: members the bot hasn't cached (no Server Members intent) are covered by the role check only; a member
+  // whose combination of roles denies the source while one role allows the board could still slip through.
+  return audienceFits([...guild.members.cache.values()], (m) => canView(board, m), (m) => canView(source, m));
 }
 
 /** One update at a time per message, so a burst of reactions can't post it twice. */
@@ -51,15 +56,15 @@ export async function onReaction(ctx: ModuleContext, reaction: MessageReaction |
   const config = ctx.config(message.guild.id).starboard;
   if (!config.enabled || !config.channelId || !emojiMatches(config.emoji, r.emoji)) return;
   if (message.channelId === config.channelId || config.ignoredChannelIds.includes(message.channelId)) return;
-  const board = message.guild.channels.cache.get(config.channelId);
-  if (!board || !mayShowcase(message.channel, board)) {
+  // Decide and act inside the per-message queue, so a takedown and a post can never interleave.
+  await serial(message.id, async () => {
+    const board = message.guild.channels.cache.get(config.channelId!);
+    if (board && mayShowcase(message.channel, board)) return sync(ctx, message, config);
     // No longer allowed (e.g. the channel became private): take down a copy posted earlier.
     const old = ctx.store.starPost(message.guild.id, message.id);
     if (old && board?.isTextBased()) await board.messages.delete(old).catch(() => null);
     if (old) ctx.store.setStarPost(message.guild.id, message.id, null);
-    return;
-  }
-  await serial(message.id, () => sync(ctx, message, config));
+  });
 }
 
 async function sync(ctx: ModuleContext, message: Message<true>, config: StarboardConfig): Promise<void> {
