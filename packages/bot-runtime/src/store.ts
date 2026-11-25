@@ -252,6 +252,7 @@ export class BotStore {
     this.addColumnIfMissing('giveaway_entries', 'weight', 'INTEGER NOT NULL DEFAULT 1');
     this.addColumnIfMissing('tickets', 'reason', 'TEXT');
     this.addColumnIfMissing('tickets', 'claimed_by', 'TEXT');
+    this.addColumnIfMissing('tickets', 'panel_id', 'TEXT');
     this.addColumnIfMissing('starboard', 'author_id', 'TEXT');
     this.addColumnIfMissing('starboard', 'stars', 'INTEGER NOT NULL DEFAULT 0');
   }
@@ -418,21 +419,29 @@ export class BotStore {
     return (this.db.prepare('SELECT COUNT(*) + 1 AS n FROM tickets WHERE guild_id = ?').get(guildId) as { n: number }).n;
   }
 
-  addTicket(guildId: string, channelId: string, userId: string, reason: string | null = null): void {
-    this.db.prepare('INSERT INTO tickets (guild_id, channel_id, user_id, reason) VALUES (?, ?, ?, ?)').run(guildId, channelId, userId, reason);
+  /** `panelId` = which extra ticket panel opened it (null = the main panel). */
+  addTicket(guildId: string, channelId: string, userId: string, reason: string | null = null, panelId: string | null = null): void {
+    this.db.prepare('INSERT INTO tickets (guild_id, channel_id, user_id, reason, panel_id) VALUES (?, ?, ?, ?, ?)').run(guildId, channelId, userId, reason, panelId);
   }
 
-  ticketByChannel(channelId: string): { id: number; userId: string; openedAt: string; closed: boolean; reason: string | null; claimedBy: string | null } | null {
+  ticketByChannel(channelId: string): { id: number; userId: string; openedAt: string; closed: boolean; reason: string | null; claimedBy: string | null; panelId: string | null } | null {
     const r = this.db.prepare('SELECT * FROM tickets WHERE channel_id = ?').get(channelId) as
-      | { id: number; user_id: string; opened_at: string; closed_at: string | null; reason: string | null; claimed_by: string | null }
+      | { id: number; user_id: string; opened_at: string; closed_at: string | null; reason: string | null; claimed_by: string | null; panel_id: string | null }
       | undefined;
-    return r ? { id: r.id, userId: r.user_id, openedAt: r.opened_at, closed: r.closed_at !== null, reason: r.reason, claimedBy: r.claimed_by } : null;
+    return r ? { id: r.id, userId: r.user_id, openedAt: r.opened_at, closed: r.closed_at !== null, reason: r.reason, claimedBy: r.claimed_by, panelId: r.panel_id } : null;
   }
 
   /** Every open ticket in a server (for closing idle ones). */
-  openTicketsInGuild(guildId: string): { channelId: string; userId: string; openedAt: string; reason: string | null; claimedBy: string | null }[] {
-    const rows = this.db.prepare('SELECT * FROM tickets WHERE guild_id = ? AND closed_at IS NULL').all(guildId) as { channel_id: string; user_id: string; opened_at: string; reason: string | null; claimed_by: string | null }[];
-    return rows.map((r) => ({ channelId: r.channel_id, userId: r.user_id, openedAt: r.opened_at, reason: r.reason, claimedBy: r.claimed_by }));
+  openTicketsInGuild(guildId: string): { channelId: string; userId: string; openedAt: string; reason: string | null; claimedBy: string | null; panelId: string | null }[] {
+    const rows = this.db.prepare('SELECT * FROM tickets WHERE guild_id = ? AND closed_at IS NULL').all(guildId) as {
+      channel_id: string;
+      user_id: string;
+      opened_at: string;
+      reason: string | null;
+      claimed_by: string | null;
+      panel_id: string | null;
+    }[];
+    return rows.map((r) => ({ channelId: r.channel_id, userId: r.user_id, openedAt: r.opened_at, reason: r.reason, claimedBy: r.claimed_by, panelId: r.panel_id }));
   }
 
   /** A staff member takes the ticket; false if someone already did. */

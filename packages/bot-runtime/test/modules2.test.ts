@@ -233,3 +233,30 @@ describe('member data for the app', () => {
     s.close();
   });
 });
+
+describe('several ticket panels', () => {
+  const C = '111111111111111111', MAIN = '222222222222222222', MODS = '333333333333333333', CAT = '444444444444444444';
+  const tickets = {
+    ...DEFAULT_MODULE_CONFIGS.tickets,
+    enabled: true,
+    staffRoleIds: [MAIN],
+    panel: { ...DEFAULT_MODULE_CONFIGS.tickets.panel, channelId: C },
+    extraPanels: [
+      { id: 'report', name: 'Report', panel: { ...DEFAULT_MODULE_CONFIGS.tickets.panel, channelId: C, title: 'Report a member' }, categoryId: CAT, staffRoleIds: [MODS], openMessage: 'Tell us who.', pingStaff: false },
+    ],
+  };
+
+  it('posts one panel per kind, each with its own button', () => {
+    const panels = desiredPanels({ ...DEFAULT_MODULE_CONFIGS, tickets } as ModuleConfigs);
+    expect(panels.map((p) => p.key)).toEqual(['tickets', 'tickets:report']);
+    expect(JSON.stringify(panels[1]!.payload)).toContain(CID.ticketOpenFor('report'));
+  });
+
+  it('gives each kind its own staff, category, message and channel name', async () => {
+    const { ticketKind } = await import('../src/modules/tickets.js');
+    expect(ticketKind(tickets, null)).toMatchObject({ staffRoleIds: [MAIN], prefix: 'ticket', pingStaff: true });
+    expect(ticketKind(tickets, 'report')).toMatchObject({ staffRoleIds: [MAIN, MODS], categoryId: CAT, openMessage: 'Tell us who.', pingStaff: false });
+    expect(ticketKind(tickets, 'gone')).toBeNull();
+    expect(ticketChannelName('Dely 🎮', 7, 'Report')).toBe('report-7-dely');
+  });
+});

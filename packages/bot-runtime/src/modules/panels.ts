@@ -13,6 +13,7 @@ import { type ModuleContext, hexToInt, sendableChannel } from './context.js';
 /** Custom IDs the bot gives its buttons and menus: `df:<module>:<action>[:<args>]`. */
 export const CID = {
   ticketOpen: 'df:ticket:open',
+  ticketOpenFor: (panelId: string) => `df:ticket:open:${panelId}`,
   ticketClose: 'df:ticket:close',
   ticketCloseConfirm: 'df:ticket:closeconfirm',
   ticketClaim: 'df:ticket:claim',
@@ -91,6 +92,11 @@ export function desiredPanels(config: ModuleConfigs): DesiredPanel[] {
   const out: Omit<DesiredPanel, 'hash'>[] = [];
   if (config.tickets.enabled && config.tickets.panel.channelId) {
     out.push({ key: 'tickets', channelId: config.tickets.panel.channelId, payload: buttonPanel(config.tickets.panel, CID.ticketOpen, ButtonStyle.Primary) });
+  }
+  if (config.tickets.enabled) {
+    for (const p of config.tickets.extraPanels) {
+      if (p.panel.channelId) out.push({ key: `tickets:${p.id}`, channelId: p.panel.channelId, payload: buttonPanel(p.panel, CID.ticketOpenFor(p.id), ButtonStyle.Primary) });
+    }
   }
   if (config.verification.enabled && config.verification.panel.channelId && config.verification.roleId) {
     out.push({ key: 'verification', channelId: config.verification.panel.channelId, payload: buttonPanel(config.verification.panel, CID.verify, ButtonStyle.Success) });

@@ -162,11 +162,58 @@ export function TicketsForm({ c, set, guild }: Props<'tickets'>) {
           <RoleChecklist guild={guild} value={c.staffRoleIds} onChange={(ids) => set({ ...c, staffRoleIds: ids })} />
         </Field>
         <TemplateField id="tk-open" label="First message in a new ticket" value={c.openMessage} onChange={(v) => set({ ...c, openMessage: v })} />
+        <ToggleRow title="Ping the staff roles" description="Mention them when a ticket opens." checked={c.pingStaff} onChange={(v) => set({ ...c, pingStaff: v })} />
         <NumberField id="tk-max" label="Open tickets per member" value={c.maxOpenPerUser} min={1} max={10} onChange={(v) => set({ ...c, maxOpenPerUser: v })} />
         <ToggleRow title="Ask what they need help with" description="A short pop-up before the ticket opens; the answer is shown to staff and kept in the transcript." checked={c.askReason} onChange={(v) => set({ ...c, askReason: v })} />
         <ToggleRow title="Claim button" description="Lets a staff member take the ticket, so members know who’s helping." checked={c.claimButton} onChange={(v) => set({ ...c, claimButton: v })} />
         <NumberField id="tk-idle" label="Close tickets with no messages for" suffix="hours (0 = never)" hint="Checked every 10 minutes. The transcript is saved as usual. Staff can also use /ticket add, remove and rename." min={0} max={336} value={c.autoCloseHours} onChange={(v) => set({ ...c, autoCloseHours: v })} />
       </Section>
+      {c.extraPanels.map((x, n) => {
+        const update = (patch: Partial<typeof x>) => set({ ...c, extraPanels: c.extraPanels.map((y, m) => (m === n ? { ...y, ...patch } : y)) });
+        return (
+          <Card key={x.id} className="space-y-4 p-5">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-fg">Ticket panel: {x.name || 'unnamed'}</h3>
+              <Button size="sm" variant="ghost" className="text-danger hover:text-danger" onClick={() => set({ ...c, extraPanels: c.extraPanels.filter((_, m) => m !== n) })}>
+                <Trash2 /> Remove
+              </Button>
+            </div>
+            <Field label="Name" htmlFor={`tkx-name-${x.id}`} hint="Also starts the ticket channel names, e.g. #report-12-dely.">
+              <Input id={`tkx-name-${x.id}`} maxLength={40} value={x.name} onChange={(e) => update({ name: e.target.value })} />
+            </Field>
+            <PanelFields prefix={`tkx-${x.id}`} p={x.panel} set={(panel) => update({ panel })} guild={guild} note={PANEL_NOTE} />
+            <CategorySelect id={`tkx-cat-${x.id}`} label="Create these tickets in category" hint="Empty = the main ticket category." guild={guild} value={x.categoryId} onChange={(v) => update({ categoryId: v })} />
+            <Field label="Extra staff for these tickets" htmlFor={`tkx-staff-${x.id}`} hint="The main staff roles above can always see every ticket.">
+              <RoleChecklist guild={guild} value={x.staffRoleIds} onChange={(ids) => update({ staffRoleIds: ids })} />
+            </Field>
+            <TemplateField id={`tkx-open-${x.id}`} label="First message in these tickets" value={x.openMessage} onChange={(v) => update({ openMessage: v })} />
+            <ToggleRow title="Ping the staff roles" checked={x.pingStaff} onChange={(v) => update({ pingStaff: v })} />
+          </Card>
+        );
+      })}
+      {c.extraPanels.length < 5 ? (
+        <Button
+          onClick={() =>
+            set({
+              ...c,
+              extraPanels: [
+                ...c.extraPanels,
+                {
+                  id: newPanelId(c.extraPanels),
+                  name: 'Report',
+                  panel: { channelId: null, title: 'Report a member', description: 'Click below to privately report someone to the moderators.', buttonLabel: 'Make a report', color: '#f04d5e' },
+                  categoryId: null,
+                  staffRoleIds: [],
+                  openMessage: 'Thanks {user}. Tell us who you’re reporting and what happened — screenshots help.',
+                  pingStaff: true,
+                },
+              ],
+            })
+          }
+        >
+          <Plus /> Add another ticket panel
+        </Button>
+      ) : null}
       <Section title="Transcripts" description="When a ticket closes, the conversation is saved as a text file before the channel is deleted.">
         <ChannelSelect id="tk-tr" label="Transcript channel" hint="Leave empty to not keep transcripts." guild={guild} value={c.transcriptChannelId} onChange={(v) => set({ ...c, transcriptChannelId: v })} />
         <ToggleRow title="Send the member a copy" checked={c.dmTranscript} onChange={(v) => set({ ...c, dmTranscript: v })} />
@@ -216,7 +263,7 @@ export function VerificationForm({ c, set, guild }: Props<'verification'>) {
 
 // ─── Reaction roles ───────────────────────────────────────────────────────────────────────────────────────────────
 
-function newPanelId(existing: readonly RolePanelConfig[]): string {
+function newPanelId(existing: readonly { id: string }[]): string {
   for (let n = existing.length + 1; ; n++) if (!existing.some((p) => p.id === `p${n}`)) return `p${n}`;
 }
 

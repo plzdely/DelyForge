@@ -1,4 +1,4 @@
-import { renderTemplate } from '@delyforge/shared';
+import { type TicketsConfig, renderTemplate } from '@delyforge/shared';
 import {
   AttachmentBuilder,
   type ButtonInteraction,
@@ -26,10 +26,28 @@ export const TICKET_COMMANDS = new Set(['ticket']);
 const P = PermissionFlagsBits;
 const MEMBER_ACCESS = [P.ViewChannel, P.SendMessages, P.ReadMessageHistory, P.AttachFiles, P.EmbedLinks];
 
-/** "Dely 🎮!" → "dely" — keeps ticket channel names valid and readable. */
-export function ticketChannelName(username: string, n: number): string {
-  const clean = username.toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 20) || 'member';
-  return `ticket-${n}-${clean}`;
+const slug = (text: string, max: number) => text.toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, max);
+
+/** "Dely 🎮!" → "dely" — keeps ticket channel names valid and readable. Extra panels use their own name as prefix. */
+export function ticketChannelName(username: string, n: number, prefix = 'ticket'): string {
+  return `${slug(prefix, 20) || 'ticket'}-${n}-${slug(username, 20) || 'member'}`;
+}
+
+/** What a ticket opened from a panel gets: the main panel's settings, or an extra panel's (null = panel removed). */
+export function ticketKind(c: TicketsConfig, panelId: string | null) {
+  if (!panelId) return { panelId: null, prefix: 'ticket', categoryId: c.categoryId, staffRoleIds: c.staffRoleIds, openMessage: c.openMessage, color: c.panel.color, pingStaff: c.pingStaff };
+  const p = c.extraPanels.find((x) => x.id === panelId);
+  if (!p) return null;
+  return {
+    panelId: p.id,
+    prefix: p.name,
+    categoryId: p.categoryId ?? c.categoryId,
+    // The main staff roles see every ticket; each panel can add its own.
+    staffRoleIds: [...new Set([...c.staffRoleIds, ...p.staffRoleIds])],
+    openMessage: p.openMessage,
+    color: p.panel.color,
+    pingStaff: p.pingStaff,
+  };
 }
 
 /** Plain-text transcript of a ticket, oldest message first. */
@@ -55,24 +73,24 @@ const reply = (i: Reply, content: string) =>
 /** Members whose ticket is being created right now — a double click must not open two tickets. */
 const opening = new Set<string>();
 
-/** Open button: asks for a reason first when that's switched on. */
-export async function onTicketOpen(ctx: ModuleContext, i: ButtonInteraction): Promise<void> {
+/** Open button (main panel, or an extra panel's ID): asks for a reason first when that's switched on. */
+export async function onTicketOpen(ctx: ModuleContext, i: ButtonInteraction, panelId: string | null = null): Promise<void> {
   if (!i.inCachedGuild()) return;
   const c = ctx.config(i.guildId).tickets;
-  if (c.enabled && c.askReason && !tooMany(ctx, i)) {
+  if (c.enabled && c.askReason && ticketKind(c, panelId) && !tooMany(ctx, i)) {
     return void (await i.showModal({
       title: 'Open a ticket',
-      custom_id: CID.ticketReason,
+      custom_id: panelId ? `${CID.ticketReason}:${panelId}` : CID.ticketReason,
       components: [{ type: ComponentType.ActionRow, components: [{ type: ComponentType.TextInput, custom_id: 'reason', label: 'What do you need help with?', style: TextInputStyle.Paragraph, required: true, max_length: 500 }] }],
     }));
   }
-  await guardedOpen(ctx, i, null);
+  await guardedOpen(ctx, i, null, panelId);
 }
 
 /** The reason pop-up was sent. */
-export async function onTicketReason(ctx: ModuleContext, i: ModalSubmitInteraction): Promise<void> {
+export async function onTicketReason(ctx: ModuleContext, i: ModalSubmitInteraction, panelId: string | null = null): Promise<void> {
   if (!i.inCachedGuild()) return;
-  await guardedOpen(ctx, i, i.fields.getTextInputValue('reason').trim() || null);
+  await guardedOpen(ctx, i, i.fields.getTextInputValue('reason').trim() || null, panelId);
 }
 
 function tooMany(ctx: ModuleContext, i: ButtonInteraction<'cached'> | ModalSubmitInteraction<'cached'>): string[] | null {
@@ -80,31 +98,32 @@ function tooMany(ctx: ModuleContext, i: ButtonInteraction<'cached'> | ModalSubmi
   return open.length >= ctx.config(i.guildId).tickets.maxOpenPerUser ? open : null;
 }
 
-async function guardedOpen(ctx: ModuleContext, i: ButtonInteraction<'cached'> | ModalSubmitInteraction<'cached'>, reason: string | null): Promise<void> {
+async function guardedOpen(ctx: ModuleContext, i: ButtonInteraction<'cached'> | ModalSubmitInteraction<'cached'>, reason: string | null, panelId: string | null): Promise<void> {
   const key = `${i.guildId}:${i.user.id}`;
   if (opening.has(key)) return void (await reply(i, 'Your ticket is being created — one moment.'));
   opening.add(key);
   try {
-    await openTicket(ctx, i, reason);
+    await openTicket(ctx, i, reason, panelId);
   } finally {
     opening.delete(key);
   }
 }
 
-async function openTicket(ctx: ModuleContext, i: ButtonInteraction<'cached'> | ModalSubmitInteraction<'cached'>, reason: string | null): Promise<void> {
+async function openTicket(ctx: ModuleContext, i: ButtonInteraction<'cached'> | ModalSubmitInteraction<'cached'>, reason: string | null, panelId: string | null): Promise<void> {
   const c = ctx.config(i.guildId).tickets;
-  if (!c.enabled) return void (await reply(i, 'Tickets aren’t open right now.'));
+  const kind = ticketKind(c, panelId);
+  if (!c.enabled || !kind) return void (await reply(i, 'Tickets aren’t open right now.'));
   const open = tooMany(ctx, i);
   if (open) return void (await reply(i, `You already have an open ticket: ${open.map((id) => `<#${id}>`).join(', ')}`));
   await i.deferReply({ flags: MessageFlags.Ephemeral });
 
   const me = i.guild.members.me!;
-  const staff = c.staffRoleIds.filter((id) => i.guild.roles.cache.has(id));
-  const category = c.categoryId && i.guild.channels.cache.get(c.categoryId)?.type === ChannelType.GuildCategory ? c.categoryId : undefined;
+  const staff = kind.staffRoleIds.filter((id) => i.guild.roles.cache.has(id));
+  const category = kind.categoryId && i.guild.channels.cache.get(kind.categoryId)?.type === ChannelType.GuildCategory ? kind.categoryId : undefined;
   let channel: GuildTextBasedChannel;
   try {
     channel = await i.guild.channels.create({
-      name: ticketChannelName(i.user.username, ctx.store.nextTicketNumber(i.guildId)),
+      name: ticketChannelName(i.user.username, ctx.store.nextTicketNumber(i.guildId), kind.prefix),
       type: ChannelType.GuildText,
       parent: category,
       topic: truncate(`Ticket for ${i.user.tag} (${i.user.id})${reason ? ` — ${reason}` : ''}`, 1000),
@@ -119,7 +138,7 @@ async function openTicket(ctx: ModuleContext, i: ButtonInteraction<'cached'> | M
     ctx.log('warn', `Tickets: could not create a channel: ${(e as Error).message}`);
     return void (await reply(i, 'I couldn’t create your ticket — a server admin needs to give me the Manage Channels permission.'));
   }
-  ctx.store.addTicket(i.guildId, channel.id, i.user.id, reason);
+  ctx.store.addTicket(i.guildId, channel.id, i.user.id, reason, kind.panelId);
 
   const buttons = [
     { type: ComponentType.Button as const, style: ButtonStyle.Danger, label: 'Close ticket', custom_id: CID.ticketClose },
@@ -127,11 +146,11 @@ async function openTicket(ctx: ModuleContext, i: ButtonInteraction<'cached'> | M
   ];
   await channel
     .send({
-      content: [`<@${i.user.id}>`, ...staff.map((id) => `<@&${id}>`)].join(' '),
+      content: [`<@${i.user.id}>`, ...(kind.pingStaff ? staff.map((id) => `<@&${id}>`) : [])].join(' '),
       embeds: [
         {
           title: 'Ticket opened',
-          description: renderTemplate(c.openMessage, {
+          description: renderTemplate(kind.openMessage, {
             user: `<@${i.user.id}>`,
             'user.name': i.member.displayName,
             'user.id': i.user.id,
@@ -139,21 +158,27 @@ async function openTicket(ctx: ModuleContext, i: ButtonInteraction<'cached'> | M
             memberCount: i.guild.memberCount,
           }),
           fields: reason ? [{ name: 'What they need help with', value: reason }] : [],
-          color: hexToInt(c.panel.color),
+          color: hexToInt(kind.color),
         },
       ],
       components: [{ type: ComponentType.ActionRow, components: buttons }],
-      allowedMentions: { users: [i.user.id], roles: staff },
+      allowedMentions: { users: [i.user.id], roles: kind.pingStaff ? staff : [] },
     })
     .catch((e: Error) => ctx.log('warn', `Tickets: could not post the welcome message in #${channel.name}: ${e.message}`));
   ctx.log('info', `Ticket opened by ${i.user.tag}: #${channel.name}`);
   await reply(i, `Your ticket is ready: <#${channel.id}>`);
 }
 
-/** May this member close or manage the ticket in this channel? Owner, staff roles, or Manage Channels. */
-function canManageTicket(ctx: ModuleContext, member: GuildMember, ownerId: string): boolean {
+/** Staff for a ticket: its panel's staff plus the main staff (Manage Channels always counts). */
+function isTicketStaff(ctx: ModuleContext, member: GuildMember, panelId: string | null): boolean {
   const c = ctx.config(member.guild.id).tickets;
-  return member.id === ownerId || isStaff(member, c.staffRoleIds) || member.permissions.has(P.ManageChannels);
+  const roles = ticketKind(c, panelId)?.staffRoleIds ?? c.staffRoleIds;
+  return isStaff(member, roles) || member.permissions.has(P.ManageChannels);
+}
+
+/** May this member close or manage the ticket in this channel? Its owner or its staff. */
+function canManageTicket(ctx: ModuleContext, member: GuildMember, ticket: { userId: string; panelId: string | null }): boolean {
+  return member.id === ticket.userId || isTicketStaff(ctx, member, ticket.panelId);
 }
 
 /** Claim button: a staff member takes the ticket. */
@@ -161,8 +186,7 @@ export async function onTicketClaim(ctx: ModuleContext, i: ButtonInteraction): P
   if (!i.inCachedGuild()) return;
   const ticket = ctx.store.ticketByChannel(i.channelId);
   if (!ticket || ticket.closed) return void (await reply(i, 'This isn’t an open ticket channel.'));
-  const c = ctx.config(i.guildId).tickets;
-  if (!isStaff(i.member, c.staffRoleIds) && !i.member.permissions.has(P.ManageChannels)) return void (await reply(i, 'Only staff can claim tickets.'));
+  if (!isTicketStaff(ctx, i.member, ticket.panelId)) return void (await reply(i, 'Only staff can claim tickets.'));
   if (!ctx.store.claimTicket(i.channelId, i.user.id)) return void (await reply(i, `This ticket was already claimed by <@${ctx.store.ticketByChannel(i.channelId)?.claimedBy}>.`));
   const embed = i.message.embeds[0];
   await i.update({
@@ -177,7 +201,7 @@ export async function onTicketClose(ctx: ModuleContext, i: ButtonInteraction | C
   if (!i.inCachedGuild() || !i.channel) return;
   const ticket = ctx.store.ticketByChannel(i.channelId);
   if (!ticket || ticket.closed) return void (await reply(i, 'This isn’t an open ticket channel.'));
-  if (!canManageTicket(ctx, i.member, ticket.userId)) return void (await reply(i, 'Only the ticket owner or staff can close this ticket.'));
+  if (!canManageTicket(ctx, i.member, ticket)) return void (await reply(i, 'Only the ticket owner or staff can close this ticket.'));
   await i.reply({
     content: 'Close this ticket? The channel will be deleted after a transcript is saved.',
     flags: MessageFlags.Ephemeral,
@@ -188,7 +212,7 @@ export async function onTicketClose(ctx: ModuleContext, i: ButtonInteraction | C
 export async function onTicketCloseConfirm(ctx: ModuleContext, i: ButtonInteraction): Promise<void> {
   if (!i.inCachedGuild() || !i.channel) return;
   const ticket = ctx.store.ticketByChannel(i.channelId);
-  if (!ticket || !canManageTicket(ctx, i.member, ticket.userId)) return void (await reply(i, 'You can’t close this ticket.'));
+  if (!ticket || !canManageTicket(ctx, i.member, ticket)) return void (await reply(i, 'You can’t close this ticket.'));
   if (!ctx.store.closeTicket(i.channelId)) return void (await reply(i, 'This ticket is already closing.'));
   await i.update({ content: 'Closing… saving the transcript.', components: [] });
   await finishClose(ctx, i.guild, i.channel, ticket, { id: i.user.id, tag: i.user.tag });
@@ -273,7 +297,7 @@ export async function handleTicketCommand(ctx: ModuleContext, i: ChatInputComman
 
   const ticket = ctx.store.ticketByChannel(i.channelId);
   if (!ticket || ticket.closed) return void (await reply(i, 'Use this inside an open ticket channel.'));
-  if (!canManageTicket(ctx, i.member, ticket.userId)) return void (await reply(i, 'Only the ticket owner or staff can do that.'));
+  if (!canManageTicket(ctx, i.member, ticket)) return void (await reply(i, 'Only the ticket owner or staff can do that.'));
   const channel = i.channel;
   if (!channel || channel.isThread() || !('permissionOverwrites' in channel)) return;
 

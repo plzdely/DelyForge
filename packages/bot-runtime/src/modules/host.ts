@@ -372,6 +372,7 @@ export class ModuleHost {
         return;
       }
       if (i.customId === CID.ticketOpen) await onTicketOpen(this.ctx, i);
+      else if (kind === 'ticket' && a === 'open' && b) await onTicketOpen(this.ctx, i, b);
       else if (i.customId === CID.ticketClose) await onTicketClose(this.ctx, i);
       else if (i.customId === CID.ticketCloseConfirm) await onTicketCloseConfirm(this.ctx, i);
       else if (i.customId === CID.ticketClaim) await onTicketClaim(this.ctx, i);
@@ -392,7 +393,7 @@ export class ModuleHost {
     try {
       if (kind === 'sug' && action === 'decide' && a && b) await onSuggestionDecision(this.ctx, i, a, Number(b));
       else if (kind === 'vq' && action === 'answer') await onVerifyAnswer(this.ctx, i);
-      else if (i.customId === CID.ticketReason) await onTicketReason(this.ctx, i);
+      else if (kind === 'ticket' && action === 'reason') await onTicketReason(this.ctx, i, a ?? null);
     } catch (e) {
       this.log('error', `Form “${i.customId}” failed: ${(e as Error).message}`);
       await this.replyError(i);

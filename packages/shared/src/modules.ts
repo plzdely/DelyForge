@@ -287,6 +287,24 @@ export type LevelingConfig = z.infer<typeof levelingConfigSchema>;
 
 // ─── Tickets ──────────────────────────────────────────────────────────────────────────────────────────────────────
 
+/** An extra ticket panel with its own button, category, staff and first message (e.g. "Report a member"). */
+export const ticketPanelSchema = z
+  .object({
+    id: z.string().regex(/^[a-z0-9]{1,12}$/),
+    /** Short name, also used in the ticket channel's name (e.g. "report" → #report-12-dely). */
+    name: z.string().trim().min(1, 'Give the panel a name').max(40),
+    panel: panelSchema,
+    /** null = the main ticket category. */
+    categoryId: channel,
+    /** Staff for this kind of ticket (the main staff roles can always see every ticket). */
+    staffRoleIds: roles,
+    openMessage: template(2000),
+    /** Ping the staff roles when a ticket opens. */
+    pingStaff: z.boolean().default(true),
+  })
+  .strict();
+export type TicketPanelConfig = z.infer<typeof ticketPanelSchema>;
+
 export const ticketsConfigSchema = z
   .object({
     enabled: z.boolean(),
@@ -307,6 +325,14 @@ export const ticketsConfigSchema = z
     claimButton: z.boolean().default(true),
     /** Close tickets with no new messages for this many hours (0 = never). A transcript is saved as usual. */
     autoCloseHours: z.number().int().min(0).max(336).default(0),
+    /** Ping the staff roles when a ticket opens from the main panel. */
+    pingStaff: z.boolean().default(true),
+    /** More panels, each opening its own kind of ticket. */
+    extraPanels: z
+      .array(ticketPanelSchema)
+      .max(5)
+      .refine((p) => new Set(p.map((x) => x.id)).size === p.length, 'Panel IDs must be unique')
+      .default([]),
   })
   .strict();
 export type TicketsConfig = z.infer<typeof ticketsConfigSchema>;
@@ -730,6 +756,8 @@ export const DEFAULT_MODULE_CONFIGS: ModuleConfigs = {
     askReason: false,
     claimButton: true,
     autoCloseHours: 0,
+    pingStaff: true,
+    extraPanels: [],
   },
   verification: {
     enabled: false,
