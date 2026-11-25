@@ -65,12 +65,13 @@ export async function handleLevelingCommand(ctx: ModuleContext, i: ChatInputComm
   }
   if (i.commandName === 'rank') {
     const user = i.options.getUser('member') ?? i.user;
+    const name = (await i.guild.members.fetch(user.id).catch(() => null))?.displayName ?? user.username;
     const { xp, rank } = ctx.store.xpOf(i.guild.id, user.id);
     const lv = levelFromXp(xp);
     await i.reply({
       embeds: [
         {
-          title: `${user.username} — level ${lv.level}`,
+          title: `${name} — level ${lv.level}`,
           description: `${bar(lv.current, lv.needed)}  ${lv.current} / ${lv.needed} XP\nRank **#${rank}** · ${xp} XP total`,
           thumbnail: { url: user.displayAvatarURL({ size: 128 }) },
           color: BRAND_COLOR,

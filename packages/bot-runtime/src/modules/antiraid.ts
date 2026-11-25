@@ -38,9 +38,10 @@ export async function onMemberJoin(ctx: ModuleContext, member: GuildMember, now 
 
   const wasRaid = (raidUntil.get(guild.id) ?? 0) > now;
   const recent = recordJoin(guild.id, member.id, now, config.perSeconds);
+  const reason = 'Raid protection: joined during a raid';
   if (!wasRaid && recent.length >= config.joinThreshold) {
     raidUntil.set(guild.id, now + config.raidMinutes * 60_000);
-    const what = config.raidAction === 'alert' ? 'Nothing is done automatically' : `Everyone who joins in the next ${config.raidMinutes} minutes is ${config.raidAction === 'kick' ? 'kicked' : 'banned'}`;
+    const what = config.raidAction === 'alert' ? 'Nothing is done automatically' : `These accounts and everyone who joins in the next ${config.raidMinutes} minutes are ${config.raidAction === 'kick' ? 'kicked' : 'banned'}`;
     await alert(
       ctx,
       member,
@@ -48,10 +49,16 @@ export async function onMemberJoin(ctx: ModuleContext, member: GuildMember, now 
       `**${recent.length} members joined in ${config.perSeconds} seconds.** ${what}.\nRecent joins: ${recent.map((j) => `<@${j.userId}>`).join(' ')}`,
     );
     ctx.log('warn', `Raid protection: ${recent.length} joins in ${config.perSeconds}s in “${guild.name}”.`);
+    // The accounts that set off the alarm joined before it — remove them as well.
+    if (config.raidAction !== 'alert') {
+      for (const j of recent.filter((x) => x.userId !== member.id)) {
+        const m = await guild.members.fetch(j.userId).catch(() => null);
+        if (m && !m.user.bot) await (config.raidAction === 'ban' ? m.ban({ reason }) : m.kick(reason)).catch(() => null);
+      }
+    }
   }
   if ((raidUntil.get(guild.id) ?? 0) <= now || config.raidAction === 'alert') return false;
 
-  const reason = 'Raid protection: joined during a raid';
   const done = await (config.raidAction === 'ban' ? member.ban({ reason }) : member.kick(reason)).then(
     () => true,
     (e: Error) => (ctx.log('warn', `Raid protection: could not remove ${member.user.tag}: ${e.message}`), false),

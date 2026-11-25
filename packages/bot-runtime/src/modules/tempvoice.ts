@@ -31,6 +31,12 @@ export async function onVoiceState(ctx: ModuleContext, before: VoiceState, after
   if (!config.enabled || !config.hubChannelId || after.channelId !== config.hubChannelId || before.channelId === after.channelId) return;
   const member = after.member;
   if (!member || member.user.bot) return;
+  const own = ctx.store.tempChannelOf(guild.id, member.id);
+  const existing = own ? guild.channels.cache.get(own) : undefined;
+  if (existing?.isVoiceBased()) {
+    await member.voice.setChannel(existing).catch(() => null);
+    return;
+  }
 
   const parent = config.categoryId ?? after.channel?.parentId ?? null;
   // Created inside the category without explicit permissions, so it keeps the category's (e.g. private) settings.

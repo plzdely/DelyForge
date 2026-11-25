@@ -647,6 +647,12 @@ export class BotStore {
     return (this.db.prepare('SELECT channel_id FROM temp_channels WHERE guild_id = ?').all(guildId) as { channel_id: string }[]).map((r) => r.channel_id);
   }
 
+  /** The temporary channel a member owns in a server, if any. */
+  tempChannelOf(guildId: string, ownerId: string): string | null {
+    const r = this.db.prepare('SELECT channel_id FROM temp_channels WHERE guild_id = ? AND owner_id = ?').get(guildId, ownerId) as { channel_id: string } | undefined;
+    return r?.channel_id ?? null;
+  }
+
   removeTempChannel(channelId: string): void {
     this.db.prepare('DELETE FROM temp_channels WHERE channel_id = ?').run(channelId);
   }

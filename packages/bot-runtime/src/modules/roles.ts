@@ -105,9 +105,16 @@ export async function onVerify(ctx: ModuleContext, i: ButtonInteraction): Promis
     await ephemeral(i, 'I can’t verify you right now. Please tell a server admin.');
     return void (await log('failed'));
   }
-  await i.member.roles.add(config.roleId, 'DelyForge verification');
+  const given = await i.member.roles.add(config.roleId, 'DelyForge verification').then(
+    () => true,
+    (e: Error) => (ctx.log('warn', `Verification: could not give the role to ${i.user.tag}: ${e.message}`), false),
+  );
+  if (!given) {
+    await ephemeral(i, 'I can’t verify you right now. Please tell a server admin.');
+    return void (await log('failed'));
+  }
   if (config.removeRoleId && i.member.roles.cache.has(config.removeRoleId) && assignable(i.member, [config.removeRoleId]).length) {
-    await i.member.roles.remove(config.removeRoleId, 'DelyForge verification');
+    await i.member.roles.remove(config.removeRoleId, 'DelyForge verification').catch(() => null);
   }
   await ephemeral(i, 'You’re verified — welcome! ✅');
   await log('verified');

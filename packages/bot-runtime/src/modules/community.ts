@@ -70,7 +70,11 @@ export async function handleSuggest(ctx: ModuleContext, i: ChatInputCommandInter
   if (!channel) return void (await ephemeral(i, 'The suggestions channel isn’t available right now.'));
   const content = truncate(i.options.getString('idea', true).trim(), 1500);
   const id = ctx.store.addSuggestion(i.guildId, channel.id, i.user.id, content);
-  const msg = await channel.send(suggestionMessage({ id, userId: i.user.id, content, status: 'open' }, { up: 0, down: 0 }));
+  const msg = await channel.send(suggestionMessage({ id, userId: i.user.id, content, status: 'open' }, { up: 0, down: 0 })).catch((e: Error) => {
+    ctx.log('warn', `Suggestions: could not post: ${e.message}`);
+    return null;
+  });
+  if (!msg) return void (await ephemeral(i, 'I couldn’t post your suggestion — please tell a server admin (the bot can’t send embeds there).'));
   ctx.store.setSuggestionMessage(id, msg.id);
   await ephemeral(i, `Thanks! Your suggestion was posted: ${msg.url}`);
 }
@@ -183,7 +187,23 @@ const enterRow = (id: number, disabled: boolean) => ({
   components: [{ type: ComponentType.Button as const, style: ButtonStyle.Primary, label: 'Enter', emoji: { name: '🎉' }, custom_id: `df:gw:enter:${id}`, disabled }],
 });
 
-async function announceWinners(ctx: ModuleContext, client: Client, g: Giveaway, reroll: boolean): Promise<void> {
+/** Shows the current entry count on the giveaway message, at most every 5 s per giveaway (Discord rate limits). */
+const countTimers = new Map<number, ReturnType<typeof setTimeout>>();
+function refreshEntryCount(ctx: ModuleContext, i: ButtonInteraction<'cached'>, id: number): void {
+  if (countTimers.has(id)) return;
+  countTimers.set(
+    id,
+    setTimeout(() => {
+      countTimers.delete(id);
+      const g = ctx.store.giveaway(id);
+      if (!g || g.ended || !g.messageId) return;
+      const embed = giveawayEmbed(g, ctx.config(g.guildId).giveaways.color, ctx.store.entries(id).length);
+      void i.message.edit({ embeds: [embed] }).catch(() => null);
+    }, 5_000),
+  );
+}
+
+async function announceWinners(ctx: ModuleContext, client: Client, g: Giveaway, reroll: boolean, newWinners = g.winnerIds): Promise<void> {
   const channel = await client.channels.fetch(g.channelId).catch(() => null);
   if (!channel?.isSendable()) return;
   const config = ctx.config(g.guildId).giveaways;
@@ -191,10 +211,10 @@ async function announceWinners(ctx: ModuleContext, client: Client, g: Giveaway, 
     const count = ctx.store.entries(g.id).length;
     await channel.messages.edit(g.messageId, { embeds: [giveawayEmbed(g, config.color, count)], components: [enterRow(g.id, true)] }).catch(() => null);
   }
-  const content = g.winnerIds.length
-    ? `🎉 ${reroll ? 'New winner' : 'Congratulations'} ${g.winnerIds.map((w) => `<@${w}>`).join(', ')}! You won **${g.prize}**.`
+  const content = newWinners.length
+    ? `🎉 ${reroll ? 'New winner' : 'Congratulations'} ${newWinners.map((w) => `<@${w}>`).join(', ')}! You won **${g.prize}**.`
     : `The giveaway for **${g.prize}** ended with no entries.`;
-  await channel.send({ content, allowedMentions: { users: g.winnerIds } }).catch(() => null);
+  await channel.send({ content, allowedMentions: { users: newWinners } }).catch(() => null);
 }
 
 /** Ends giveaways whose time is up. Runs every 15 s; safe to run twice (the store only lets one caller end each). */
@@ -255,7 +275,7 @@ export async function handleGiveaway(ctx: ModuleContext, i: ChatInputCommandInte
   if (!fresh.length) return void (await ephemeral(i, 'There’s nobody left to pick.'));
   const winnerIds = [...g.winnerIds, ...fresh];
   ctx.store.setWinners(id, winnerIds);
-  await announceWinners(ctx, i.client, { ...g, winnerIds: fresh }, true);
+  await announceWinners(ctx, i.client, { ...g, winnerIds }, true, fresh);
   await ephemeral(i, `Rerolled giveaway #${id}.`);
 }
 
@@ -269,5 +289,6 @@ export async function onGiveawayEnter(ctx: ModuleContext, i: ButtonInteraction, 
     return void (await ephemeral(i, `You need the <@&${g.requiredRoleId}> role to enter this giveaway.`));
   }
   const { entered, count } = ctx.store.toggleEntry(id, i.user.id);
+  refreshEntryCount(ctx, i, id);
   await ephemeral(i, entered ? `You’re in! 🎉 Good luck. (${count} entries) Click again to leave.` : `You left the giveaway. (${count} entries)`);
 }

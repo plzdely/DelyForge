@@ -220,3 +220,15 @@ describe('verification log', () => {
     expect(verifyLogEmbed({ id: '1', tag: 'old', createdTimestamp: now - 400 * 86_400_000, joinedTimestamp: null, avatarUrl: '' }, 'verified', now).fields[1]!.value).not.toMatch(/new account/);
   });
 });
+
+describe('temporary voice ownership', () => {
+  it('remembers which channel a member owns, so the hub sends them back to it', () => {
+    const store = new BotStore(join(mkdtempSync(join(tmpdir(), 'df-tv-')), 'b.db'));
+    expect(store.tempChannelOf('g', 'u1')).toBeNull();
+    store.addTempChannel('g', 'c1', 'u1');
+    expect(store.tempChannelOf('g', 'u1')).toBe('c1');
+    store.removeTempChannel('c1');
+    expect(store.tempChannelOf('g', 'u1')).toBeNull();
+    store.close();
+  });
+});
