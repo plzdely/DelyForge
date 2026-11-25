@@ -1,6 +1,7 @@
 import { renderTemplate } from '@delyforge/shared';
 import { type ChatInputCommandInteraction, type Guild, type GuildMember, type Invite, MessageFlags } from 'discord.js';
 import { BRAND_COLOR, type ModuleContext, SAFE_MENTIONS, sendableChannel } from './context.js';
+import { assignable } from './roles.js';
 
 export const INVITE_COMMANDS = new Set(['invites', 'inviteboard']);
 
@@ -55,6 +56,7 @@ export async function onMemberJoin(ctx: ModuleContext, member: GuildMember): Pro
   let used = findUsedInvite(before, after);
   if (!used && guild.vanityURLCode) used = { code: guild.vanityURLCode, inviterId: null };
   const count = ctx.store.recordInviteJoin(guild.id, member.id, used?.inviterId ?? null, used?.code ?? null);
+  if (used?.inviterId) await giveInviteRewards(ctx, guild, used.inviterId);
 
   const channel = await sendableChannel(ctx, guild, config.channelId, 'Invite tracker');
   if (channel) {
@@ -65,6 +67,19 @@ export async function onMemberJoin(ctx: ModuleContext, member: GuildMember): Pro
       .catch((e: Error) => ctx.log('warn', `Invite tracker: could not post: ${e.message}`));
   }
   return used ?? { inviterId: null, code: null };
+}
+
+/** Gives an inviter every reward role they've reached (counting invited members who are still here). */
+export async function giveInviteRewards(ctx: ModuleContext, guild: Guild, inviterId: string): Promise<void> {
+  const rewards = ctx.config(guild.id).invites.rewards;
+  if (!rewards.length) return;
+  const { stayed } = ctx.store.inviteCounts(guild.id, inviterId);
+  const earned = rewards.filter((r) => stayed >= r.invites).map((r) => r.roleId);
+  if (!earned.length) return;
+  const inviter = await guild.members.fetch(inviterId).catch(() => null);
+  if (!inviter) return;
+  const add = assignable(inviter, earned).filter((r) => !inviter.roles.cache.has(r));
+  if (add.length) await inviter.roles.add(add, `Invited ${stayed} members`).catch((e: Error) => ctx.log('warn', `Invite rewards: ${e.message}`));
 }
 
 export function onMemberLeave(ctx: ModuleContext, guildId: string, userId: string): void {

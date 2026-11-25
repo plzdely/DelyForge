@@ -80,6 +80,8 @@ export const blankEmbed = (id: string): EmbedTemplate => ({
 export const RESERVED_COMMAND_NAMES = [
   'ping', 'warn', 'warnings', 'clearwarnings', 'timeout', 'untimeout', 'kick', 'ban', 'unban', 'purge',
   'serverinfo', 'userinfo', 'avatar', 'poll', 'rank', 'leaderboard', 'ticket', 'suggest', 'giveaway',
+  'history', 'case', 'note', 'lock', 'unlock', 'slowmode', 'softban', 'role', 'nick', 'xp', 'invites', 'inviteboard',
+  'birthday', 'stars', 'voice', 'remind',
 ] as const;
 
 const commandName = z

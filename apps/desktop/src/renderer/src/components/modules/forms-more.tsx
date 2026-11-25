@@ -3,7 +3,7 @@ import { Plus, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Field, Input, Textarea } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
-import { CategorySelect, RoleSelect, Section, TemplateField } from './fields';
+import { CategorySelect, RoleSelect, RoleValueRows, Section, TemplateField } from './fields';
 import { ChannelChecklist, ChannelSelect, NumberField, ToggleRow } from './pickers';
 
 type Props<K extends keyof ModuleConfigs> = { c: ModuleConfigs[K]; set: (c: ModuleConfigs[K]) => void; guild: GuildInfo };
@@ -13,6 +13,21 @@ export function InvitesForm({ c, set, guild }: Props<'invites'>) {
     <Section title="Announcements" description="Members can always check counts with /invites and /inviteboard. The bot needs the Manage Server permission to see invite links.">
       <ChannelSelect id="inv-channel" label="Announce new members in" emptyLabel="Don’t announce (logs and /invites only)" guild={guild} value={c.channelId} onChange={(v) => set({ ...c, channelId: v })} />
       {c.channelId ? <TemplateField id="inv-message" label="Message" max={500} value={c.message} onChange={(v) => set({ ...c, message: v })} variables={INVITE_VARIABLES} /> : null}
+      <Field label="Invite rewards" htmlFor="inv-rewards" hint="A role for members who bring in enough people. Only invited members who are still in the server count.">
+        <RoleValueRows
+          id="inv-rewards"
+          guild={guild}
+          assignableOnly
+          rows={c.rewards.map((r) => ({ roleId: r.roleId, value: r.invites }))}
+          onChange={(rows) => set({ ...c, rewards: rows.map((r) => ({ roleId: r.roleId, invites: r.value })) })}
+          valueLabel="At invites"
+          min={1}
+          max={1000}
+          addLabel="Add a reward"
+          maxRows={10}
+          defaultValue={5}
+        />
+      </Field>
     </Section>
   );
 }

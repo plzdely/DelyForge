@@ -197,3 +197,14 @@ describe('entitlements provider', () => {
     expect([...e.features].sort()).toEqual([...FEATURE_KEYS].sort()); // every feature, including Free-only ones
   });
 });
+
+describe('BotRepository — builders saved by older versions', () => {
+  it('keeps every valid command, embed and workflow when one item no longer passes the rules', () => {
+    const { db, repo, create } = setup();
+    const bot = create('Aurora');
+    const command = (name: string) => ({ id: name.slice(0, 16), enabled: true, type: 'slash', name, description: 'd', options: [], access: 'everyone', cooldownSeconds: 0, response: { text: 'hi', embedId: '', ephemeral: false, buttons: [] } });
+    const config = { builders: { commands: [command('hello'), command('lock')], embeds: [], workflows: [] } }; // /lock is now a module command
+    db.prepare('UPDATE bot_projects SET config = ? WHERE id = ?').run(JSON.stringify(config), bot.id);
+    expect(repo.builders(bot.id).commands.map((c) => c.name)).toEqual(['hello']);
+  });
+});

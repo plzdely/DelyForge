@@ -261,3 +261,31 @@ describe('warnings that expire', () => {
     store.close();
   });
 });
+
+describe('v0.4 leveling, giveaways and starboard', () => {
+  it('uses the biggest XP boost a member has', async () => {
+    const { xpMultiplier } = await import('../src/modules/leveling.js');
+    const boosts = [{ roleId: 'a', multiplier: 1.5 }, { roleId: 'b', multiplier: 2 }];
+    expect(xpMultiplier(boosts, ['a', 'b'])).toBe(2);
+    expect(xpMultiplier(boosts, ['x'])).toBe(1);
+  });
+
+  it('gives members with bonus entries a better chance, without ever picking anyone twice', async () => {
+    const { weightedOrder } = await import('../src/modules/community.js');
+    let first = 0;
+    for (let n = 0; n < 2000; n++) if (weightedOrder([{ userId: 'bonus', weight: 5 }, { userId: 'normal', weight: 1 }])[0] === 'bonus') first++;
+    expect(first / 2000).toBeGreaterThan(0.75); // 5 / 6 ≈ 0.83
+    expect(new Set(weightedOrder([{ userId: 'a', weight: 3 }, { userId: 'b', weight: 1 }, { userId: 'c', weight: 2 }])).size).toBe(3);
+  });
+
+  it('sets XP exactly (never below zero) and ranks starboard authors', () => {
+    const store = new BotStore(join(mkdtempSync(join(tmpdir(), 'df-v04-')), 'b.db'));
+    expect(store.setXp('g', 'u', 500)).toEqual({ before: 0, after: 500 });
+    expect(store.setXp('g', 'u', -20).after).toBe(0);
+    store.setStarPost('g', 'm1', 's1', 'alice', 5);
+    store.setStarPost('g', 'm2', 's2', 'alice', 3);
+    store.setStarPost('g', 'm3', 's3', 'bob', 6);
+    expect(store.starLeaderboard('g')).toEqual([{ userId: 'alice', stars: 8, posts: 2 }, { userId: 'bob', stars: 6, posts: 1 }]);
+    store.close();
+  });
+});

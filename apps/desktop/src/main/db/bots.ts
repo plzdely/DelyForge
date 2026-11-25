@@ -13,6 +13,9 @@ import {
   EMPTY_BUILDERS,
   type Entitlements,
   buildersSchema,
+  customCommandSchema,
+  embedSchema,
+  workflowSchema,
   type RuntimeOptions,
   botModulesSchema,
   botProjectExportSchema,
@@ -238,10 +241,25 @@ export class BotRepository {
     return parsed.success ? parsed.data : {};
   }
 
-  /** Custom commands, saved embeds and workflows. Invalid stored data falls back to empty. */
+  /**
+   * Custom commands, saved embeds and workflows. If something stored no longer passes the rules (e.g. a command name
+   * a newer version reserved), only that item is dropped — never the rest.
+   */
   builders(id: string): Builders {
-    const parsed = buildersSchema.safeParse(parseConfig(this.getRow(id).config)['builders'] ?? EMPTY_BUILDERS);
-    return parsed.success ? parsed.data : EMPTY_BUILDERS;
+    const raw = parseConfig(this.getRow(id).config)['builders'] ?? EMPTY_BUILDERS;
+    const parsed = buildersSchema.safeParse(raw);
+    if (parsed.success) return parsed.data;
+    const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+    const keep = <T>(list: unknown, schema: { safeParse(x: unknown): { success: true; data: T } | { success: false } }): T[] =>
+      Array.isArray(list) ? list.flatMap((x) => { const one = schema.safeParse(x); return one.success ? [one.data] : []; }) : [];
+    const embeds = keep(r['embeds'], embedSchema);
+    const ids = new Set(embeds.map((e) => e.id));
+    const salvaged = buildersSchema.safeParse({
+      commands: keep(r['commands'], customCommandSchema).map((c) => (c.response.embedId && !ids.has(c.response.embedId) ? { ...c, response: { ...c.response, embedId: '' } } : c)),
+      embeds,
+      workflows: keep(r['workflows'], workflowSchema),
+    });
+    return salvaged.success ? salvaged.data : EMPTY_BUILDERS;
   }
 
   setBuilders(id: string, builders: Builders): void {

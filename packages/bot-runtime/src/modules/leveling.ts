@@ -1,10 +1,10 @@
 import { randomInt } from 'node:crypto';
 import { levelFromXp, renderTemplate } from '@delyforge/shared';
-import { type ChatInputCommandInteraction, type Message, MessageFlags } from 'discord.js';
-import { BRAND_COLOR, type ModuleContext, sendableChannel } from './context.js';
+import { type ChatInputCommandInteraction, type Guild, type GuildMember, type GuildTextBasedChannel, type Message, MessageFlags } from 'discord.js';
+import { BRAND_COLOR, type ModuleContext, sendableChannel, tryDM } from './context.js';
 import { assignable } from './roles.js';
 
-export const LEVELING_COMMANDS = new Set(['rank', 'leaderboard']);
+export const LEVELING_COMMANDS = new Set(['rank', 'leaderboard', 'xp']);
 
 /** Reward roles a member should have at `level`: all earned ones, or only the highest when rewards don't stack. */
 export function rewardRolesFor(rewards: readonly { level: number; roleId: string }[], level: number, stack: boolean): { keep: string[]; drop: string[] } {
@@ -14,42 +14,100 @@ export function rewardRolesFor(rewards: readonly { level: number; roleId: string
   return { keep, drop: [...new Set(drop)] };
 }
 
+/** The biggest XP boost from a member's roles (1 = none). */
+export function xpMultiplier(multipliers: readonly { roleId: string; multiplier: number }[], roleIds: Iterable<string>): number {
+  const has = new Set(roleIds);
+  return multipliers.reduce((best, m) => (has.has(m.roleId) ? Math.max(best, m.multiplier) : best), 1);
+}
+
 export async function onMessageXp(ctx: ModuleContext, message: Message): Promise<void> {
   if (!message.inGuild() || message.author.bot || !message.member) return;
   const c = ctx.config(message.guild.id).leveling;
   if (!c.enabled) return;
   if (c.noXpChannelIds.includes(message.channelId)) return;
   if (message.member.roles.cache.some((r) => c.noXpRoleIds.includes(r.id))) return;
+  await grantXp(ctx, message.member, randomInt(c.xpMin, c.xpMax + 1), c.cooldownSeconds * 1000, message.channel);
+}
 
-  const gained = ctx.store.addXp(message.guild.id, message.author.id, randomInt(c.xpMin, c.xpMax + 1), Date.now(), c.cooldownSeconds * 1000);
+/** Voice XP, once a minute: members talking with at least one other person (not deafened, not in a no-XP channel). */
+export async function voiceXp(ctx: ModuleContext, guild: Guild): Promise<void> {
+  const c = ctx.config(guild.id).leveling;
+  if (!c.enabled || !c.voiceXpPerMinute) return;
+  for (const channel of guild.channels.cache.values()) {
+    if (!channel.isVoiceBased() || channel.id === guild.afkChannelId || c.noXpChannelIds.includes(channel.id)) continue;
+    const people = channel.members.filter((m) => !m.user.bot);
+    if (people.size < 2) continue;
+    for (const m of people.values()) {
+      if (m.voice.selfDeaf || m.voice.serverDeaf || m.roles.cache.some((r) => c.noXpRoleIds.includes(r.id))) continue;
+      await grantXp(ctx, m, c.voiceXpPerMinute, 0, null);
+    }
+  }
+}
+
+/** Adds XP (with role boosts), then handles level-ups: reward roles and the announcement. */
+async function grantXp(ctx: ModuleContext, member: GuildMember, base: number, cooldownMs: number, here: GuildTextBasedChannel | null): Promise<void> {
+  const guild = member.guild;
+  const c = ctx.config(guild.id).leveling;
+  const amount = Math.round(base * xpMultiplier(c.multipliers, member.roles.cache.keys()));
+  const gained = ctx.store.addXp(guild.id, member.id, amount, Date.now(), cooldownMs);
   if (!gained) return; // still on cooldown
-  ctx.store.rememberName(message.guild.id, message.author.id, message.member.displayName);
-  const before = levelFromXp(gained.before).level;
-  const after = levelFromXp(gained.after).level;
-  if (after <= before) return;
+  ctx.store.rememberName(guild.id, member.id, member.displayName);
+  await afterXpChange(ctx, member, gained.before, gained.after, here);
+}
 
-  // Rewards
+/** Reward roles and the level-up message when a member's level went up (also used by /xp). */
+async function afterXpChange(ctx: ModuleContext, member: GuildMember, beforeXp: number, afterXp: number, here: GuildTextBasedChannel | null): Promise<void> {
+  const c = ctx.config(member.guild.id).leveling;
+  const before = levelFromXp(beforeXp).level;
+  const after = levelFromXp(afterXp).level;
+  if (after === before) return;
+
+  // Rewards (also taken back when /xp lowers someone's level)
   if (c.rewards.length) {
     const { keep, drop } = rewardRolesFor(c.rewards, after, c.stackRewards);
-    const add = assignable(message.member, keep).filter((r) => !message.member!.roles.cache.has(r));
-    const remove = assignable(message.member, drop).filter((r) => message.member!.roles.cache.has(r));
-    if (add.length) await message.member.roles.add(add, `Reached level ${after}`).catch((e: Error) => ctx.log('warn', `Leveling: could not add reward role: ${e.message}`));
-    if (remove.length) await message.member.roles.remove(remove, `Reached level ${after}`).catch(() => null);
-    if (assignable(message.member, keep).length < keep.length) ctx.log('warn', 'Leveling: some reward roles are above the bot’s role and can’t be given.');
+    const add = assignable(member, keep).filter((r) => !member.roles.cache.has(r));
+    const remove = assignable(member, drop).filter((r) => member.roles.cache.has(r));
+    if (add.length) await member.roles.add(add, `Reached level ${after}`).catch((e: Error) => ctx.log('warn', `Leveling: could not add reward role: ${e.message}`));
+    if (remove.length) await member.roles.remove(remove, `Level ${after}`).catch(() => null);
+    if (assignable(member, keep).length < keep.length) ctx.log('warn', 'Leveling: some reward roles are above the bot’s role and can’t be given.');
   }
 
-  if (c.levelUp.enabled && c.levelUp.message.trim()) {
-    const channel = c.levelUp.channelId ? await sendableChannel(ctx, message.guild, c.levelUp.channelId, 'Level-up message') : message.channel;
-    const text = renderTemplate(c.levelUp.message, {
-      user: `<@${message.author.id}>`,
-      'user.name': message.member.displayName,
-      'user.id': message.author.id,
-      level: after,
-      server: message.guild.name,
-      memberCount: message.guild.memberCount,
-    });
-    await channel?.send({ content: text, allowedMentions: { users: [message.author.id] } }).catch((e: Error) => ctx.log('warn', `Leveling: could not announce: ${e.message}`));
-  }
+  if (after < before || !c.levelUp.enabled || !c.levelUp.message.trim()) return;
+  const text = renderTemplate(c.levelUp.message, {
+    user: `<@${member.id}>`,
+    'user.name': member.displayName,
+    'user.id': member.id,
+    level: after,
+    server: member.guild.name,
+    memberCount: member.guild.memberCount,
+  });
+  if (c.levelUp.dm) return void (await tryDM(member.user, text));
+  const channel = c.levelUp.channelId ? await sendableChannel(ctx, member.guild, c.levelUp.channelId, 'Level-up message') : here;
+  await channel?.send({ content: text, allowedMentions: { users: [member.id] } }).catch((e: Error) => ctx.log('warn', `Leveling: could not announce: ${e.message}`));
+}
+
+/** /xp give|take|set — staff tools. */
+async function handleXpCommand(ctx: ModuleContext, i: ChatInputCommandInteraction<'cached'>): Promise<void> {
+  const user = i.options.getUser('member', true);
+  const member = await i.guild.members.fetch(user.id).catch(() => null);
+  if (!member || user.bot) return void (await i.reply({ content: 'Pick a member of this server (not a bot).', flags: MessageFlags.Ephemeral }));
+  const amount = i.options.getInteger('amount', true);
+  const sub = i.options.getSubcommand();
+  const current = ctx.store.xpOf(i.guildId, user.id).xp;
+  const { before, after } = ctx.store.setXp(i.guildId, user.id, sub === 'give' ? current + amount : sub === 'take' ? current - amount : amount);
+  ctx.store.rememberName(i.guildId, user.id, member.displayName);
+  await i.reply({
+    content: `**${member.displayName}** now has ${after} XP (level ${levelFromXp(after).level}, was ${before} XP).`,
+    flags: MessageFlags.Ephemeral,
+    allowedMentions: { parse: [] },
+  });
+  await afterXpChange(ctx, member, before, after, null);
+}
+
+/** Leaving members lose their XP when "reset on leave" is on. */
+export function onMemberLeaveXp(ctx: ModuleContext, guildId: string, userId: string): void {
+  const c = ctx.config(guildId).leveling;
+  if (c.enabled && c.resetOnLeave) ctx.store.resetXp(guildId, userId);
 }
 
 const bar = (current: number, needed: number) => {
@@ -63,6 +121,7 @@ export async function handleLevelingCommand(ctx: ModuleContext, i: ChatInputComm
     await i.reply({ content: 'Leveling isn’t enabled in this server.', flags: MessageFlags.Ephemeral });
     return;
   }
+  if (i.commandName === 'xp') return handleXpCommand(ctx, i as ChatInputCommandInteraction<'cached'>);
   if (i.commandName === 'rank') {
     const user = i.options.getUser('member') ?? i.user;
     const name = (await i.guild.members.fetch(user.id).catch(() => null))?.displayName ?? user.username;

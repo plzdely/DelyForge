@@ -1,5 +1,5 @@
 import type { StarboardConfig } from '@delyforge/shared';
-import { ChannelType, type GuildBasedChannel, type GuildMember, type Message, type MessageReaction, OverwriteType, type PartialMessageReaction, PermissionFlagsBits, type Role } from 'discord.js';
+import { ChannelType, type ChatInputCommandInteraction, type GuildBasedChannel, type GuildMember, type Message, MessageFlags, type MessageReaction, OverwriteType, type PartialMessageReaction, PermissionFlagsBits, type Role } from 'discord.js';
 import { type ModuleContext, sendableChannel, truncate } from './context.js';
 
 /** Does a reaction's emoji match the configured one (a normal emoji like ⭐, or a server emoji written <:name:id>)? */
@@ -102,11 +102,26 @@ async function sync(ctx: ModuleContext, message: Message<true>, config: Starboar
   const post = existing ? await channel.messages.fetch(existing).catch(() => null) : null;
   if (post) {
     await post.edit(payload).catch((e: Error) => ctx.log('warn', `Starboard: could not update a post: ${e.message}`));
+    ctx.store.setStarPost(message.guild.id, message.id, post.id, message.author.id, count);
     return;
   }
   const sent = await channel.send(payload).catch((e: Error) => {
     ctx.log('warn', `Starboard: could not post: ${e.message}`);
     return null;
   });
-  if (sent) ctx.store.setStarPost(message.guild.id, message.id, sent.id);
+  if (sent) ctx.store.setStarPost(message.guild.id, message.id, sent.id, message.author.id, count);
+}
+
+/** /stars — members whose messages collected the most stars. */
+export async function handleStarsCommand(ctx: ModuleContext, i: ChatInputCommandInteraction): Promise<void> {
+  if (!i.inCachedGuild()) return;
+  const c = ctx.config(i.guildId).starboard;
+  if (!c.enabled) return void (await i.reply({ content: 'The starboard isn’t enabled in this server.', flags: MessageFlags.Ephemeral }));
+  const top = ctx.store.starLeaderboard(i.guildId, 10);
+  if (!top.length) return void (await i.reply({ content: `Nothing on the starboard yet — react with ${c.emoji} to great messages!`, flags: MessageFlags.Ephemeral }));
+  const medals = ['🥇', '🥈', '🥉'];
+  await i.reply({
+    embeds: [{ title: `${c.emoji} Most starred members`, description: top.map((t, n) => `${medals[n] ?? `**${n + 1}.**`} <@${t.userId}> — ${t.stars} star${t.stars === 1 ? '' : 's'} on ${t.posts} post${t.posts === 1 ? '' : 's'}`).join('\n'), color: 0xf5a524 }],
+    allowedMentions: { parse: [] },
+  });
 }

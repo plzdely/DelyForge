@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Field, Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
-import { CategorySelect, RoleSelect, Section, TemplateField } from './fields';
+import { CategorySelect, RoleSelect, RoleValueRows, Section, TemplateField } from './fields';
 import { ChannelChecklist, ChannelSelect, NumberField, RoleChecklist, ToggleRow } from './pickers';
 
 type Props<K extends keyof ModuleConfigs> = { c: ModuleConfigs[K]; set: (c: ModuleConfigs[K]) => void; guild: GuildInfo };
@@ -64,9 +64,27 @@ export function LevelingForm({ c, set, guild }: Props<'leveling'>) {
         <Field label="No XP for these roles" htmlFor="xp-no-roles">
           <RoleChecklist guild={guild} value={c.noXpRoleIds} onChange={(ids) => set({ ...c, noXpRoleIds: ids })} />
         </Field>
+        <NumberField id="xp-voice" label="Voice XP" suffix="XP per minute (0 = off)" hint="For members talking with at least one other person, not deafened. Not in the AFK channel." min={0} max={50} value={c.voiceXpPerMinute} onChange={(v) => set({ ...c, voiceXpPerMinute: v })} />
+        <ToggleRow title="Reset XP when a member leaves" description="Their XP and level are deleted if they leave the server." checked={c.resetOnLeave} onChange={(v) => set({ ...c, resetOnLeave: v })} />
+      </Section>
+      <Section title="XP boosts" description="Members with these roles earn more XP (the biggest boost counts) — e.g. 2× for server boosters. Staff can also use /xp give, take or set.">
+        <RoleValueRows
+          id="xp-boost"
+          guild={guild}
+          rows={c.multipliers.map((m) => ({ roleId: m.roleId, value: m.multiplier }))}
+          onChange={(rows) => set({ ...c, multipliers: rows.map((r) => ({ roleId: r.roleId, multiplier: r.value })) })}
+          valueLabel="Boost"
+          min={1}
+          max={5}
+          choices={[1.25, 1.5, 2, 2.5, 3, 4, 5].map((v) => ({ value: v, label: `${v}× XP` }))}
+          addLabel="Add a boost"
+          maxRows={10}
+          defaultValue={1.5}
+        />
       </Section>
       <Section title="Level-up message">
         <ToggleRow title="Announce level-ups" checked={c.levelUp.enabled} onChange={(v) => set({ ...c, levelUp: { ...c.levelUp, enabled: v } })} />
+        {c.levelUp.enabled ? <ToggleRow title="Send it as a DM instead" description="Keeps busy channels quiet." checked={c.levelUp.dm} onChange={(v) => set({ ...c, levelUp: { ...c.levelUp, dm: v } })} /> : null}
         {c.levelUp.enabled ? (
           <>
             <ChannelSelect
@@ -296,6 +314,21 @@ export function GiveawaysForm({ c, set, guild }: Props<'giveaways'>) {
         <RoleChecklist guild={guild} value={c.managerRoleIds} onChange={(ids) => set({ ...c, managerRoleIds: ids })} />
       </Field>
       <ColorField id="gw-color" value={c.color} onChange={(v) => set({ ...c, color: v })} />
+      <Field label="Bonus entries" htmlFor="gw-bonus" hint="Members with these roles get extra chances to win (the biggest bonus counts) — e.g. boosters ×2.">
+        <RoleValueRows
+          id="gw-bonus"
+          guild={guild}
+          rows={c.bonusRoles.map((b) => ({ roleId: b.roleId, value: b.entries }))}
+          onChange={(rows) => set({ ...c, bonusRoles: rows.map((r) => ({ roleId: r.roleId, entries: r.value })) })}
+          valueLabel="Entries"
+          min={2}
+          max={10}
+          choices={[2, 3, 4, 5, 10].map((v) => ({ value: v, label: `${v}× entries` }))}
+          addLabel="Add a bonus"
+          maxRows={5}
+          defaultValue={2}
+        />
+      </Field>
     </Section>
   );
 }

@@ -256,6 +256,8 @@ export const levelingConfigSchema = z
         /** null = announce in the channel where the member leveled up. */
         channelId: channel,
         message: template(1000),
+        /** Send the level-up message as a DM instead. */
+        dm: z.boolean().default(false),
       })
       .strict(),
     rewards: z.array(z.object({ level: z.number().int().min(1).max(500), roleId: snowflakeSchema }).strict()).max(25),
@@ -263,6 +265,12 @@ export const levelingConfigSchema = z
     stackRewards: z.boolean(),
     noXpChannelIds: z.array(snowflakeSchema).max(50),
     noXpRoleIds: roles,
+    /** Members with these roles earn more XP (the biggest boost counts), e.g. 1.5× for boosters. */
+    multipliers: z.array(z.object({ roleId: snowflakeSchema, multiplier: z.number().min(1).max(5) }).strict()).max(10).default([]),
+    /** XP per minute for talking in voice with at least one other person (0 = off). */
+    voiceXpPerMinute: z.number().int().min(0).max(50).default(0),
+    /** Delete a member's XP when they leave the server. */
+    resetOnLeave: z.boolean().default(false),
   })
   .strict()
   .refine((c) => c.xpMin <= c.xpMax, { message: 'Minimum XP must not be higher than maximum XP', path: ['xpMin'] });
@@ -374,6 +382,8 @@ export const giveawaysConfigSchema = z
     /** Who may start, end and reroll giveaways (anyone with Manage Server can too). */
     managerRoleIds: roles,
     color: hexColor,
+    /** Members with these roles get extra entries (the biggest bonus counts), e.g. boosters ×2. */
+    bonusRoles: z.array(z.object({ roleId: snowflakeSchema, entries: z.number().int().min(2).max(10) }).strict()).max(5).default([]),
   })
   .strict();
 export type GiveawaysConfig = z.infer<typeof giveawaysConfigSchema>;
@@ -386,6 +396,8 @@ export const invitesConfigSchema = z
     /** Where to announce who invited each new member (null = only in logs and /invites). */
     channelId: channel,
     message: template(500),
+    /** Roles given to members who bring in enough people (counted: invited members still in the server). */
+    rewards: z.array(z.object({ invites: z.number().int().min(1).max(1000), roleId: snowflakeSchema }).strict()).max(10).default([]),
   })
   .strict();
 export type InvitesConfig = z.infer<typeof invitesConfigSchema>;
@@ -651,11 +663,14 @@ export const DEFAULT_MODULE_CONFIGS: ModuleConfigs = {
     xpMin: 15,
     xpMax: 25,
     cooldownSeconds: 60,
-    levelUp: { enabled: true, channelId: null, message: '🎉 {user} reached **level {level}**!' },
+    levelUp: { enabled: true, channelId: null, message: '🎉 {user} reached **level {level}**!', dm: false },
     rewards: [],
     stackRewards: true,
     noXpChannelIds: [],
     noXpRoleIds: [],
+    multipliers: [],
+    voiceXpPerMinute: 0,
+    resetOnLeave: false,
   },
   tickets: {
     enabled: false,
@@ -680,8 +695,8 @@ export const DEFAULT_MODULE_CONFIGS: ModuleConfigs = {
   },
   reactionRoles: { enabled: false, panels: [] },
   suggestions: { enabled: false, channelId: null, staffRoleIds: [] },
-  giveaways: { enabled: false, managerRoleIds: [], color: '#f5a524' },
-  invites: { enabled: false, channelId: null, message: '{user} joined using {inviter}’s invite — that’s {invites} so far.' },
+  giveaways: { enabled: false, managerRoleIds: [], color: '#f5a524', bonusRoles: [] },
+  invites: { enabled: false, channelId: null, message: '{user} joined using {inviter}’s invite — that’s {invites} so far.', rewards: [] },
   starboard: { enabled: false, channelId: null, emoji: '⭐', threshold: 3, selfStar: false, ignoredChannelIds: [] },
   tempVoice: { enabled: false, hubChannelId: null, categoryId: null, nameTemplate: '{user}’s channel', userLimit: 0 },
   antiRaid: { enabled: false, alertChannelId: null, joinThreshold: 10, perSeconds: 30, raidAction: 'alert', raidMinutes: 10, minAccountAgeDays: 0, lockdown: false },
@@ -728,14 +743,14 @@ export const MODULES: readonly ModuleInfo[] = [
   { id: 'moderation', name: 'Moderation', summary: 'Staff commands with numbered cases and history, temporary bans, channel lockdown, and auto-moderation for spam, scams, mentions and more.', feature: 'modules.basic', available: true, commands: ['/warn', '/warnings', '/clearwarnings', '/history', '/case', '/note', '/timeout', '/untimeout', '/kick', '/ban', '/unban', '/softban', '/purge', '/lock', '/unlock', '/slowmode', '/role', '/nick'] },
   { id: 'logging', name: 'Logging', summary: 'Who did what: deleted and edited messages, joins and leaves, and every staff change with who made it.', feature: 'modules.standard', available: true, commands: [] },
   { id: 'utility', name: 'Utility', summary: 'Handy commands: server info, user info, avatars and native Discord polls.', feature: 'modules.basic', available: true, commands: ['/serverinfo', '/userinfo', '/avatar', '/poll'] },
-  { id: 'leveling', name: 'Leveling', summary: 'XP for chatting, levels, leaderboards and role rewards.', feature: 'modules.standard', available: true, commands: ['/rank', '/leaderboard'] },
+  { id: 'leveling', name: 'Leveling', summary: 'XP for chatting, levels, leaderboards and role rewards.', feature: 'modules.standard', available: true, commands: ['/rank', '/leaderboard', '/xp'] },
   { id: 'tickets', name: 'Tickets', summary: 'A support panel that opens private ticket channels, with transcripts when closed.', feature: 'modules.standard', available: true, commands: ['/ticket add', '/ticket close'] },
   { id: 'verification', name: 'Verification', summary: 'A verify button that gives new members access, with an optional minimum account age.', feature: 'modules.standard', available: true, commands: [] },
   { id: 'reactionRoles', name: 'Reaction Roles', summary: 'Panels where members pick their own roles with buttons or a menu.', feature: 'modules.standard', available: true, commands: [] },
   { id: 'suggestions', name: 'Suggestions', summary: 'Members submit ideas, others vote, staff approve or reject.', feature: 'modules.standard', available: true, commands: ['/suggest'] },
   { id: 'giveaways', name: 'Giveaways', summary: 'Timed giveaways with a join button and automatic, fair winner picking.', feature: 'modules.standard', available: true, commands: ['/giveaway start', '/giveaway end', '/giveaway reroll'] },
   { id: 'invites', name: 'Invite Tracker', summary: 'See who invited each new member, invite counts and a leaderboard.', feature: 'modules.standard', available: true, commands: ['/invites', '/inviteboard'] },
-  { id: 'starboard', name: 'Starboard', summary: 'Messages that get enough ⭐ reactions are showcased in a starboard channel.', feature: 'modules.standard', available: true, commands: [] },
+  { id: 'starboard', name: 'Starboard', summary: 'Messages that get enough ⭐ reactions are showcased in a starboard channel.', feature: 'modules.standard', available: true, commands: ['/stars'] },
   { id: 'tempVoice', name: 'Temporary Voice', summary: 'Join a “create channel” voice channel to get your own room; it disappears when empty.', feature: 'modules.standard', available: true, commands: [] },
   { id: 'antiRaid', name: 'Raid Protection', summary: 'Spots join floods, alerts staff and keeps brand-new accounts out.', feature: 'modules.standard', available: true, commands: [] },
   { id: 'sticky', name: 'Sticky Messages', summary: 'Keep a message pinned to the bottom of a busy channel.', feature: 'modules.standard', available: true, commands: [] },
@@ -769,8 +784,11 @@ export function moduleIntents<K extends ImplementedModuleId>(id: K, config: Modu
       if (e.voice) bits |= I('GuildVoiceStates');
       return bits;
     }
-    case 'leveling':
-      return I('GuildMessages'); // message events arrive without the privileged content intent
+    case 'leveling': {
+      const l = config as LevelingConfig;
+      // Message events arrive without the privileged content intent; voice XP needs voice states, reset-on-leave members.
+      return I('GuildMessages') | (l.voiceXpPerMinute ? I('GuildVoiceStates') : 0) | (l.resetOnLeave ? I('GuildMembers') : 0);
+    }
     case 'invites':
       return I('GuildInvites', 'GuildMembers');
     case 'starboard':
@@ -1036,7 +1054,7 @@ export function modulePermissions<K extends ImplementedModuleId>(id: K, config: 
     case 'sticky':
       return base | HISTORY;
     case 'invites':
-      return base | P(5n); // Manage Server: needed to read invite links
+      return base | P(5n) | ((config as InvitesConfig).rewards.length ? ROLES : 0n); // Manage Server: needed to read invite links
     case 'tempVoice':
       return VIEW | P(4n) | P(20n) | P(24n); // manage channels, connect, move members
     case 'antiRaid':

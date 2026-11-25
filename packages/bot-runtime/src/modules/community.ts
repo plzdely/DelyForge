@@ -144,18 +144,28 @@ export function pickWinners(entries: readonly string[], count: number, exclude: 
   return winners;
 }
 
+/** A random order where each entry's chance to come early grows with its weight (bonus entries). */
+export function weightedOrder(entries: readonly { userId: string; weight: number }[], random = () => (randomInt(1, 2 ** 31) / 2 ** 31)): string[] {
+  // Efraimidis–Spirakis: sort by random^(1/weight), biggest first.
+  return entries
+    .map((e) => ({ id: e.userId, key: random() ** (1 / Math.max(1, e.weight)) }))
+    .sort((a, b) => b.key - a.key)
+    .map((e) => e.id);
+}
+
 /**
  * Draws winners in random order, skipping anyone who has since lost the required role or left the server.
  * `isEligible` is only asked about as many people as needed.
  */
 export async function drawEligible(
-  entries: readonly string[],
+  entries: readonly string[] | readonly { userId: string; weight: number }[],
   count: number,
   exclude: readonly string[],
   isEligible: (userId: string) => Promise<boolean>,
 ): Promise<string[]> {
   const winners: string[] = [];
-  for (const id of pickWinners(entries, entries.length, exclude)) {
+  const order = typeof entries[0] === 'object' ? weightedOrder(entries as { userId: string; weight: number }[]).filter((id) => !exclude.includes(id)) : pickWinners(entries as string[], entries.length, exclude);
+  for (const id of order) {
     if (winners.length >= count) break;
     if (await isEligible(id)) winners.push(id);
   }
@@ -221,7 +231,7 @@ async function announceWinners(ctx: ModuleContext, client: Client, g: Giveaway, 
 export async function endDueGiveaways(ctx: ModuleContext, client: Client): Promise<void> {
   for (const g of ctx.store.dueGiveaways(Date.now())) {
     if (!client.guilds.cache.has(g.guildId)) continue;
-    const winners = await drawEligible(ctx.store.entries(g.id), g.winners, [], eligibility(client.guilds.cache.get(g.guildId), g));
+    const winners = await drawEligible(ctx.store.weightedEntries(g.id), g.winners, [], eligibility(client.guilds.cache.get(g.guildId), g));
     if (!ctx.store.endGiveaway(g.id, winners)) continue;
     await announceWinners(ctx, client, { ...g, ended: true, winnerIds: winners }, false);
     ctx.log('info', `Giveaway #${g.id} (“${g.prize}”) ended with ${winners.length} winner(s).`);
@@ -263,7 +273,7 @@ export async function handleGiveaway(ctx: ModuleContext, i: ChatInputCommandInte
 
   if (sub === 'end') {
     if (g.ended) return void (await ephemeral(i, 'That giveaway has already ended.'));
-    const winners = await drawEligible(ctx.store.entries(id), g.winners, [], eligibility(i.guild, g));
+    const winners = await drawEligible(ctx.store.weightedEntries(id), g.winners, [], eligibility(i.guild, g));
     if (!ctx.store.endGiveaway(id, winners)) return void (await ephemeral(i, 'That giveaway has already ended.'));
     await announceWinners(ctx, i.client, { ...g, ended: true, winnerIds: winners }, false);
     return void (await ephemeral(i, `Giveaway #${id} ended.`));
@@ -271,7 +281,7 @@ export async function handleGiveaway(ctx: ModuleContext, i: ChatInputCommandInte
 
   // reroll
   if (!g.ended) return void (await ephemeral(i, 'That giveaway is still running — end it first.'));
-  const fresh = await drawEligible(ctx.store.entries(id), 1, g.winnerIds, eligibility(i.guild, g));
+  const fresh = await drawEligible(ctx.store.weightedEntries(id), 1, g.winnerIds, eligibility(i.guild, g));
   if (!fresh.length) return void (await ephemeral(i, 'There’s nobody left to pick.'));
   const winnerIds = [...g.winnerIds, ...fresh];
   ctx.store.setWinners(id, winnerIds);
@@ -288,7 +298,9 @@ export async function onGiveawayEnter(ctx: ModuleContext, i: ButtonInteraction, 
   if (g.requiredRoleId && !i.member.roles.cache.has(g.requiredRoleId) && !ctx.store.entries(id).includes(i.user.id)) {
     return void (await ephemeral(i, `You need the <@&${g.requiredRoleId}> role to enter this giveaway.`));
   }
-  const { entered, count } = ctx.store.toggleEntry(id, i.user.id);
+  // Bonus entries: the biggest bonus from the member's roles.
+  const bonus = ctx.config(i.guildId).giveaways.bonusRoles.reduce((best, b) => (i.member.roles.cache.has(b.roleId) ? Math.max(best, b.entries) : best), 1);
+  const { entered, count } = ctx.store.toggleEntry(id, i.user.id, bonus);
   refreshEntryCount(ctx, i, id);
-  await ephemeral(i, entered ? `You’re in! 🎉 Good luck. (${count} entries) Click again to leave.` : `You left the giveaway. (${count} entries)`);
+  await ephemeral(i, entered ? `You’re in! 🎉 Good luck.${bonus > 1 ? ` Your roles give you ${bonus} entries.` : ''} (${count} people entered) Click again to leave.` : `You left the giveaway. (${count} people entered)`);
 }

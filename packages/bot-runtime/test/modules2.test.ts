@@ -161,7 +161,7 @@ describe('panels and commands', () => {
         giveaways: { ...base.giveaways, enabled: true },
       }),
     ).map((c) => c.name);
-    expect(names).toEqual(['rank', 'leaderboard', 'ticket', 'suggest', 'giveaway']);
+    expect(names).toEqual(['rank', 'leaderboard', 'xp', 'ticket', 'suggest', 'giveaway']);
   });
 });
 

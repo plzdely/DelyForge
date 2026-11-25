@@ -152,3 +152,65 @@ export function LinkButtonsEditor({ id, value, onChange, max = 3 }: { id: string
     </div>
   );
 }
+
+/** Rows of "role → number" (XP boosts, bonus entries, invite rewards). `choices` shows a drop-down instead of a box. */
+export function RoleValueRows({
+  id,
+  guild,
+  rows,
+  onChange,
+  valueLabel,
+  min,
+  max,
+  choices,
+  addLabel,
+  assignableOnly,
+  maxRows,
+  defaultValue,
+}: {
+  id: string;
+  guild: GuildInfo;
+  rows: { roleId: string; value: number }[];
+  onChange: (rows: { roleId: string; value: number }[]) => void;
+  valueLabel: string;
+  min: number;
+  max: number;
+  choices?: { value: number; label: string }[];
+  addLabel: string;
+  assignableOnly?: boolean;
+  maxRows: number;
+  defaultValue: number;
+}) {
+  const update = (n: number, patch: Partial<{ roleId: string; value: number }>) => onChange(rows.map((r, i) => (i === n ? { ...r, ...patch } : r)));
+  const firstRole = guild.roles.find((r) => !r.managed && (!assignableOnly || r.position < guild.botRolePosition));
+  return (
+    <div className="space-y-2">
+      {rows.map((r, n) => (
+        <div key={n} className="grid grid-cols-[1fr_10rem_auto] items-end gap-2">
+          <RoleSelect id={`${id}-role-${n}`} label="Role" guild={guild} assignableOnly={assignableOnly} allowNone={false} value={r.roleId} onChange={(v) => v && update(n, { roleId: v })} />
+          <Field label={valueLabel} htmlFor={`${id}-value-${n}`}>
+            {choices ? (
+              <Select id={`${id}-value-${n}`} value={String(r.value)} onChange={(e) => update(n, { value: Number(e.target.value) })}>
+                {choices.map((c) => (
+                  <option key={c.value} value={c.value}>
+                    {c.label}
+                  </option>
+                ))}
+              </Select>
+            ) : (
+              <Input id={`${id}-value-${n}`} type="number" min={min} max={max} value={r.value} onChange={(e) => update(n, { value: Math.min(max, Math.max(min, Math.round(Number(e.target.value)) || min)) })} />
+            )}
+          </Field>
+          <Button size="icon" variant="ghost" aria-label="Remove" onClick={() => onChange(rows.filter((_, i) => i !== n))}>
+            <Trash2 />
+          </Button>
+        </div>
+      ))}
+      {rows.length < maxRows && firstRole ? (
+        <Button size="sm" onClick={() => onChange([...rows, { roleId: firstRole.id, value: defaultValue }])}>
+          <Plus /> {addLabel}
+        </Button>
+      ) : null}
+    </div>
+  );
+}

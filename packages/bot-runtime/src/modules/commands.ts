@@ -203,7 +203,18 @@ const LEVELING: CommandJSON[] = [
     .addUserOption((o) => o.setName('member').setDescription('Whose rank (defaults to you)'))
     .toJSON(),
   new SlashCommandBuilder().setName('leaderboard').setDescription('Top members by XP').setDMPermission(false).toJSON(),
+  new SlashCommandBuilder()
+    .setName('xp')
+    .setDescription('Staff: give, take or set a member’s XP')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+    .setDMPermission(false)
+    .addSubcommand((s) => s.setName('give').setDescription('Give XP').addUserOption((o) => o.setName('member').setDescription('Who').setRequired(true)).addIntegerOption((o) => o.setName('amount').setDescription('How much').setRequired(true).setMinValue(1).setMaxValue(1_000_000)))
+    .addSubcommand((s) => s.setName('take').setDescription('Take XP away').addUserOption((o) => o.setName('member').setDescription('Who').setRequired(true)).addIntegerOption((o) => o.setName('amount').setDescription('How much').setRequired(true).setMinValue(1).setMaxValue(1_000_000)))
+    .addSubcommand((s) => s.setName('set').setDescription('Set XP to an exact amount').addUserOption((o) => o.setName('member').setDescription('Who').setRequired(true)).addIntegerOption((o) => o.setName('amount').setDescription('New total').setRequired(true).setMinValue(0).setMaxValue(10_000_000)))
+    .toJSON(),
 ];
+
+const STARS: CommandJSON = new SlashCommandBuilder().setName('stars').setDescription('Members whose messages got the most stars').setDMPermission(false).toJSON();
 
 const INVITES: CommandJSON[] = [
   new SlashCommandBuilder()
@@ -292,6 +303,7 @@ export function desiredCommands(config: ModuleConfigs): CommandJSON[] {
   if (config.suggestions.enabled) out.push(SUGGEST);
   if (config.giveaways.enabled) out.push(GIVEAWAY);
   if (config.invites.enabled) out.push(...INVITES);
+  if (config.starboard.enabled) out.push(STARS);
   if (config.birthdays.enabled) out.push(BIRTHDAY);
   return out;
 }

@@ -236,6 +236,9 @@ export class BotStore {
     // Columns added after the first release: create them in databases made by older versions.
     this.addColumnIfMissing('giveaways', 'required_role_id', 'TEXT');
     this.addColumnIfMissing('suggestions', 'reason', 'TEXT');
+    this.addColumnIfMissing('giveaway_entries', 'weight', 'INTEGER NOT NULL DEFAULT 1');
+    this.addColumnIfMissing('starboard', 'author_id', 'TEXT');
+    this.addColumnIfMissing('starboard', 'stars', 'INTEGER NOT NULL DEFAULT 0');
   }
 
   private addColumnIfMissing(table: string, column: string, type: string): void {
@@ -344,6 +347,16 @@ export class BotStore {
     const xp = row?.xp ?? 0;
     const above = (this.db.prepare('SELECT COUNT(*) AS n FROM xp WHERE guild_id = ? AND xp > ?').get(guildId, xp) as { n: number }).n;
     return { xp, rank: above + 1 };
+  }
+
+  /** Staff tools: sets a member's XP to an exact amount (never below 0). Returns before/after. */
+  setXp(guildId: string, userId: string, xp: number): { before: number; after: number } {
+    const before = this.xpOf(guildId, userId).xp;
+    const after = Math.max(0, Math.round(xp));
+    this.db
+      .prepare('INSERT INTO xp (guild_id, user_id, xp, last_at) VALUES (?, ?, ?, 0) ON CONFLICT(guild_id, user_id) DO UPDATE SET xp = excluded.xp')
+      .run(guildId, userId, after);
+    return { before, after };
   }
 
   /** Resets one member's XP, or everyone's in the server when no member is given. Returns how many were reset. */
@@ -473,11 +486,16 @@ export class BotStore {
   }
 
   /** Enter, or leave if already entered. Returns whether the member is now entered and the entry count. */
-  toggleEntry(id: number, userId: string): { entered: boolean; count: number } {
+  toggleEntry(id: number, userId: string, weight = 1): { entered: boolean; count: number } {
     const removed = Number(this.db.prepare('DELETE FROM giveaway_entries WHERE giveaway_id = ? AND user_id = ?').run(id, userId).changes) === 1;
-    if (!removed) this.db.prepare('INSERT INTO giveaway_entries (giveaway_id, user_id) VALUES (?, ?)').run(id, userId);
+    if (!removed) this.db.prepare('INSERT INTO giveaway_entries (giveaway_id, user_id, weight) VALUES (?, ?, ?)').run(id, userId, weight);
     const count = (this.db.prepare('SELECT COUNT(*) AS n FROM giveaway_entries WHERE giveaway_id = ?').get(id) as { n: number }).n;
     return { entered: !removed, count };
+  }
+
+  /** Entries with their weight (bonus entries from roles). */
+  weightedEntries(id: number): { userId: string; weight: number }[] {
+    return (this.db.prepare('SELECT user_id, weight FROM giveaway_entries WHERE giveaway_id = ?').all(id) as { user_id: string; weight: number }[]).map((r) => ({ userId: r.user_id, weight: r.weight }));
   }
 
   entries(id: number): string[] {
@@ -624,14 +642,25 @@ export class BotStore {
 
   // ─── Starboard ───────────────────────────────────────────────────────────────────────────────────────────────────
 
+  /** Members whose messages collected the most stars on the starboard. */
+  starLeaderboard(guildId: string, limit = 10): { userId: string; stars: number; posts: number }[] {
+    const rows = this.db
+      .prepare('SELECT author_id, SUM(stars) AS stars, COUNT(*) AS posts FROM starboard WHERE guild_id = ? AND author_id IS NOT NULL GROUP BY author_id ORDER BY stars DESC LIMIT ?')
+      .all(guildId, limit) as { author_id: string; stars: number; posts: number }[];
+    return rows.map((r) => ({ userId: r.author_id, stars: r.stars, posts: r.posts }));
+  }
+
   starPost(guildId: string, messageId: string): string | null {
     const r = this.db.prepare('SELECT star_message_id FROM starboard WHERE guild_id = ? AND message_id = ?').get(guildId, messageId) as { star_message_id: string } | undefined;
     return r?.star_message_id ?? null;
   }
 
-  setStarPost(guildId: string, messageId: string, starMessageId: string | null): void {
-    if (starMessageId) this.db.prepare('INSERT OR REPLACE INTO starboard (guild_id, message_id, star_message_id) VALUES (?, ?, ?)').run(guildId, messageId, starMessageId);
-    else this.db.prepare('DELETE FROM starboard WHERE guild_id = ? AND message_id = ?').run(guildId, messageId);
+  setStarPost(guildId: string, messageId: string, starMessageId: string | null, authorId: string | null = null, stars = 0): void {
+    if (starMessageId) {
+      this.db
+        .prepare('INSERT OR REPLACE INTO starboard (guild_id, message_id, star_message_id, author_id, stars) VALUES (?, ?, ?, ?, ?)')
+        .run(guildId, messageId, starMessageId, authorId, stars);
+    } else this.db.prepare('DELETE FROM starboard WHERE guild_id = ? AND message_id = ?').run(guildId, messageId);
   }
 
   // ─── Temporary voice ─────────────────────────────────────────────────────────────────────────────────────────────

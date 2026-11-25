@@ -8,7 +8,7 @@ import * as logging from './logging.js';
 import { MODERATION_COMMANDS, automodCheck, endTempBans, handleModerationCommand, onAuditCase } from './moderation.js';
 import { UTILITY_COMMANDS, handleUtilityCommand } from './utility.js';
 import { endDueGiveaways, handleGiveaway, handleSuggest, onGiveawayEnter, onSuggestionButton, onSuggestionDecision } from './community.js';
-import { LEVELING_COMMANDS, handleLevelingCommand, onMessageXp } from './leveling.js';
+import { LEVELING_COMMANDS, handleLevelingCommand, onMemberLeaveXp, onMessageXp, voiceXp } from './leveling.js';
 import { CID, syncPanels } from './panels.js';
 import { kickUnverified, onRoleButton, onRoleMenu, onVerify, onVerifyAnswer } from './roles.js';
 import { TICKET_COMMANDS, handleTicketCommand, onTicketClose, onTicketCloseConfirm, onTicketOpen } from './tickets.js';
@@ -110,6 +110,7 @@ export class ModuleHost {
         void runWorkflow(this.ctx, this.builders, w, { guild, user: null, member: null });
       }
       await checkBirthdays(this.ctx, guild).catch((e: Error) => this.log('error', `Birthdays: ${e.message}`));
+      if (this.minutes % 2 === 0) await voiceXp(this.ctx, guild).catch((e: Error) => this.log('error', `Voice XP: ${e.message}`));
       if (slowDue) {
         await updateStats(this.ctx, guild).catch((e: Error) => this.log('error', `Server stats: ${e.message}`));
         await pollFeeds(this.ctx, guild).catch((e: Error) => this.log('error', `Social alerts: ${e.message}`));
@@ -248,6 +249,7 @@ export class ModuleHost {
       safe('Member leave', async (m) => {
         await welcome.onMemberLeave(ctx, m);
         invites.onMemberLeave(ctx, m.guild.id, m.id);
+        onMemberLeaveXp(ctx, m.guild.id, m.id);
         await logging.onMemberLeaveLog(ctx, m);
       }),
     );
@@ -341,7 +343,9 @@ export class ModuleHost {
                   ? invites.handleInvitesCommand
                   : n === 'birthday'
                     ? handleBirthdayCommand
-                    : null;
+                    : n === 'stars'
+                      ? starboard.handleStarsCommand
+                      : null;
     if (!handler) return this.runCustom(i); // custom command, or e.g. /ping (handled elsewhere)
     const started = Date.now();
     try {
