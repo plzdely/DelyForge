@@ -5,9 +5,35 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-25
+
+Every module got deeper. No new modules — new options and commands inside the ones you have.
+
 ### Added
-- Verification log channel: every verify attempt is posted with the member, account age (new accounts flagged),
-  join time and the result.
+- **Welcome:** banner image on the card, up to 3 link buttons, goodbye as a card, auto-roles after a delay, separate
+  roles for bots, and a quick ping in chosen channels (e.g. #rules) so new members notice them.
+- **Verification:** a log channel (who, account age, result), an optional sum question, removing members who never
+  verify (only members with no roles — staff are never kicked), and a DM after verifying.
+- **Reaction roles:** "one role only" button panels (e.g. colours) and a required role per panel.
+- **Moderation:** warnings that expire, appeal text in ban DMs, `/softban`, `/role give|take`, `/nick`, `/purge` by bots
+  or by text, and AutoMod exempt channels.
+- **Logging:** ignored roles. **Raid protection:** optional server lockdown during a raid and a "raid over" alert.
+- **Leveling:** XP boosts per role, voice XP, level-up DMs, `/xp give|take|set`, and resetting XP when someone leaves.
+- **Invites:** reward roles (taken back if invited members leave). **Giveaways:** bonus entries per role, and the entry
+  count on the message updates live. **Starboard:** `/stars` leaderboard.
+- **Tickets:** "what do you need help with?" pop-up, Claim button, `/ticket remove` and `/ticket rename`, and closing
+  idle tickets automatically (with a transcript).
+- **Suggestions:** discussion threads, anonymous mode and a DM to the author when decided.
+- **Temporary voice:** `/voice lock|unlock|limit|rename|claim` for channel owners, and one channel per member.
+- **Utility:** `/remind` and `/roll`. **Sticky messages:** card style and quiet time. **Birthdays:** a DM.
+  **Social alerts:** keyword filter and "skip Shorts". **Scheduled messages:** card style and "delete the previous post".
+- The app asks before leaving a screen with unsaved changes.
+
+### Fixed
+- A double click could open two tickets; a reroll no longer drops earlier winners from the giveaway message.
+- Failed role changes in verification, and failed suggestion posts, now give a clear answer instead of an error.
+- During a raid, the accounts that set it off are removed too (when the raid action is kick or ban).
+- If one saved custom command, embed or workflow stops passing the rules, only that item is dropped — not all of them.
 
 ## [0.3.0] - 2026-11-25
 

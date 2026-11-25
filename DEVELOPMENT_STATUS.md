@@ -1,6 +1,6 @@
 # Development Status
 
-_Last updated: 2026-11-25 — v0.3.0: Setup Doctor, test buttons, problem DMs, Moderation 2.0, Social Alerts, Scheduled Messages, Automations upgrade (19 modules)._
+_Last updated: 2026-11-25 — v0.4.0: every module deepened (about 60 new options and 12 new commands), unsaved-changes prompt._
 
 > **Current mode: Personal edition** (`PERSONAL_EDITION = true` in `packages/shared/src/brand.ts`). Selling is on hold:
 > every feature is unlocked on this PC with no limits and no sign-in, and the screens that need a paid DelyForge server
@@ -307,6 +307,21 @@ See "Making yourself staff" under Phase 8: set your `role` to `ADMIN` in Prisma 
   turned into the channel ID by reading the channel page once. Twitch needs a free Twitch developer app — not built.
 - Variables (`{var:name}`) are saved per server in the bot's own data and kept between runs.
 
+## v0.4 (2026-11-25)
+
+| Item | Status | Verification |
+|---|---|---|
+| New options in all 19 modules (see CHANGELOG 0.4.0) | ✅ / 🟡 | store, logic and settings-compatibility tests (85 bot + 77 shared); **not yet watched in a real server** |
+| New commands: /softban, /role, /nick, /xp, /stars, /voice, /remind, /roll, /ticket remove + rename | ✅ / 🟡 | command-registration tests |
+| Unsaved-changes prompt | ✅ | typecheck + smoke |
+
+### Things to know
+- Delayed auto-roles and reminders: a delayed role is lost if the bot restarts during the wait (reminders are saved
+  and survive restarts).
+- "Remove members who never verify" and voice XP need the Server Members / Voice States intents; the settings page
+  warns when one is missing.
+- Raid lockdown needs Manage Server; invite rewards need Manage Roles and are taken back when invited members leave.
+
 ## Known limitations / honest notes
 - Bots run on this PC, so they're online while DelyForge is running. Closing the window keeps it running in the tray
   (Settings → "Keep bots running when I close the window"), and "Start DelyForge when Windows starts" brings bots back
@@ -321,7 +336,7 @@ The Free plan allows 1 bot. To test with more, start the app with a simulated pl
 customer builds ignore it). In Git Bash: `DELYFORGE_DEV_PLAN=pro pnpm dev:desktop`. In PowerShell:
 `$env:DELYFORGE_DEV_PLAN='pro'; pnpm dev:desktop`.
 
-## Next up — v0.4 (planned)
+## Next up — v0.5 (ideas)
 - Change history with one-click undo for every settings change.
 - Economy and fun modules; a guided first-run tour.
 - Twitch alerts (needs a free Twitch developer app).
