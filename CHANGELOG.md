@@ -5,6 +5,10 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- Verification log channel: every verify attempt is posted with the member, account age (new accounts flagged),
+  join time and the result.
+
 ## [0.3.0] - 2026-11-25
 
 ### Added

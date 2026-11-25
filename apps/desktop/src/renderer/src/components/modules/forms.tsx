@@ -164,6 +164,9 @@ export function VerificationForm({ c, set, guild }: Props<'verification'>) {
         <RoleSelect id="vf-remove" label="Remove this role when verified (optional)" guild={guild} assignableOnly value={c.removeRoleId} onChange={(v) => set({ ...c, removeRoleId: v })} />
         <NumberField id="vf-age" label="Minimum account age" suffix="days (0 = off)" value={c.minAccountAgeDays} min={0} max={365} onChange={(v) => set({ ...c, minAccountAgeDays: v })} />
       </Section>
+      <Section title="Log" description="Every verify attempt is posted here: who, how old their account is, when they joined, and whether it worked. Make this channel staff-only.">
+        <ChannelSelect id="vf-log" label="Verification log channel" emptyLabel="— Don’t log —" guild={guild} value={c.logChannelId} onChange={(v) => set({ ...c, logChannelId: v })} />
+      </Section>
       <Section title="Verify panel">
         <PanelFields prefix="vf" p={c.panel} set={(panel) => set({ ...c, panel })} guild={guild} note={`${PANEL_NOTE} Choose the role first.`} />
       </Section>

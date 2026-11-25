@@ -208,3 +208,15 @@ describe('problem alerts', () => {
     expect(reports).toHaveLength(1);
   });
 });
+
+describe('verification log', () => {
+  it('shows who, account age (flagging new accounts), join time and the result', async () => {
+    const { verifyLogEmbed } = await import('../src/modules/roles.js');
+    const now = Date.UTC(2026, 10, 25);
+    const e = verifyLogEmbed({ id: '42', tag: 'newbie', createdTimestamp: now - 2 * 86_400_000, joinedTimestamp: now - 60_000, avatarUrl: 'https://cdn/x.png' }, 'tooNew', now);
+    expect(e.title).toMatch(/too new/);
+    expect(e.fields[0]!.value).toContain('<@42>');
+    expect(e.fields[1]!.value).toMatch(/2 days old\) ⚠️ new account/);
+    expect(verifyLogEmbed({ id: '1', tag: 'old', createdTimestamp: now - 400 * 86_400_000, joinedTimestamp: null, avatarUrl: '' }, 'verified', now).fields[1]!.value).not.toMatch(/new account/);
+  });
+});

@@ -264,6 +264,8 @@ export const verificationConfigSchema = z
     panel: panelSchema,
     /** Refuse accounts younger than this (0 = off). Stops many throwaway raid accounts. */
     minAccountAgeDays: z.number().int().min(0).max(365),
+    /** Where every verify attempt is logged (who, account age, result). Default keeps older settings valid. */
+    logChannelId: snowflakeSchema.nullable().default(null),
   })
   .strict();
 export type VerificationConfig = z.infer<typeof verificationConfigSchema>;
@@ -617,6 +619,7 @@ export const DEFAULT_MODULE_CONFIGS: ModuleConfigs = {
     removeRoleId: null,
     panel: panel('Verify to get access', 'Click the button below to unlock the rest of the server.', 'Verify', '#3dd68c'),
     minAccountAgeDays: 0,
+    logChannelId: null,
   },
   reactionRoles: { enabled: false, panels: [] },
   suggestions: { enabled: false, channelId: null, staffRoleIds: [] },

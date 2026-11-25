@@ -1,5 +1,5 @@
 import { type ButtonInteraction, type GuildMember, MessageFlags, PermissionFlagsBits, type StringSelectMenuInteraction } from 'discord.js';
-import type { ModuleContext } from './context.js';
+import { COLORS, type ModuleContext, sendableChannel } from './context.js';
 
 /** Roles the bot may give: exist, not managed by an integration, and below the bot's own highest role. */
 export function assignable(member: GuildMember, roleIds: readonly string[]): string[] {
@@ -60,23 +60,55 @@ export async function onRoleMenu(ctx: ModuleContext, i: StringSelectMenuInteract
 
 // ─── Verification ─────────────────────────────────────────────────────────────────────────────────────────────────
 
+export type VerifyOutcome = 'verified' | 'tooNew' | 'failed';
+const OUTCOME = {
+  verified: { title: '✅ Member verified', color: COLORS.success },
+  tooNew: { title: '⛔ Verification refused — account too new', color: COLORS.warn },
+  failed: { title: '❌ Verification failed — the bot couldn’t give the role', color: COLORS.danger },
+} as const;
+
+/** The log entry for one verify attempt: who, how old the account is, when they joined, and what happened. */
+export function verifyLogEmbed(m: { id: string; tag: string; createdTimestamp: number; joinedTimestamp: number | null; avatarUrl: string }, outcome: VerifyOutcome, now = Date.now()) {
+  const ageDays = Math.floor((now - m.createdTimestamp) / 86_400_000);
+  const t = (ms: number) => `<t:${Math.floor(ms / 1000)}:R>`;
+  return {
+    title: OUTCOME[outcome].title,
+    color: OUTCOME[outcome].color,
+    thumbnail: { url: m.avatarUrl },
+    fields: [
+      { name: 'Member', value: `<@${m.id}> · ${m.tag}\nID: \`${m.id}\``, inline: false },
+      { name: 'Account created', value: `${t(m.createdTimestamp)} (${ageDays} day${ageDays === 1 ? '' : 's'} old)${ageDays < 7 ? ' ⚠️ new account' : ''}`, inline: true },
+      { name: 'Joined the server', value: m.joinedTimestamp ? t(m.joinedTimestamp) : 'unknown', inline: true },
+    ],
+    timestamp: new Date(now).toISOString(),
+  };
+}
+
 export async function onVerify(ctx: ModuleContext, i: ButtonInteraction): Promise<void> {
   if (!i.inCachedGuild()) return;
   const config = ctx.config(i.guildId).verification;
   if (!config.enabled || !config.roleId) return void (await ephemeral(i, 'Verification isn’t active right now.'));
   if (i.member.roles.cache.has(config.roleId)) return void (await ephemeral(i, 'You’re already verified. ✅'));
+  const log = async (outcome: VerifyOutcome) => {
+    const channel = await sendableChannel(ctx, i.guild, config.logChannelId, 'Verification log');
+    const embed = verifyLogEmbed({ id: i.user.id, tag: i.user.tag, createdTimestamp: i.user.createdTimestamp, joinedTimestamp: i.member.joinedTimestamp, avatarUrl: i.user.displayAvatarURL({ size: 128 }) }, outcome);
+    await channel?.send({ embeds: [embed], allowedMentions: { parse: [] } }).catch((e: Error) => ctx.log('warn', `Verification log: ${e.message}`));
+  };
   const ageDays = (Date.now() - i.user.createdTimestamp) / 86_400_000;
   if (ageDays < config.minAccountAgeDays) {
     ctx.log('info', `Verification refused for ${i.user.tag}: account is ${Math.floor(ageDays)} day(s) old.`);
-    return void (await ephemeral(i, `Your Discord account must be at least ${config.minAccountAgeDays} day(s) old to verify here.`));
+    await ephemeral(i, `Your Discord account must be at least ${config.minAccountAgeDays} day(s) old to verify here.`);
+    return void (await log('tooNew'));
   }
   if (!assignable(i.member, [config.roleId]).length) {
     ctx.log('warn', 'Verification: can’t give the verified role — move the bot’s role above it.');
-    return void (await ephemeral(i, 'I can’t verify you right now. Please tell a server admin.'));
+    await ephemeral(i, 'I can’t verify you right now. Please tell a server admin.');
+    return void (await log('failed'));
   }
   await i.member.roles.add(config.roleId, 'DelyForge verification');
   if (config.removeRoleId && i.member.roles.cache.has(config.removeRoleId) && assignable(i.member, [config.removeRoleId]).length) {
     await i.member.roles.remove(config.removeRoleId, 'DelyForge verification');
   }
   await ephemeral(i, 'You’re verified — welcome! ✅');
+  await log('verified');
 }
