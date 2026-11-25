@@ -427,9 +427,9 @@ async function main(): Promise<void> {
   handle(IPC_CHANNELS.membersClearWarnings, ({ id, guildId, userId }) => members.clearWarnings(id, guildId, userId));
   handle(IPC_CHANNELS.membersResetXp, ({ id, guildId, userId }) => members.resetXp(id, guildId, userId));
 
-  // Automatic updates (installed copies with an update address only)
+  // Automatic updates for installed copies: from GitHub Releases, or a commercial build's own update address.
   const updateUrl = __DELYFORGE_UPDATE_URL__;
-  const updater = createUpdater({ enabled: app.isPackaged && Boolean(updateUrl), url: updateUrl, logger, onReady: (version) => emit({ type: 'update-ready', version }) });
+  const updater = createUpdater({ enabled: app.isPackaged, url: updateUrl, logger, onReady: (version) => emit({ type: 'update-ready', version }) });
   handle(IPC_CHANNELS.updatesStatus, () => updater.status());
   handle(IPC_CHANNELS.updatesCheck, () => updater.check());
   handle(IPC_CHANNELS.updatesInstall, () => {

@@ -7,7 +7,7 @@ import { recordJoin } from '../src/modules/antiraid.js';
 import { daysUntil, dueBirthdays, isBirthdayToday, validBirthday } from '../src/modules/birthdays.js';
 import { desiredCommands } from '../src/modules/commands.js';
 import { findUsedInvite } from '../src/modules/invites.js';
-import { emojiMatches, mayShowcase } from '../src/modules/starboard.js';
+import { audienceFits, emojiMatches } from '../src/modules/starboard.js';
 import { statName } from '../src/modules/stats.js';
 import { tempChannelName } from '../src/modules/tempvoice.js';
 import { BotStore } from '../src/store.js';
@@ -45,15 +45,15 @@ describe('starboard', () => {
     expect(emojiMatches('<:pog:123456789012345678>', { id: '999', name: 'pog' })).toBe(false);
   });
 
-  it('never copies private or age-restricted messages somewhere more people can see them', () => {
-    const pub = { public: true, nsfw: false };
-    const priv = { public: false, nsfw: false };
-    const nsfw = { public: true, nsfw: true };
-    expect(mayShowcase(pub, pub)).toBe(true);
-    expect(mayShowcase(priv, pub)).toBe(false);
-    expect(mayShowcase(priv, priv)).toBe(true);
-    expect(mayShowcase(nsfw, pub)).toBe(false);
-    expect(mayShowcase(nsfw, nsfw)).toBe(true);
+  it('only copies a message to a starboard whose audience is no bigger than the source channel’s', () => {
+    const roles = ['everyone', 'member', 'mod'];
+    const sees = (...who: string[]) => (r: string) => who.includes(r);
+    // Staff channel (mods only) → members' starboard: refused.
+    expect(audienceFits(roles, sees('member', 'mod'), sees('mod'))).toBe(false);
+    // Members' channel → members' starboard: fine.
+    expect(audienceFits(roles, sees('member', 'mod'), sees('member', 'mod'))).toBe(true);
+    // Public channel → staff-only starboard: fine.
+    expect(audienceFits(roles, sees('mod'), sees('everyone', 'member', 'mod'))).toBe(true);
   });
 });
 

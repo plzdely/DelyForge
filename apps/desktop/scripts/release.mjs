@@ -25,6 +25,6 @@ const run = (cmd, env = process.env) => execSync(cmd, { stdio: 'inherit', env })
 run('pnpm --filter @delyforge/shared build');
 run('pnpm --filter @delyforge/bot-runtime build');
 run('pnpm exec electron-vite build');
-// Test builds bake in no update address (the app never checks); the packager still needs one for its metadata file.
-run('pnpm exec electron-builder --win --publish never', { ...process.env, DELYFORGE_UPDATE_URL: process.env.DELYFORGE_UPDATE_URL || 'https://updates.invalid/' });
+// Updates come from GitHub Releases (see electron-builder.yml); upload the .exe, .blockmap and latest.yml to a release.
+run('pnpm exec electron-builder --win --publish never');
 console.log('\n✔ Installer written to apps/desktop/release/');

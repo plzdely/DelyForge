@@ -33,6 +33,10 @@ nsis:
   deleteAppDataOnUninstall: false
   artifactName: DelyForge-Setup-${version}.${ext}
 publish:
-  # Updates are served from your own HTTPS address (latest.yml + the installer). Set DELYFORGE_UPDATE_URL when building.
-  provider: generic
-  url: ${env.DELYFORGE_UPDATE_URL}
+  # Installed copies look for new versions on the GitHub Releases page (free). Each release needs three files from
+  # release/: DelyForge-Setup-<version>.exe, its .blockmap and latest.yml. (A commercial build with
+  # DELYFORGE_UPDATE_URL baked in uses that address instead.)
+  provider: github
+  owner: plzdely
+  repo: DelyForge
+  releaseType: release

@@ -5,9 +5,10 @@ import type { Logger } from './logger';
 const CHECK_EVERY_MS = 6 * 60 * 60_000;
 
 /**
- * Automatic updates for installed copies. Updates download in the background over HTTPS; nothing is installed until
- * the customer clicks "Restart to update". When the app is code-signed, electron-updater also checks that the new
- * installer is signed by the same publisher before running it.
+ * Automatic updates for installed copies. New versions come from the project's GitHub Releases page (free), or from
+ * the update address baked into a commercial build. Updates download in the background over HTTPS; nothing is
+ * installed until the person clicks "Restart to update". When the app is code-signed, electron-updater also checks
+ * that the new installer is signed by the same publisher before running it.
  */
 export function createUpdater(opts: { enabled: boolean; url: string; logger: Logger; onReady: (version: string) => void }) {
   let status: UpdateStatus = opts.enabled ? { state: 'idle' } : { state: 'disabled' };
@@ -15,7 +16,8 @@ export function createUpdater(opts: { enabled: boolean; url: string; logger: Log
     return { status: () => status, check: async () => status, install: () => undefined };
   }
   const { autoUpdater } = electronUpdater;
-  autoUpdater.setFeedURL({ provider: 'generic', url: opts.url });
+  // Without a baked-in address, the installer's own app-update.yml (GitHub Releases, see electron-builder.yml) is used.
+  if (opts.url) autoUpdater.setFeedURL({ provider: 'generic', url: opts.url });
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = false; // never install without the customer choosing to
   autoUpdater.on('checking-for-update', () => (status = { state: 'checking' }));

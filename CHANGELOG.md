@@ -16,6 +16,7 @@ versions follow [Semantic Versioning](https://semver.org/).
 - Seven new modules: **Invite Tracker** (`/invites`, `/inviteboard`), **Starboard**, **Temporary Voice**
   (join to create), **Raid Protection** (join-flood alerts, kick/ban during raids, new-account filter),
   **Sticky Messages**, **Server Stats** counters and **Birthdays** (`/birthday set|remove|upcoming`, birthday role).
+- Installed copies can update themselves from the GitHub Releases page (works once a release includes `latest.yml`).
 
 ## [0.1.0] - 2026-11-15
 

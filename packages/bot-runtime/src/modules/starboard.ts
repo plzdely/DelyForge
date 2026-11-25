@@ -1,5 +1,5 @@
 import type { StarboardConfig } from '@delyforge/shared';
-import { ChannelType, type GuildBasedChannel, type Message, type MessageReaction, type PartialMessageReaction, PermissionFlagsBits } from 'discord.js';
+import { ChannelType, type GuildBasedChannel, type GuildMember, type Message, type MessageReaction, OverwriteType, type PartialMessageReaction, PermissionFlagsBits, type Role } from 'discord.js';
 import { type ModuleContext, sendableChannel, truncate } from './context.js';
 
 /** Does a reaction's emoji match the configured one (a normal emoji like ⭐, or a server emoji written <:name:id>)? */
@@ -8,19 +8,31 @@ export function emojiMatches(configured: string, emoji: { id: string | null; nam
   return custom ? emoji.id === custom[1] : emoji.id === null && emoji.name === configured.trim();
 }
 
-/**
- * Never copy a message somewhere more people can see it: a private (staff) channel's messages may only go to a
- * starboard that is private too, and age-restricted messages only to an age-restricted starboard.
- */
-export function mayShowcase(source: { public: boolean; nsfw: boolean }, board: { public: boolean; nsfw: boolean }): boolean {
-  return (source.public || !board.public) && (!source.nsfw || board.nsfw);
+/** True when everyone who can see the starboard can also see the source: every viewer of A must be a viewer of B. */
+export function audienceFits<T>(viewers: readonly T[], canSeeBoard: (v: T) => boolean, canSeeSource: (v: T) => boolean): boolean {
+  return viewers.every((v) => !canSeeBoard(v) || canSeeSource(v));
 }
 
-const visibility = (ch: GuildBasedChannel) => ({
-  // A private thread inherits its parent's permissions but is invite-only, so it never counts as public.
-  public: ch.type !== ChannelType.PrivateThread && (ch.permissionsFor(ch.guild.roles.everyone)?.has(PermissionFlagsBits.ViewChannel) ?? false),
-  nsfw: 'nsfw' in ch ? Boolean(ch.nsfw) : false,
-});
+const canView = (ch: GuildBasedChannel, who: Role | GuildMember) => ch.permissionsFor(who)?.has(PermissionFlagsBits.ViewChannel) ?? false;
+const isNsfw = (ch: GuildBasedChannel | null) => Boolean(ch && 'nsfw' in ch && ch.nsfw);
+
+/**
+ * Never copy a message somewhere more people can see it (e.g. a staff channel into a members' starboard): every role —
+ * and every member given their own access to the starboard — must be able to see the original channel too. Private
+ * threads are never copied; age-restricted messages only go to an age-restricted starboard.
+ */
+function mayShowcase(source: GuildBasedChannel, board: GuildBasedChannel): boolean {
+  if (source.type === ChannelType.PrivateThread) return false;
+  const nsfw = isNsfw(source.isThread() ? source.parent : source);
+  if (nsfw && !isNsfw(board)) return false;
+  if (!audienceFits([...source.guild.roles.cache.values()], (r) => canView(board, r), (r) => canView(source, r))) return false;
+  const memberGrants = 'permissionOverwrites' in board ? board.permissionOverwrites.cache.filter((o) => o.type === OverwriteType.Member && o.allow.has(PermissionFlagsBits.ViewChannel)) : null;
+  // A member we can't look up is treated as unable to see the source (refuse rather than guess).
+  return !memberGrants || memberGrants.every((o) => {
+    const m = source.guild.members.cache.get(o.id);
+    return Boolean(m && canView(source, m));
+  });
+}
 
 /** One update at a time per message, so a burst of reactions can't post it twice. */
 const queues = new Map<string, Promise<void>>();
@@ -40,7 +52,13 @@ export async function onReaction(ctx: ModuleContext, reaction: MessageReaction |
   if (!config.enabled || !config.channelId || !emojiMatches(config.emoji, r.emoji)) return;
   if (message.channelId === config.channelId || config.ignoredChannelIds.includes(message.channelId)) return;
   const board = message.guild.channels.cache.get(config.channelId);
-  if (!board || !mayShowcase(visibility(message.channel), visibility(board))) return;
+  if (!board || !mayShowcase(message.channel, board)) {
+    // No longer allowed (e.g. the channel became private): take down a copy posted earlier.
+    const old = ctx.store.starPost(message.guild.id, message.id);
+    if (old && board?.isTextBased()) await board.messages.delete(old).catch(() => null);
+    if (old) ctx.store.setStarPost(message.guild.id, message.id, null);
+    return;
+  }
   await serial(message.id, () => sync(ctx, message, config));
 }
 
