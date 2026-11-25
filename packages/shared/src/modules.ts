@@ -116,11 +116,17 @@ export const moderationConfigSchema = z
     /** Tell members by DM why they were warned/kicked/banned/timed out. */
     dmMembers: z.boolean(),
     thresholds: z.array(warnThresholdSchema).max(5),
+    /** Warnings stop counting after this many days (0 = they never expire). */
+    warnExpiryDays: z.number().int().min(0).max(365).default(0),
+    /** Added to ban DMs, e.g. how to appeal (empty = nothing). */
+    appealMessage: template(500).default(''),
     automod: z
       .object({
         /** Pro feature (`moderation.advanced`). */
         enabled: z.boolean(),
         exemptRoleIds: roles,
+        /** Channels auto-moderation leaves alone (e.g. a memes channel). */
+        exemptChannelIds: z.array(snowflakeSchema).max(50).default([]),
         timeoutMinutes: z.number().int().min(1).max(40320),
         spam: z
           .object({
@@ -203,6 +209,8 @@ export const loggingConfigSchema = z
     /** Optional: send some events to their own channel instead of the main one. */
     channelOverrides: z.partialRecord(z.enum(LOG_EVENTS), snowflakeSchema).default({}),
     ignoredChannelIds: z.array(snowflakeSchema).max(50),
+    /** Message logs skip members with these roles (e.g. staff or a music bot's role). */
+    ignoredRoleIds: roles.default([]),
   })
   .strict();
 export type LoggingConfig = z.infer<typeof loggingConfigSchema>;
@@ -435,6 +443,8 @@ export const antiRaidConfigSchema = z
     raidMinutes: z.number().int().min(1).max(120),
     /** Accounts younger than this are always removed (0 = off). */
     minAccountAgeDays: z.number().int().min(0).max(90),
+    /** During a raid, raise the server's verification level to High; it's put back when the raid is over. */
+    lockdown: z.boolean().default(false),
   })
   .strict();
 export type AntiRaidConfig = z.infer<typeof antiRaidConfigSchema>;
@@ -606,9 +616,12 @@ export const DEFAULT_MODULE_CONFIGS: ModuleConfigs = {
     logChannelId: null,
     dmMembers: true,
     thresholds: [{ warnings: 3, action: 'timeout', minutes: 60 }],
+    warnExpiryDays: 0,
+    appealMessage: '',
     automod: {
       enabled: false,
       exemptRoleIds: [],
+      exemptChannelIds: [],
       timeoutMinutes: 10,
       spam: { enabled: true, maxMessages: 6, perSeconds: 5, action: 'timeout' },
       links: { enabled: false, allowedDomains: ['youtube.com', 'youtu.be', 'twitch.tv'], action: 'delete' },
@@ -627,6 +640,7 @@ export const DEFAULT_MODULE_CONFIGS: ModuleConfigs = {
     events: LOG_EVENT_DEFAULTS,
     channelOverrides: {},
     ignoredChannelIds: [],
+    ignoredRoleIds: [],
   },
   utility: {
     enabled: false,
@@ -670,7 +684,7 @@ export const DEFAULT_MODULE_CONFIGS: ModuleConfigs = {
   invites: { enabled: false, channelId: null, message: '{user} joined using {inviter}’s invite — that’s {invites} so far.' },
   starboard: { enabled: false, channelId: null, emoji: '⭐', threshold: 3, selfStar: false, ignoredChannelIds: [] },
   tempVoice: { enabled: false, hubChannelId: null, categoryId: null, nameTemplate: '{user}’s channel', userLimit: 0 },
-  antiRaid: { enabled: false, alertChannelId: null, joinThreshold: 10, perSeconds: 30, raidAction: 'alert', raidMinutes: 10, minAccountAgeDays: 0 },
+  antiRaid: { enabled: false, alertChannelId: null, joinThreshold: 10, perSeconds: 30, raidAction: 'alert', raidMinutes: 10, minAccountAgeDays: 0, lockdown: false },
   sticky: { enabled: false, messages: [] },
   serverStats: { enabled: false, counters: [] },
   birthdays: { enabled: false, channelId: null, message: '🎂 Happy birthday {user}! Have a great day.', roleId: null, hourUtc: 9 },
@@ -711,7 +725,7 @@ export interface ModuleInfo {
 
 export const MODULES: readonly ModuleInfo[] = [
   { id: 'welcome', name: 'Welcome', summary: 'Greet new members, say goodbye, send a DM and give roles automatically.', feature: 'modules.basic', available: true, commands: [] },
-  { id: 'moderation', name: 'Moderation', summary: 'Staff commands with numbered cases and history, temporary bans, channel lockdown, and auto-moderation for spam, scams, mentions and more.', feature: 'modules.basic', available: true, commands: ['/warn', '/warnings', '/clearwarnings', '/history', '/case', '/note', '/timeout', '/untimeout', '/kick', '/ban', '/unban', '/purge', '/lock', '/unlock', '/slowmode'] },
+  { id: 'moderation', name: 'Moderation', summary: 'Staff commands with numbered cases and history, temporary bans, channel lockdown, and auto-moderation for spam, scams, mentions and more.', feature: 'modules.basic', available: true, commands: ['/warn', '/warnings', '/clearwarnings', '/history', '/case', '/note', '/timeout', '/untimeout', '/kick', '/ban', '/unban', '/softban', '/purge', '/lock', '/unlock', '/slowmode', '/role', '/nick'] },
   { id: 'logging', name: 'Logging', summary: 'Who did what: deleted and edited messages, joins and leaves, and every staff change with who made it.', feature: 'modules.standard', available: true, commands: [] },
   { id: 'utility', name: 'Utility', summary: 'Handy commands: server info, user info, avatars and native Discord polls.', feature: 'modules.basic', available: true, commands: ['/serverinfo', '/userinfo', '/avatar', '/poll'] },
   { id: 'leveling', name: 'Leveling', summary: 'XP for chatting, levels, leaderboards and role rewards.', feature: 'modules.standard', available: true, commands: ['/rank', '/leaderboard'] },
@@ -1026,7 +1040,7 @@ export function modulePermissions<K extends ImplementedModuleId>(id: K, config: 
     case 'tempVoice':
       return VIEW | P(4n) | P(20n) | P(24n); // manage channels, connect, move members
     case 'antiRaid':
-      return base | P(1n) | P(2n); // kick, ban
+      return base | P(1n) | P(2n) | ((config as AntiRaidConfig).lockdown ? P(5n) : 0n); // kick, ban (+ Manage Server for lockdown)
     case 'serverStats':
       return VIEW | P(4n) | P(20n); // rename channels
     case 'birthdays':

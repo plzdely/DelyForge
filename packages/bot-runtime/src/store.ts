@@ -250,20 +250,21 @@ export class BotStore {
 
   // ─── Warnings ────────────────────────────────────────────────────────────────────────────────────────────────────
 
-  addWarning(guildId: string, userId: string, moderatorId: string, reason: string): number {
+  /** Adds a warning; returns how many still count (newer than `sinceMs`, 0 = all). */
+  addWarning(guildId: string, userId: string, moderatorId: string, reason: string, sinceMs = 0): number {
     this.db.prepare('INSERT INTO warnings (guild_id, user_id, moderator_id, reason) VALUES (?, ?, ?, ?)').run(guildId, userId, moderatorId, reason);
-    return this.warningCount(guildId, userId);
+    return this.warningCount(guildId, userId, sinceMs);
   }
 
-  warnings(guildId: string, userId: string): Warning[] {
+  warnings(guildId: string, userId: string, sinceMs = 0): Warning[] {
     const rows = this.db
-      .prepare('SELECT * FROM warnings WHERE guild_id = ? AND user_id = ? ORDER BY id DESC LIMIT 25')
-      .all(guildId, userId) as { id: number; guild_id: string; user_id: string; moderator_id: string; reason: string; created_at: string }[];
+      .prepare('SELECT * FROM warnings WHERE guild_id = ? AND user_id = ? AND created_at >= ? ORDER BY id DESC LIMIT 25')
+      .all(guildId, userId, new Date(sinceMs).toISOString()) as { id: number; guild_id: string; user_id: string; moderator_id: string; reason: string; created_at: string }[];
     return rows.map((r) => ({ id: r.id, guildId: r.guild_id, userId: r.user_id, moderatorId: r.moderator_id, reason: r.reason, createdAt: r.created_at }));
   }
 
-  warningCount(guildId: string, userId: string): number {
-    return (this.db.prepare('SELECT COUNT(*) AS n FROM warnings WHERE guild_id = ? AND user_id = ?').get(guildId, userId) as { n: number }).n;
+  warningCount(guildId: string, userId: string, sinceMs = 0): number {
+    return (this.db.prepare('SELECT COUNT(*) AS n FROM warnings WHERE guild_id = ? AND user_id = ? AND created_at >= ?').get(guildId, userId, new Date(sinceMs).toISOString()) as { n: number }).n;
   }
 
   clearWarnings(guildId: string, userId: string): number {

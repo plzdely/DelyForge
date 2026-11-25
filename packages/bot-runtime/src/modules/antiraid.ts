@@ -1,4 +1,4 @@
-import type { GuildMember } from 'discord.js';
+import { type Guild, type GuildMember, GuildVerificationLevel } from 'discord.js';
 import { COLORS, type ModuleContext, sendableChannel, tryDM } from './context.js';
 
 const DAY = 86_400_000;
@@ -17,6 +17,30 @@ export function recordJoin(guildId: string, userId: string, now: number, perSeco
 async function alert(ctx: ModuleContext, member: GuildMember, title: string, description: string): Promise<void> {
   const channel = await sendableChannel(ctx, member.guild, ctx.config(member.guild.id).antiRaid.alertChannelId, 'Raid protection');
   await channel?.send({ embeds: [{ title, description, color: COLORS.danger, timestamp: new Date().toISOString() }], allowedMentions: { parse: [] } }).catch(() => null);
+}
+
+/** Verification level before a lockdown, per server, so it can be put back. */
+const beforeLockdown = new Map<string, GuildVerificationLevel>();
+
+/** Raises the server's verification level to High: new members must wait 10 minutes in the server before talking. */
+async function lockdown(ctx: ModuleContext, guild: Guild): Promise<boolean> {
+  if (guild.verificationLevel >= GuildVerificationLevel.High) return false;
+  beforeLockdown.set(guild.id, guild.verificationLevel);
+  return guild
+    .setVerificationLevel(GuildVerificationLevel.High, 'Raid protection: lockdown')
+    .then(() => true)
+    .catch((e: Error) => (ctx.log('warn', `Raid protection: couldn’t raise the verification level (needs Manage Server): ${e.message}`), false));
+}
+
+async function raidOver(ctx: ModuleContext, member: GuildMember, locked: boolean): Promise<void> {
+  const guild = member.guild;
+  const before = beforeLockdown.get(guild.id);
+  beforeLockdown.delete(guild.id);
+  // Only put it back if nobody changed it by hand in the meantime.
+  const restored = locked && before !== undefined && guild.verificationLevel === GuildVerificationLevel.High
+    ? await guild.setVerificationLevel(before, 'Raid protection: raid over').then(() => true, () => false)
+    : false;
+  await alert(ctx, member, '✅ Raid protection back to normal', restored ? 'The raid window has ended and the server’s verification level was put back.' : 'The raid window has ended.');
 }
 
 /** Runs first on every join. Returns true when the member was removed (so no welcome message is sent). */
@@ -49,6 +73,8 @@ export async function onMemberJoin(ctx: ModuleContext, member: GuildMember, now 
       `**${recent.length} members joined in ${config.perSeconds} seconds.** ${what}.\nRecent joins: ${recent.map((j) => `<@${j.userId}>`).join(' ')}`,
     );
     ctx.log('warn', `Raid protection: ${recent.length} joins in ${config.perSeconds}s in “${guild.name}”.`);
+    const locked = config.lockdown ? await lockdown(ctx, guild) : false;
+    setTimeout(() => void raidOver(ctx, member, locked), config.raidMinutes * 60_000);
     // The accounts that set off the alarm joined before it — remove them as well.
     if (config.raidAction !== 'alert') {
       for (const j of recent.filter((x) => x.userId !== member.id)) {

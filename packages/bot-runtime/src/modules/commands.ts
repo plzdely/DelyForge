@@ -133,6 +133,36 @@ const MODERATION: CommandJSON[] = [
     .setDMPermission(false)
     .addIntegerOption((o) => o.setName('amount').setDescription('How many (1–100)').setRequired(true).setMinValue(1).setMaxValue(100))
     .addUserOption((o) => o.setName('member').setDescription('Only messages from this member'))
+    .addBooleanOption((o) => o.setName('bots').setDescription('Only messages from bots'))
+    .addStringOption((o) => o.setName('contains').setDescription('Only messages containing this text').setMaxLength(100))
+    .toJSON(),
+  new SlashCommandBuilder()
+    .setName('softban')
+    .setDescription('Kick a member and delete their messages from the last 7 days')
+    .setDefaultMemberPermissions(PermissionFlagsBits.BanMembers)
+    .setDMPermission(false)
+    .addUserOption((o) => o.setName('member').setDescription('Who to softban').setRequired(true))
+    .addStringOption((o) => o.setName('reason').setDescription('Why').setMaxLength(400))
+    .toJSON(),
+  new SlashCommandBuilder()
+    .setName('role')
+    .setDescription('Give or take a role')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles)
+    .setDMPermission(false)
+    .addSubcommand((s) =>
+      s.setName('give').setDescription('Give a member a role').addUserOption((o) => o.setName('member').setDescription('Who').setRequired(true)).addRoleOption((o) => o.setName('role').setDescription('Which role').setRequired(true)),
+    )
+    .addSubcommand((s) =>
+      s.setName('take').setDescription('Take a role from a member').addUserOption((o) => o.setName('member').setDescription('Who').setRequired(true)).addRoleOption((o) => o.setName('role').setDescription('Which role').setRequired(true)),
+    )
+    .toJSON(),
+  new SlashCommandBuilder()
+    .setName('nick')
+    .setDescription('Change or reset a member’s nickname')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageNicknames)
+    .setDMPermission(false)
+    .addUserOption((o) => o.setName('member').setDescription('Who').setRequired(true))
+    .addStringOption((o) => o.setName('nickname').setDescription('New nickname (leave empty to reset)').setMaxLength(32))
     .toJSON(),
 ];
 

@@ -170,6 +170,10 @@ function ModerationForm({ c, set, guild, automodLocked }: { c: ModerationConfig;
         </div>
         <ChannelSelect id="mod-log" label="Moderation log channel" hint="Every action gets a numbered case here — including bans, kicks and timeouts done with Discord’s own buttons. Look them up with /history and /case." guild={guild} value={c.logChannelId} onChange={(v) => set({ ...c, logChannelId: v })} />
         <ToggleRow title="Tell members why" description="DM members when they are warned, timed out, kicked or banned." checked={c.dmMembers} onChange={(v) => set({ ...c, dmMembers: v })} />
+        {c.dmMembers ? (
+          <TemplateField id="mod-appeal" label="Add to ban DMs (optional)" max={500} value={c.appealMessage} onChange={(v) => set({ ...c, appealMessage: v })} variables={[]} />
+        ) : null}
+        <NumberField id="mod-expiry" label="Warnings expire after" suffix="days (0 = never)" hint="Expired warnings stay on record but no longer count toward the automatic actions below." min={0} max={365} value={c.warnExpiryDays} onChange={(v) => set({ ...c, warnExpiryDays: v })} />
       </Section>
 
       <Section title="Warning thresholds" description="Act automatically when a member reaches a number of warnings.">
@@ -268,6 +272,9 @@ function ModerationForm({ c, set, guild, automodLocked }: { c: ModerationConfig;
             <Field label="Exempt roles" htmlFor="am-exempt" hint="Members with these roles are never auto-moderated.">
               <RoleChecklist guild={guild} value={a.exemptRoleIds} onChange={(ids) => setA({ exemptRoleIds: ids })} />
             </Field>
+            <Field label="Exempt channels" htmlFor="am-exempt-ch" hint="Auto-moderation leaves these channels (and their threads) alone.">
+              <ChannelChecklist guild={guild} value={a.exemptChannelIds} onChange={(ids) => setA({ exemptChannelIds: ids })} />
+            </Field>
           </>
         ) : null}
       </Section>
@@ -330,6 +337,9 @@ function LoggingForm({ c, set, guild }: { c: LoggingConfig; set: (c: LoggingConf
       ))}
       <Section title="Ignored channels" description="Message deletes and edits in these channels are not logged.">
         <ChannelChecklist guild={guild} value={c.ignoredChannelIds} onChange={(ids) => set({ ...c, ignoredChannelIds: ids })} />
+      </Section>
+      <Section title="Ignored roles" description="Message deletes and edits by members with these roles are not logged (e.g. a music bot’s role).">
+        <RoleChecklist guild={guild} value={c.ignoredRoleIds} onChange={(ids) => set({ ...c, ignoredRoleIds: ids })} />
       </Section>
     </>
   );

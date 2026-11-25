@@ -39,6 +39,9 @@ export const MODERATION_COMMANDS = new Set([
   'lock',
   'unlock',
   'slowmode',
+  'softban',
+  'role',
+  'nick',
 ]);
 
 const CASE_LABELS: Record<string, string> = {
@@ -48,6 +51,7 @@ const CASE_LABELS: Record<string, string> = {
   kick: '👢 Kick',
   ban: '🔨 Ban',
   tempban: '🔨 Temporary ban',
+  softban: '🧹 Softban',
   unban: '✅ Unban',
   note: '📝 Note',
   automod: '🤖 Auto-moderation',
@@ -124,6 +128,8 @@ export async function handleModerationCommand(ctx: ModuleContext, i: ChatInputCo
   }
   const actor = await guild.members.fetch(i.user.id);
   const reason = truncate(i.options.getString('reason') ?? 'No reason given', 400);
+  /** Warnings older than the expiry no longer count. */
+  const since = config.warnExpiryDays ? Date.now() - config.warnExpiryDays * 86_400_000 : 0;
   /** The member, or null only when Discord says they're not in the server (any other error fails closed). */
   const fetchTarget = async (name = 'member') => {
     const user = i.options.getUser(name, true);
@@ -141,7 +147,7 @@ export async function handleModerationCommand(ctx: ModuleContext, i: ChatInputCo
       if (!target) return void (await reply(i, 'That person isn’t in this server.'));
       const problem = hierarchyProblem(guild, actor, target);
       if (problem) return void (await reply(i, problem));
-      const count = ctx.store.addWarning(guild.id, target.id, actor.id, reason);
+      const count = ctx.store.addWarning(guild.id, target.id, actor.id, reason, since);
       ctx.store.rememberName(guild.id, target.id, target.displayName);
       ctx.store.rememberName(guild.id, actor.id, actor.displayName);
       if (config.dmMembers) await tryDM(target.user, `You were warned in **${guild.name}**: ${reason}`);
@@ -157,8 +163,8 @@ export async function handleModerationCommand(ctx: ModuleContext, i: ChatInputCo
     }
     case 'warnings': {
       const user = i.options.getUser('member', true);
-      const list = ctx.store.warnings(guild.id, user.id);
-      if (!list.length) return void (await reply(i, `**${user.username}** has no warnings.`));
+      const list = ctx.store.warnings(guild.id, user.id, since);
+      if (!list.length) return void (await reply(i, `**${user.username}** has no${since ? ' active' : ''} warnings.`));
       const lines = list.map((w, n) => `**${n + 1}.** ${truncate(w.reason, 120)} — <@${w.moderatorId}>, <t:${Math.floor(Date.parse(w.createdAt) / 1000)}:R>`);
       await i.reply({
         embeds: [{ title: `Warnings for ${user.username} (${list.length})`, description: lines.join('\n'), color: COLORS.warn }],
@@ -170,7 +176,7 @@ export async function handleModerationCommand(ctx: ModuleContext, i: ChatInputCo
     case 'history': {
       const user = i.options.getUser('member', true);
       const cases = ctx.store.cases(guild.id, user.id, 20);
-      const warnings = ctx.store.warningCount(guild.id, user.id);
+      const warnings = ctx.store.warningCount(guild.id, user.id, since);
       if (!cases.length) return void (await reply(i, `**${user.username}** has a clean record.`));
       const lines = cases.map((c) => `**#${c.number}** ${CASE_LABELS[c.type] ?? c.type}${c.duration ? ` (${c.duration})` : ''} — ${truncate(c.reason, 100)} · <@${c.moderatorId}> <t:${Math.floor(c.createdAt / 1000)}:R>`);
       await i.reply({
@@ -296,7 +302,8 @@ export async function handleModerationCommand(ctx: ModuleContext, i: ChatInputCo
       await i.deferReply({ flags: MessageFlags.Ephemeral });
       const minutes = i.options.getInteger('minutes') ?? 0;
       const verb = i.commandName === 'timeout' ? `timed out for ${minutes} min` : i.commandName === 'kick' ? 'kicked' : `banned${untilText}`;
-      if (config.dmMembers) await tryDM(target.user, `You were ${verb} in **${guild.name}**: ${reason}`);
+      const appeal = i.commandName === 'ban' && config.appealMessage.trim() ? `\n\n${config.appealMessage}` : '';
+      if (config.dmMembers) await tryDM(target.user, `You were ${verb} in **${guild.name}**: ${reason}${appeal}`);
       try {
         if (i.commandName === 'timeout') await target.timeout(minutes * 60_000, `${reason} (by ${actor.user.tag} · ${actor.id})`);
         if (i.commandName === 'kick') await target.kick(`${reason} (by ${actor.user.tag} · ${actor.id})`);
@@ -341,15 +348,71 @@ export async function handleModerationCommand(ctx: ModuleContext, i: ChatInputCo
       await reply(i, `✅ Unbanned <@${userId}>.`);
       return;
     }
+    case 'softban': {
+      const target = await fetchTarget();
+      if (!target) return void (await reply(i, 'That person isn’t in this server.'));
+      const problem = hierarchyProblem(guild, actor, target);
+      if (problem) return void (await reply(i, problem));
+      await i.deferReply({ flags: MessageFlags.Ephemeral });
+      if (config.dmMembers) await tryDM(target.user, `You were removed from **${guild.name}** and your recent messages were deleted: ${reason}. You can join again.`);
+      try {
+        await guild.bans.create(target.id, { reason: `Softban: ${reason} (by ${actor.user.tag} · ${actor.id})`, deleteMessageSeconds: 7 * 86_400 });
+        await guild.bans.remove(target.id, 'Softban: ban lifted straight away');
+      } catch (e) {
+        return void (await reply(i, `Couldn’t softban: ${(e as Error).message}`));
+      }
+      await logCase(ctx, guild, { type: 'softban', userId: target.id, moderatorId: actor.id, reason }, {
+        title: 'Member softbanned',
+        description: `<@${target.id}> by <@${actor.id}> — removed and their last 7 days of messages deleted\n**Reason:** ${reason}`,
+        color: COLORS.danger,
+      });
+      return void (await reply(i, `🧹 **${target.displayName}** was removed and their recent messages were deleted.`));
+    }
+    case 'role': {
+      const target = await fetchTarget();
+      if (!target) return void (await reply(i, 'That person isn’t in this server.'));
+      const role = i.options.getRole('role', true);
+      const giving = i.options.getSubcommand() === 'give';
+      const me = guild.members.me;
+      if (role.id === guild.id || ('managed' in role && role.managed)) return void (await reply(i, 'That role can’t be given or taken by hand.'));
+      if (actor.id !== guild.ownerId && role.position >= actor.roles.highest.position) return void (await reply(i, 'That role is the same as or above your highest role.'));
+      if (!me || role.position >= me.roles.highest.position) return void (await reply(i, 'That role is above mine. Move my role higher in Server Settings → Roles.'));
+      if (giving === target.roles.cache.has(role.id)) return void (await reply(i, giving ? `**${target.displayName}** already has <@&${role.id}>.` : `**${target.displayName}** doesn’t have <@&${role.id}>.`));
+      try {
+        if (giving) await target.roles.add(role.id, `By ${actor.user.tag}`);
+        else await target.roles.remove(role.id, `By ${actor.user.tag}`);
+      } catch (e) {
+        return void (await reply(i, `Couldn’t change roles: ${(e as Error).message}`));
+      }
+      await modLog(ctx, guild, { title: giving ? 'Role given' : 'Role taken', description: `<@&${role.id}> ${giving ? 'given to' : 'taken from'} <@${target.id}> by <@${actor.id}>`, color: COLORS.info });
+      return void (await reply(i, `${giving ? 'Gave' : 'Took'} <@&${role.id}> ${giving ? 'to' : 'from'} **${target.displayName}**.`));
+    }
+    case 'nick': {
+      const target = await fetchTarget();
+      if (!target) return void (await reply(i, 'That person isn’t in this server.'));
+      const problem = target.id === actor.id ? null : hierarchyProblem(guild, actor, target);
+      if (problem) return void (await reply(i, problem));
+      const nickname = i.options.getString('nickname')?.trim() || null;
+      try {
+        await target.setNickname(nickname, `By ${actor.user.tag}`);
+      } catch (e) {
+        return void (await reply(i, `Couldn’t change the nickname: ${(e as Error).message}`));
+      }
+      return void (await reply(i, nickname ? `Renamed **${target.user.username}** to **${nickname}**.` : `Reset **${target.user.username}**’s nickname.`));
+    }
     case 'purge': {
       const channel = i.channel;
       if (!channel || !('bulkDelete' in channel)) return void (await reply(i, 'This command only works in text channels.'));
       const amount = i.options.getInteger('amount', true);
       const only = i.options.getUser('member');
+      const botsOnly = i.options.getBoolean('bots') ?? false;
+      const contains = i.options.getString('contains')?.toLowerCase() ?? null;
       await i.deferReply({ flags: MessageFlags.Ephemeral });
       const recent = await channel.messages.fetch({ limit: 100 });
       const twoWeeks = Date.now() - 14 * 24 * 3600 * 1000 + 60_000; // Discord can’t bulk-delete older messages
-      const targets = [...recent.values()].filter((m) => (!only || m.author.id === only.id) && m.createdTimestamp > twoWeeks).slice(0, amount);
+      const targets = [...recent.values()]
+        .filter((m) => (!only || m.author.id === only.id) && (!botsOnly || m.author.bot) && (!contains || m.content.toLowerCase().includes(contains)) && m.createdTimestamp > twoWeeks)
+        .slice(0, amount);
       const deleted = await channel.bulkDelete(targets, true).catch(() => null);
       const n = deleted?.size ?? 0;
       await modLog(ctx, guild, { title: 'Messages purged', description: `${n} message(s) in <#${channel.id}> by <@${actor.id}>`, color: COLORS.info });
@@ -377,9 +440,11 @@ export async function automodCheck(ctx: ModuleContext, message: Message): Promis
   if (!config.enabled || !config.automod.enabled) return;
   const a = config.automod;
   const member = message.member;
-  // Staff and exempt roles are never auto-moderated.
+  // Staff, exempt roles and exempt channels (threads follow their channel) are never auto-moderated.
   if (member.permissions.has(PermissionFlagsBits.ManageMessages)) return;
   if (member.roles.cache.some((r) => a.exemptRoleIds.includes(r.id))) return;
+  const channelId = message.channel.isThread() ? (message.channel.parentId ?? message.channelId) : message.channelId;
+  if (a.exemptChannelIds.includes(channelId)) return;
 
   const text = message.content;
   let rule: { label: string; action: 'delete' | 'warn' | 'timeout' } | null = null;

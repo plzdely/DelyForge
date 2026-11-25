@@ -77,6 +77,12 @@ export function AntiRaidForm({ c, set, guild }: Props<'antiRaid'>) {
           </Field>
           <NumberField id="raid-minutes" label="Raid mode lasts" min={1} max={120} suffix="minutes" value={c.raidMinutes} onChange={(v) => set({ ...c, raidMinutes: v })} />
         </div>
+        <ToggleRow
+          title="Lock the server down during a raid"
+          description="Raises the server’s verification level to High (new members must wait 10 minutes before they can talk) and puts it back afterwards. Needs Manage Server."
+          checked={c.lockdown}
+          onChange={(v) => set({ ...c, lockdown: v })}
+        />
       </Section>
       <Section title="New accounts" description="Throwaway accounts are the usual raid tool. They get a DM explaining why and can rejoin later.">
         <NumberField id="raid-age" label="Remove accounts younger than (0 = off)" min={0} max={90} suffix="days" value={c.minAccountAgeDays} onChange={(v) => set({ ...c, minAccountAgeDays: v })} />

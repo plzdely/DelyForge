@@ -54,6 +54,7 @@ export async function onMessageDelete(ctx: ModuleContext, message: Message | Par
   if (!message.guild || message.author?.bot) return;
   const config = ctx.config(message.guild.id).logging;
   if (!config.enabled || !config.events.messageDelete) return;
+  if (message.member?.roles.cache.some((r) => config.ignoredRoleIds.includes(r.id))) return;
   // The audit entry (if a moderator deleted it) arrives just after the delete event.
   // shortcut: Discord merges repeated deletes by the same moderator into one entry without a new event, so only the
   // first of a quick series is attributed; the rest say nothing rather than guess.
@@ -76,6 +77,7 @@ export async function onMessageDelete(ctx: ModuleContext, message: Message | Par
 
 export async function onMessageEdit(ctx: ModuleContext, before: Message | PartialMessage, after: Message | PartialMessage): Promise<void> {
   if (!after.guild || after.author?.bot || before.content === after.content) return;
+  if (after.member?.roles.cache.some((r) => ctx.config(after.guild!.id).logging.ignoredRoleIds.includes(r.id))) return;
   await post(
     ctx,
     after.guild,

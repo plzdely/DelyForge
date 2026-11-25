@@ -249,3 +249,15 @@ describe('kick members who never verify', () => {
     expect(pickUnverified(members, { roleId: 'VER', removeRoleId: 'UNV', kickAfterHours: 24 }, 'G', now)).toEqual(['late', 'lateUnverifiedRole']);
   });
 });
+
+describe('warnings that expire', () => {
+  it('only counts warnings newer than the cut-off', () => {
+    const store = new BotStore(join(mkdtempSync(join(tmpdir(), 'df-warn-')), 'b.db'));
+    store.addWarning('g', 'u', 'm', 'old');
+    expect(store.warningCount('g', 'u')).toBe(1);
+    expect(store.addWarning('g', 'u', 'm', 'new', Date.now() + 60_000)).toBe(0); // cut-off in the future: nothing counts
+    expect(store.warningCount('g', 'u', Date.now() - 60_000)).toBe(2);
+    expect(store.warnings('g', 'u', Date.now() + 60_000)).toEqual([]);
+    store.close();
+  });
+});
