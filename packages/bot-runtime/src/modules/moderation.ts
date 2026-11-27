@@ -561,9 +561,14 @@ export async function handleModerationCommand(ctx: ModuleContext, i: ChatInputCo
     }
     case 'move':
     case 'disconnect': {
+      if (!actor.permissions.has(PermissionFlagsBits.MoveMembers)) return void (await reply(i, 'You need Move Members.'));
       const target = await fetchTarget();
       if (!target?.voice.channelId) return void (await reply(i, 'That member isn’t in a voice channel.'));
-      const to = i.commandName === 'move' ? i.options.getChannel('channel', true) : null;
+      const problem = hierarchyProblem(guild, actor, target);
+      if (problem) return void (await reply(i, problem));
+      const picked = i.commandName === 'move' ? i.options.getChannel('channel', true) : null;
+      const to = picked ? guild.channels.cache.get(picked.id) : null;
+      if (picked && !to?.permissionsFor(actor)?.has([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.Connect])) return void (await reply(i, 'You can only move people to voice channels you can join yourself.'));
       const done = await target.voice.setChannel(to ? to.id : null, `${i.commandName === 'move' ? 'Moved' : 'Disconnected'} by ${actor.user.tag}`).then(() => true, () => false);
       await reply(i, done ? (to ? `Moved <@${target.id}> to <#${to.id}>.` : `Disconnected <@${target.id}>.`) : 'I couldn’t do that (I need Move Members, and Connect in the target channel).');
       return;

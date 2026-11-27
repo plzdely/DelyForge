@@ -258,7 +258,7 @@ export function MemberToolsForm({ c, set, guild }: Props<'memberTools'>) {
   return (
     <>
       <Section title="When someone rejoins" description="The bot remembers members’ roles and nickname when they leave. Needs Server Members Intent.">
-        <ToggleRow title="Give their roles back" description="Stops people leaving and rejoining to shake off a punishment role." checked={c.stickyRoles} onChange={(v) => set({ ...c, stickyRoles: v })} />
+        <ToggleRow title="Give their roles back" description="Stops people leaving and rejoining to shake off a punishment role. Staff roles (ban, kick, manage… permissions) are never given back automatically." checked={c.stickyRoles} onChange={(v) => set({ ...c, stickyRoles: v })} />
         <ToggleRow title="Give their nickname back" checked={c.stickyNickname} onChange={(v) => set({ ...c, stickyNickname: v })} />
         {c.stickyRoles ? (
           <Field label="Never give back these roles" htmlFor="mt-ex">

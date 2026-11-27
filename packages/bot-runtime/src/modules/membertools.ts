@@ -1,9 +1,23 @@
 import { renderTemplate } from '@delyforge/shared';
-import type { Guild, GuildMember, PartialGuildMember } from 'discord.js';
+import { type Guild, type GuildMember, type PartialGuildMember, PermissionFlagsBits } from 'discord.js';
 import { type ModuleContext, SAFE_MENTIONS, sendableChannel, templateVars } from './context.js';
 import { assignable } from './roles.js';
 
 /** Member tools: roles and nickname back on rejoin, a welcome-back message, and roles for time in the server. */
+
+/** Roles with these permissions are never given back automatically (e.g. to a former staff member who was kicked). */
+const POWERFUL = [
+  PermissionFlagsBits.Administrator,
+  PermissionFlagsBits.ManageGuild,
+  PermissionFlagsBits.ManageRoles,
+  PermissionFlagsBits.ManageChannels,
+  PermissionFlagsBits.ManageMessages,
+  PermissionFlagsBits.ManageWebhooks,
+  PermissionFlagsBits.BanMembers,
+  PermissionFlagsBits.KickMembers,
+  PermissionFlagsBits.ModerateMembers,
+  PermissionFlagsBits.MentionEveryone,
+];
 
 export function onMemberLeaveSnapshot(ctx: ModuleContext, member: GuildMember | PartialGuildMember): void {
   const c = ctx.config(member.guild.id).memberTools;
@@ -19,7 +33,11 @@ export async function onMemberRejoin(ctx: ModuleContext, member: GuildMember): P
   const snap = ctx.store.takeSnapshot(member.guild.id, member.id);
   if (!snap) return false;
   if (c.stickyRoles) {
-    const back = assignable(member, snap.roles.filter((r) => !c.excludedRoleIds.includes(r)));
+    const safe = snap.roles.filter((id) => {
+      const role = member.guild.roles.cache.get(id);
+      return role && !c.excludedRoleIds.includes(id) && !POWERFUL.some((p) => role.permissions.has(p, false));
+    });
+    const back = assignable(member, safe);
     if (back.length) await member.roles.add(back, 'Member tools: roles given back on rejoin').catch((e: Error) => ctx.log('warn', `Member tools: couldn’t give roles back: ${e.message}`));
     if (back.length) ctx.log('info', `Member tools: gave ${member.user.tag} ${back.length} role(s) back after rejoining.`);
   }
