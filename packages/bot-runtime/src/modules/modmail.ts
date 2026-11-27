@@ -35,6 +35,7 @@ export async function onModmailDM(ctx: ModuleContext, m: Message): Promise<void>
   if (!guilds.length) return;
   // An open conversation wins: keep talking there.
   const open = guilds.find((g) => ctx.store.openModmail(g.id, m.author.id));
+  if (open && ctx.store.modmailBlocked(open.id, m.author.id)) return void (await m.reply(`You can’t use modmail in **${open.name}**.`).catch(() => null));
   if (open) return void (await relayToThread(ctx, open, m.author, m.content, fileLinks(m), m));
 
   const member = await Promise.all(guilds.map(async (g) => ((await g.members.fetch(m.author.id).catch(() => null)) ? g : null)));
@@ -54,7 +55,9 @@ export async function onModmailDM(ctx: ModuleContext, m: Message): Promise<void>
 export async function onModmailPick(ctx: ModuleContext, i: StringSelectMenuInteraction): Promise<void> {
   const pending = waiting.get(i.user.id);
   const guild = ctx.client.guilds.cache.get(i.values[0] ?? '');
-  if (!pending || !guild || !ctx.config(guild.id).modmail.enabled) return void (await i.update({ content: 'That took too long — please send your message again.', components: [] }));
+  // Only servers the member is actually in (the menu could be replayed with another server's ID).
+  const member = guild ? await guild.members.fetch(i.user.id).catch(() => null) : null;
+  if (!pending || !guild || !member || !ctx.config(guild.id).modmail.enabled) return void (await i.update({ content: 'That took too long — please send your message again.', components: [] }));
   waiting.delete(i.user.id);
   await i.update({ content: `Sending to **${guild.name}**…`, components: [] });
   await startFromDM(ctx, guild, i.user, pending.text, pending.files, null);
@@ -176,6 +179,16 @@ export async function handleModmailCommand(ctx: ModuleContext, i: ChatInputComma
   if (user.bot) return void (await ephemeral(i, 'Bots can’t use modmail.'));
   if (sub === 'block' || sub === 'unblock') {
     ctx.store.setModmailBlocked(i.guildId, user.id, sub === 'block');
+    // Blocking also ends a conversation that's open right now.
+    const openThread = sub === 'block' ? ctx.store.openModmail(i.guildId, user.id) : null;
+    if (openThread && ctx.store.closeModmail(openThread)) {
+      const t = i.guild.channels.cache.get(openThread);
+      if (t?.isThread()) {
+        await t.send({ content: `🚫 Closed: <@${user.id}> was blocked by <@${i.user.id}>.`, allowedMentions: { parse: [] } }).catch(() => null);
+        await t.setLocked(true).catch(() => null);
+        await t.setArchived(true).catch(() => null);
+      }
+    }
     return void (await ephemeral(i, sub === 'block' ? `🚫 <@${user.id}> can’t use modmail any more.` : `✅ <@${user.id}> can use modmail again.`));
   }
   // open

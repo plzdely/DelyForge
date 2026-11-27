@@ -487,6 +487,8 @@ export async function handleModerationCommand(ctx: ModuleContext, i: ChatInputCo
           if (!locking) ctx.store.removeChannelLock(id);
           continue;
         }
+        // Same rule as /lock: only channels the moderator could lock or unlock themselves.
+        if (!ch.permissionsFor(actor)?.has([PermissionFlagsBits.ManageChannels, PermissionFlagsBits.ManageRoles])) continue;
         if ((await setChannelLock(ctx, guild, ch, locking, `${locking ? 'Lockdown' : 'Lockdown lifted'} by ${actor.user.tag}: ${reason}`)) === 'ok') changed++;
       }
       await modLog(ctx, guild, { title: locking ? '🚨 Server lockdown' : '✅ Lockdown lifted', description: `${changed} channel(s) by <@${actor.id}>${locking ? `\n**Reason:** ${reason}` : ''}`, color: locking ? COLORS.danger : COLORS.success });
