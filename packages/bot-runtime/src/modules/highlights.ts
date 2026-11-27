@@ -1,5 +1,5 @@
 import { highlightHit } from '@delyforge/shared';
-import { type ChatInputCommandInteraction, type Message, MessageFlags, PermissionFlagsBits } from 'discord.js';
+import { ChannelType, type ChatInputCommandInteraction, type Message, MessageFlags, PermissionFlagsBits } from 'discord.js';
 import { COLORS, type ModuleContext, truncate } from './context.js';
 
 /** When each member last talked in each channel (they don't need a DM about a chat they're in). */
@@ -37,7 +37,8 @@ export async function onHighlightMessage(ctx: ModuleContext, m: Message): Promis
   lastSpoke.set(`${m.channelId}:${m.author.id}`, now);
   if (lastSpoke.size > 20_000) lastSpoke.clear();
   const c = ctx.config(m.guild.id).highlights;
-  if (!c.enabled) return;
+  // Private threads: channel permissions don't say who's in the thread, so never send highlights from them.
+  if (!c.enabled || m.channel.type === ChannelType.PrivateThread) return;
   const channelId = m.channel.isThread() ? (m.channel.parentId ?? m.channelId) : m.channelId;
   if (c.ignoredChannelIds.includes(channelId)) return;
   const words = ctx.store.allHighlights(m.guild.id);
