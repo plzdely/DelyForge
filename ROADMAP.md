@@ -28,6 +28,8 @@ and has tests. Progress is tracked in [DEVELOPMENT_STATUS.md](DEVELOPMENT_STATUS
 ## Phase 4 — Bot modules ✅
 Moderation, Welcome, Tickets, Leveling, Logging, Utility, Verification, Reaction Roles, Suggestions, Giveaways — each with
 config schema, config page, runtime implementation, required intents/permissions declaration and tests.
+Since then (0.3–0.5): Invite Tracker, Starboard, Temporary Voice, Raid Protection, Sticky Messages, Server Stats,
+Birthdays, Social Alerts, Scheduled Messages, Shop, Modmail, Applications, Economy, Counting & Games.
 
 ## Phase 5 — Builders ✅
 Command Builder (slash/user/message commands, components, modals, live preview, publish), Embed Builder (Discord-accurate

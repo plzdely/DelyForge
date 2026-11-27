@@ -26,7 +26,8 @@ import { type ReactNode, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { toast } from 'sonner';
 import { InviteLink } from '@/components/bots/permissions-editor';
-import { LinkButtonsEditor, Section, TemplateField } from '@/components/modules/fields';
+import { LinkButtonsEditor, RoleSelect, Section, TemplateField } from '@/components/modules/fields';
+import { ApplicationsForm, EconomyForm, GamesForm, ModmailForm } from '@/components/modules/forms-v05';
 import { GiveawaysForm, LevelingForm, ReactionRolesForm, SuggestionsForm, TicketsForm, VerificationForm } from '@/components/modules/forms';
 import { ShopForm } from '@/components/modules/shop-form';
 import { AntiRaidForm, BirthdaysForm, FeedsForm, InvitesForm, ScheduledForm, ServerStatsForm, StarboardForm, StickyForm, TempVoiceForm } from '@/components/modules/forms-more';
@@ -135,6 +136,16 @@ function WelcomeForm({ c, set, guild }: { c: WelcomeConfig; set: (c: WelcomeConf
               </Field>
             ) : null}
             <LinkButtonsEditor id="welcome-btn" value={c.welcome.buttons} onChange={(buttons) => set({ ...c, welcome: { ...c.welcome, buttons } })} />
+            <NumberField id="welcome-delete" label="Delete the welcome message after" suffix="seconds (0 = keep it)" hint="Handy for busy servers where welcomes would bury the chat." min={0} max={3600} value={c.welcome.deleteAfterSeconds} onChange={(v) => set({ ...c, welcome: { ...c.welcome, deleteAfterSeconds: v } })} />
+          </>
+        ) : null}
+      </Section>
+      <Section title="Booster thank-you" description="Posted when someone boosts the server.">
+        <ToggleRow title="Thank boosters" checked={c.boost.enabled} onChange={(v) => set({ ...c, boost: { ...c.boost, enabled: v } })} />
+        {c.boost.enabled ? (
+          <>
+            <ChannelSelect id="boost-channel" label="Channel" guild={guild} value={c.boost.channelId} onChange={(v) => set({ ...c, boost: { ...c.boost, channelId: v } })} />
+            <TemplateField id="boost-message" label="Message" max={1000} value={c.boost.message} onChange={(v) => set({ ...c, boost: { ...c.boost, message: v } })} />
           </>
         ) : null}
       </Section>
@@ -190,6 +201,7 @@ function ModerationForm({ c, set, guild, automodLocked }: { c: ModerationConfig;
           <TemplateField id="mod-appeal" label="Add to ban DMs (optional)" max={500} value={c.appealMessage} onChange={(v) => set({ ...c, appealMessage: v })} variables={[]} />
         ) : null}
         <NumberField id="mod-expiry" label="Warnings expire after" suffix="days (0 = never)" hint="Expired warnings stay on record but no longer count toward the automatic actions below." min={0} max={365} value={c.warnExpiryDays} onChange={(v) => set({ ...c, warnExpiryDays: v })} />
+        <ToggleRow title="Dehoist nicknames" description="Remove symbols like ! from the start of names when members join or change their name, so nobody sits at the top of the member list. /dehoist fixes everyone at once." checked={c.dehoist} onChange={(v) => set({ ...c, dehoist: v })} />
       </Section>
 
       <Section title="Warning thresholds" description="Act automatically when a member reaches a number of warnings.">
@@ -273,6 +285,20 @@ function ModerationForm({ c, set, guild, automodLocked }: { c: ModerationConfig;
               <ActionSelect id="am-repeats" value={a.repeats.action} onChange={(v) => setA({ repeats: { ...a.repeats, action: v } })} />
             </div>
             {a.repeats.enabled ? <NumberField id="am-repeats-count" label="Times in a row" value={a.repeats.count} min={2} max={10} onChange={(v) => setA({ repeats: { ...a.repeats, count: v } })} /> : null}
+            <div className="flex items-center justify-between gap-4">
+              <ToggleRow title="Glitched (zalgo) text" description="Letters buried under piles of accent marks." checked={a.zalgo.enabled} onChange={(v) => setA({ zalgo: { ...a.zalgo, enabled: v } })} />
+              <ActionSelect id="am-zalgo" value={a.zalgo.action} onChange={(v) => setA({ zalgo: { ...a.zalgo, action: v } })} />
+            </div>
+            <div className="flex items-center justify-between gap-4">
+              <ToggleRow title="Too many lines" description={`Messages longer than ${a.lines.max} lines (wall-of-text spam).`} checked={a.lines.enabled} onChange={(v) => setA({ lines: { ...a.lines, enabled: v } })} />
+              <ActionSelect id="am-lines" value={a.lines.action} onChange={(v) => setA({ lines: { ...a.lines, action: v } })} />
+            </div>
+            {a.lines.enabled ? <NumberField id="am-lines-max" label="Most lines allowed" value={a.lines.max} min={3} max={100} onChange={(v) => setA({ lines: { ...a.lines, max: v } })} /> : null}
+            <div className="flex items-center justify-between gap-4">
+              <ToggleRow title="Links from new members" description={`Members who joined less than ${a.newMemberLinks.hours} hours ago can’t post links — the usual scam-bot pattern.`} checked={a.newMemberLinks.enabled} onChange={(v) => setA({ newMemberLinks: { ...a.newMemberLinks, enabled: v } })} />
+              <ActionSelect id="am-newlinks" value={a.newMemberLinks.action} onChange={(v) => setA({ newMemberLinks: { ...a.newMemberLinks, action: v } })} />
+            </div>
+            {a.newMemberLinks.enabled ? <NumberField id="am-newlinks-h" label="New for" suffix="hours" value={a.newMemberLinks.hours} min={1} max={720} onChange={(v) => setA({ newMemberLinks: { ...a.newMemberLinks, hours: v } })} /> : null}
             <div className="flex items-center justify-between gap-4">
               <ToggleRow title="Spam" description={`More than ${a.spam.maxMessages} messages in ${a.spam.perSeconds} seconds.`} checked={a.spam.enabled} onChange={(v) => setA({ spam: { ...a.spam, enabled: v } })} />
               <ActionSelect id="am-spam" value={a.spam.action} onChange={(v) => setA({ spam: { ...a.spam, action: v } })} />
@@ -368,15 +394,29 @@ const UTILITY_LABELS: Record<keyof UtilityConfig['commands'], [string, string]> 
   poll: ['/poll', 'Native Discord polls with up to 10 answers'],
   remind: ['/remind', 'Members set a reminder (e.g. in 2h) and the bot pings them later'],
   roll: ['/roll', 'Roll dice, e.g. 2 dice with 20 sides'],
+  afk: ['/afk', 'Members set an away message; people who ping them are told, and it clears when they talk'],
+  roleinfo: ['/roleinfo', 'A role’s members, colour, position and key permissions'],
+  channelinfo: ['/channelinfo', 'A channel’s type, category, topic and slowmode'],
+  membercount: ['/membercount', 'How many members, people and bots'],
+  choose: ['/choose', 'The bot picks one of the options you give'],
+  emoji: ['/emoji', 'Staff add an emoji from another server by pasting it'],
+  timestamp: ['/timestamp', 'A time that shows in everyone’s own time zone'],
+  banner: ['/banner', 'Show someone’s profile banner'],
 };
 
-function UtilityForm({ c, set }: { c: UtilityConfig; set: (c: UtilityConfig) => void }) {
+function UtilityForm({ c, set, guild }: { c: UtilityConfig; set: (c: UtilityConfig) => void; guild: GuildInfo }) {
   return (
-    <Section title="Commands" description="Available to everyone in the server.">
-      {(Object.keys(UTILITY_LABELS) as (keyof UtilityConfig['commands'])[]).map((k) => (
-        <ToggleRow key={k} title={UTILITY_LABELS[k][0]} description={UTILITY_LABELS[k][1]} checked={c.commands[k]} onChange={(v) => set({ ...c, commands: { ...c.commands, [k]: v } })} />
-      ))}
-    </Section>
+    <>
+      <Section title="Commands" description="Available to everyone in the server.">
+        {(Object.keys(UTILITY_LABELS) as (keyof UtilityConfig['commands'])[]).map((k) => (
+          <ToggleRow key={k} title={UTILITY_LABELS[k][0]} description={UTILITY_LABELS[k][1]} checked={c.commands[k]} onChange={(v) => set({ ...c, commands: { ...c.commands, [k]: v } })} />
+        ))}
+      </Section>
+      <Section title="Bump reminder" description="After someone bumps the server with DISBOARD’s /bump, the bot reacts ⏰ and reminds the channel 2 hours later. (The reminder is lost if the bot restarts in between.)">
+        <ToggleRow title="Remind to bump" checked={c.bumpReminder.enabled} onChange={(v) => set({ ...c, bumpReminder: { ...c.bumpReminder, enabled: v } })} />
+        {c.bumpReminder.enabled ? <RoleSelect id="bump-role" label="Ping this role (optional)" guild={guild} value={c.bumpReminder.roleId} onChange={(v) => set({ ...c, bumpReminder: { ...c.bumpReminder, roleId: v } })} /> : null}
+      </Section>
+    </>
   );
 }
 
@@ -541,7 +581,7 @@ export function ModuleSettings() {
             {id === 'welcome' ? <WelcomeForm c={draft as WelcomeConfig} set={setDraft} guild={guild} /> : null}
             {id === 'moderation' ? <ModerationForm c={draft as ModerationConfig} set={setDraft} guild={guild} automodLocked={automodLocked} /> : null}
             {id === 'logging' ? <LoggingForm c={draft as LoggingConfig} set={setDraft} guild={guild} /> : null}
-            {id === 'utility' ? <UtilityForm c={draft as UtilityConfig} set={setDraft} /> : null}
+            {id === 'utility' ? <UtilityForm c={draft as UtilityConfig} set={setDraft} guild={guild} /> : null}
             {id === 'leveling' ? <LevelingForm c={draft as ModuleConfigs['leveling']} set={setDraft} guild={guild} /> : null}
             {id === 'tickets' ? <TicketsForm c={draft as ModuleConfigs['tickets']} set={setDraft} guild={guild} /> : null}
             {id === 'verification' ? <VerificationForm c={draft as ModuleConfigs['verification']} set={setDraft} guild={guild} /> : null}
@@ -557,6 +597,10 @@ export function ModuleSettings() {
             {id === 'birthdays' ? <BirthdaysForm c={draft as ModuleConfigs['birthdays']} set={setDraft} guild={guild} /> : null}
             {id === 'feeds' ? <FeedsForm c={draft as ModuleConfigs['feeds']} set={setDraft} guild={guild} /> : null}
             {id === 'scheduled' ? <ScheduledForm c={draft as ModuleConfigs['scheduled']} set={setDraft} guild={guild} /> : null}
+            {id === 'modmail' ? <ModmailForm c={draft as ModuleConfigs['modmail']} set={setDraft} guild={guild} /> : null}
+            {id === 'applications' ? <ApplicationsForm c={draft as ModuleConfigs['applications']} set={setDraft} guild={guild} /> : null}
+            {id === 'economy' ? <EconomyForm c={draft as ModuleConfigs['economy']} set={setDraft} guild={guild} /> : null}
+            {id === 'games' ? <GamesForm c={draft as ModuleConfigs['games']} set={setDraft} guild={guild} /> : null}
             {id === 'shop' ? (
               <ShopForm c={draft as ModuleConfigs['shop']} set={setDraft} guild={guild} tickets={resolveGuildModules(ws.modules.data?.[guild.id]).tickets} botName={bot.botUsername ?? bot.name} avatarUrl={bot.botAvatarUrl} />
             ) : null}

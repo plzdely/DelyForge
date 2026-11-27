@@ -127,6 +127,32 @@ export function AntiRaidForm({ c, set, guild }: Props<'antiRaid'>) {
           checked={c.lockdown}
           onChange={(v) => set({ ...c, lockdown: v })}
         />
+        <ToggleRow title="Pause invites during a raid" description="Uses Discord’s “Pause invites” so nobody new can join until the raid is over. Needs Manage Server." checked={c.pauseInvites} onChange={(v) => set({ ...c, pauseInvites: v })} />
+      </Section>
+      <Section title="Anti-nuke" description="Stops a hacked or rogue staff account that deletes channels or roles, bans, kicks or makes webhooks in a burst. The server owner is always trusted. My role must be above theirs to act.">
+        <ToggleRow title="Protect against nukes" checked={c.antiNuke.enabled} onChange={(v) => set({ ...c, antiNuke: { ...c.antiNuke, enabled: v } })} />
+        {c.antiNuke.enabled ? (
+          <>
+            <div className="grid grid-cols-3 gap-3">
+              <NumberField id="nuke-max" label="Actions" min={2} max={50} value={c.antiNuke.maxActions} onChange={(v) => set({ ...c, antiNuke: { ...c.antiNuke, maxActions: v } })} />
+              <NumberField id="nuke-per" label="Within" suffix="seconds" min={10} max={600} value={c.antiNuke.perSeconds} onChange={(v) => set({ ...c, antiNuke: { ...c.antiNuke, perSeconds: v } })} />
+              <Field label="Then" htmlFor="nuke-action">
+                <Select id="nuke-action" value={c.antiNuke.action} onChange={(e) => set({ ...c, antiNuke: { ...c.antiNuke, action: e.target.value as 'strip' | 'ban' } })}>
+                  <option value="strip">Take all their roles</option>
+                  <option value="ban">Ban them</option>
+                </Select>
+              </Field>
+            </div>
+            <Field label="Trusted people (never stopped)" htmlFor="nuke-trusted" hint="User IDs, one per line — e.g. co-owners. Right-click someone → Copy User ID.">
+              <Textarea
+                id="nuke-trusted"
+                rows={3}
+                value={c.antiNuke.trustedUserIds.join('\n')}
+                onChange={(e) => set({ ...c, antiNuke: { ...c.antiNuke, trustedUserIds: [...new Set(e.target.value.split(/\s+/).filter((x) => /^\d{17,20}$/.test(x)))].slice(0, 25) } })}
+              />
+            </Field>
+          </>
+        ) : null}
       </Section>
       <Section title="New accounts" description="Throwaway accounts are the usual raid tool. They get a DM explaining why and can rejoin later.">
         <NumberField id="raid-age" label="Remove accounts younger than (0 = off)" min={0} max={90} suffix="days" value={c.minAccountAgeDays} onChange={(v) => set({ ...c, minAccountAgeDays: v })} />

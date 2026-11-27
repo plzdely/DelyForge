@@ -54,6 +54,16 @@ const toGiveaway = (r: GiveawayRow): Giveaway => ({
   requiredRoleId: r.required_role_id,
 });
 
+export interface EconomyAccount {
+  wallet: number;
+  bank: number;
+  lastDaily: number | null;
+  streak: number;
+  lastWork: number | null;
+  lastRob: number | null;
+  lastChat: number | null;
+}
+
 export interface ModCase {
   number: number;
   /** warn, timeout, untimeout, kick, ban, tempban, unban, note, automod */
@@ -236,6 +246,74 @@ export class BotStore {
         item_id  TEXT NOT NULL,
         seen_at  INTEGER NOT NULL,
         PRIMARY KEY (guild_id, feed_key, item_id)
+      );
+      CREATE TABLE IF NOT EXISTS modmail_threads (
+        guild_id  TEXT NOT NULL,
+        user_id   TEXT NOT NULL,
+        thread_id TEXT NOT NULL UNIQUE,
+        open      INTEGER NOT NULL DEFAULT 1,
+        opened_at INTEGER NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS modmail_blocks (
+        guild_id TEXT NOT NULL,
+        user_id  TEXT NOT NULL,
+        PRIMARY KEY (guild_id, user_id)
+      );
+      CREATE TABLE IF NOT EXISTS applications (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        guild_id   TEXT NOT NULL,
+        form_id    TEXT NOT NULL,
+        user_id    TEXT NOT NULL,
+        answers    TEXT NOT NULL,
+        status     TEXT NOT NULL DEFAULT 'pending',
+        created_at INTEGER NOT NULL,
+        decided_at INTEGER,
+        decided_by TEXT
+      );
+      CREATE TABLE IF NOT EXISTS economy (
+        guild_id   TEXT NOT NULL,
+        user_id    TEXT NOT NULL,
+        wallet     INTEGER NOT NULL,
+        bank       INTEGER NOT NULL DEFAULT 0,
+        last_daily INTEGER,
+        streak     INTEGER NOT NULL DEFAULT 0,
+        last_work  INTEGER,
+        last_rob   INTEGER,
+        last_chat  INTEGER,
+        PRIMARY KEY (guild_id, user_id)
+      );
+      CREATE TABLE IF NOT EXISTS economy_items (
+        guild_id TEXT NOT NULL,
+        user_id  TEXT NOT NULL,
+        item_id  TEXT NOT NULL,
+        count    INTEGER NOT NULL,
+        PRIMARY KEY (guild_id, user_id, item_id)
+      );
+      CREATE TABLE IF NOT EXISTS counting (
+        guild_id     TEXT PRIMARY KEY,
+        count        INTEGER NOT NULL DEFAULT 0,
+        last_user_id TEXT,
+        record       INTEGER NOT NULL DEFAULT 0
+      );
+      CREATE TABLE IF NOT EXISTS counting_users (
+        guild_id TEXT NOT NULL,
+        user_id  TEXT NOT NULL,
+        n        INTEGER NOT NULL,
+        PRIMARY KEY (guild_id, user_id)
+      );
+      CREATE TABLE IF NOT EXISTS temp_roles (
+        guild_id  TEXT NOT NULL,
+        user_id   TEXT NOT NULL,
+        role_id   TEXT NOT NULL,
+        remove_at INTEGER NOT NULL,
+        PRIMARY KEY (guild_id, user_id, role_id)
+      );
+      CREATE TABLE IF NOT EXISTS afk (
+        guild_id TEXT NOT NULL,
+        user_id  TEXT NOT NULL,
+        reason   TEXT NOT NULL,
+        since    INTEGER NOT NULL,
+        PRIMARY KEY (guild_id, user_id)
       );
       CREATE TABLE IF NOT EXISTS shop_counters (
         guild_id TEXT NOT NULL,
@@ -611,6 +689,201 @@ export class BotStore {
     return rows.filter((r) => Number(del.run(r.id).changes) === 1).map((r) => ({ guildId: r.guild_id, channelId: r.channel_id, userId: r.user_id, text: r.text, dueAt: r.due_at }));
   }
 
+  // ─── Tickets (0.5) ───────────────────────────────────────────────────────────────────────────────────────────────
+
+  /** Claim, unclaim (null) or hand a ticket to someone else. False when it isn't an open ticket. */
+  setTicketClaim(channelId: string, staffId: string | null): boolean {
+    return Number(this.db.prepare('UPDATE tickets SET claimed_by = ? WHERE channel_id = ? AND closed_at IS NULL').run(staffId, channelId).changes) === 1;
+  }
+
+  ticketStats(guildId: string, since: number): { open: number; closed: number; claims: { userId: string; n: number }[] } {
+    const iso = new Date(since).toISOString();
+    const open = (this.db.prepare('SELECT COUNT(*) AS n FROM tickets WHERE guild_id = ? AND closed_at IS NULL').get(guildId) as { n: number }).n;
+    const closed = (this.db.prepare('SELECT COUNT(*) AS n FROM tickets WHERE guild_id = ? AND closed_at >= ?').get(guildId, iso) as { n: number }).n;
+    const claims = this.db
+      .prepare('SELECT claimed_by AS userId, COUNT(*) AS n FROM tickets WHERE guild_id = ? AND claimed_by IS NOT NULL AND opened_at >= ? GROUP BY claimed_by ORDER BY n DESC LIMIT 5')
+      .all(guildId, iso) as { userId: string; n: number }[];
+    return { open, closed, claims };
+  }
+
+  // ─── Moderation (0.5) ────────────────────────────────────────────────────────────────────────────────────────────
+
+  setCaseReason(guildId: string, number: number, reason: string): boolean {
+    return Number(this.db.prepare('UPDATE mod_cases SET reason = ? WHERE guild_id = ? AND number = ?').run(reason, guildId, number).changes) === 1;
+  }
+
+  /** Cases a moderator made, by type. */
+  casesByModerator(guildId: string, moderatorId: string, since = 0): Record<string, number> {
+    const rows = this.db.prepare('SELECT type, COUNT(*) AS n FROM mod_cases WHERE guild_id = ? AND moderator_id = ? AND created_at >= ? GROUP BY type').all(guildId, moderatorId, since) as { type: string; n: number }[];
+    return Object.fromEntries(rows.map((r) => [r.type, r.n]));
+  }
+
+  addTempRole(guildId: string, userId: string, roleId: string, removeAt: number): void {
+    this.db.prepare('INSERT OR REPLACE INTO temp_roles (guild_id, user_id, role_id, remove_at) VALUES (?, ?, ?, ?)').run(guildId, userId, roleId, removeAt);
+  }
+
+  /** Temporary roles whose time is up, removed from the list as they're taken. */
+  takeDueTempRoles(now: number): { guildId: string; userId: string; roleId: string }[] {
+    const rows = this.db.prepare('SELECT guild_id, user_id, role_id FROM temp_roles WHERE remove_at <= ? LIMIT 50').all(now) as { guild_id: string; user_id: string; role_id: string }[];
+    const del = this.db.prepare('DELETE FROM temp_roles WHERE guild_id = ? AND user_id = ? AND role_id = ?');
+    return rows.filter((r) => Number(del.run(r.guild_id, r.user_id, r.role_id).changes) === 1).map((r) => ({ guildId: r.guild_id, userId: r.user_id, roleId: r.role_id }));
+  }
+
+  // ─── AFK ─────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+  setAfk(guildId: string, userId: string, reason: string, since: number): void {
+    this.db.prepare('INSERT OR REPLACE INTO afk (guild_id, user_id, reason, since) VALUES (?, ?, ?, ?)').run(guildId, userId, reason, since);
+  }
+
+  afk(guildId: string, userId: string): { reason: string; since: number } | null {
+    return (this.db.prepare('SELECT reason, since FROM afk WHERE guild_id = ? AND user_id = ?').get(guildId, userId) as { reason: string; since: number } | undefined) ?? null;
+  }
+
+  clearAfk(guildId: string, userId: string): boolean {
+    return Number(this.db.prepare('DELETE FROM afk WHERE guild_id = ? AND user_id = ?').run(guildId, userId).changes) === 1;
+  }
+
+  // ─── Modmail ─────────────────────────────────────────────────────────────────────────────────────────────────────
+
+  openModmail(guildId: string, userId: string): string | null {
+    return (this.db.prepare('SELECT thread_id FROM modmail_threads WHERE guild_id = ? AND user_id = ? AND open = 1').get(guildId, userId) as { thread_id: string } | undefined)?.thread_id ?? null;
+  }
+
+  addModmail(guildId: string, userId: string, threadId: string, now: number): void {
+    this.db.prepare('INSERT INTO modmail_threads (guild_id, user_id, thread_id, opened_at) VALUES (?, ?, ?, ?)').run(guildId, userId, threadId, now);
+  }
+
+  modmailByThread(threadId: string): { guildId: string; userId: string; open: boolean } | null {
+    const r = this.db.prepare('SELECT guild_id, user_id, open FROM modmail_threads WHERE thread_id = ?').get(threadId) as { guild_id: string; user_id: string; open: number } | undefined;
+    return r ? { guildId: r.guild_id, userId: r.user_id, open: r.open === 1 } : null;
+  }
+
+  /** False when it was already closed. */
+  closeModmail(threadId: string): boolean {
+    return Number(this.db.prepare('UPDATE modmail_threads SET open = 0 WHERE thread_id = ? AND open = 1').run(threadId).changes) === 1;
+  }
+
+  modmailCount(guildId: string, userId: string): number {
+    return (this.db.prepare('SELECT COUNT(*) AS n FROM modmail_threads WHERE guild_id = ? AND user_id = ?').get(guildId, userId) as { n: number }).n;
+  }
+
+  setModmailBlocked(guildId: string, userId: string, blocked: boolean): void {
+    if (blocked) this.db.prepare('INSERT OR IGNORE INTO modmail_blocks (guild_id, user_id) VALUES (?, ?)').run(guildId, userId);
+    else this.db.prepare('DELETE FROM modmail_blocks WHERE guild_id = ? AND user_id = ?').run(guildId, userId);
+  }
+
+  modmailBlocked(guildId: string, userId: string): boolean {
+    return !!this.db.prepare('SELECT 1 FROM modmail_blocks WHERE guild_id = ? AND user_id = ?').get(guildId, userId);
+  }
+
+  // ─── Applications ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  addApplication(a: { guildId: string; formId: string; userId: string; answers: { q: string; a: string }[] }, now: number): number {
+    return Number(this.db.prepare('INSERT INTO applications (guild_id, form_id, user_id, answers, created_at) VALUES (?, ?, ?, ?, ?)').run(a.guildId, a.formId, a.userId, JSON.stringify(a.answers), now).lastInsertRowid);
+  }
+
+  application(id: number): { id: number; guildId: string; formId: string; userId: string; status: string; answers: { q: string; a: string }[] } | null {
+    const r = this.db.prepare('SELECT * FROM applications WHERE id = ?').get(id) as { id: number; guild_id: string; form_id: string; user_id: string; status: string; answers: string } | undefined;
+    return r ? { id: r.id, guildId: r.guild_id, formId: r.form_id, userId: r.user_id, status: r.status, answers: JSON.parse(r.answers) as { q: string; a: string }[] } : null;
+  }
+
+  /** The member's latest application for a form: pending, or when it was decided. */
+  lastApplication(guildId: string, formId: string, userId: string): { status: string; decidedAt: number | null } | null {
+    const r = this.db.prepare('SELECT status, decided_at FROM applications WHERE guild_id = ? AND form_id = ? AND user_id = ? ORDER BY id DESC LIMIT 1').get(guildId, formId, userId) as { status: string; decided_at: number | null } | undefined;
+    return r ? { status: r.status, decidedAt: r.decided_at } : null;
+  }
+
+  /** Accept or deny once; false if someone already decided it. */
+  decideApplication(id: number, status: 'accepted' | 'denied', by: string, now: number): boolean {
+    return Number(this.db.prepare("UPDATE applications SET status = ?, decided_by = ?, decided_at = ? WHERE id = ? AND status = 'pending'").run(status, by, now, id).changes) === 1;
+  }
+
+  // ─── Economy ─────────────────────────────────────────────────────────────────────────────────────────────────────
+
+  /** A member's account, created with the starting balance the first time. */
+  account(guildId: string, userId: string, starting: number): EconomyAccount {
+    this.db.prepare('INSERT OR IGNORE INTO economy (guild_id, user_id, wallet) VALUES (?, ?, ?)').run(guildId, userId, starting);
+    const r = this.db.prepare('SELECT * FROM economy WHERE guild_id = ? AND user_id = ?').get(guildId, userId) as {
+      wallet: number; bank: number; last_daily: number | null; streak: number; last_work: number | null; last_rob: number | null; last_chat: number | null;
+    };
+    return { wallet: r.wallet, bank: r.bank, lastDaily: r.last_daily, streak: r.streak, lastWork: r.last_work, lastRob: r.last_rob, lastChat: r.last_chat };
+  }
+
+  /** Adds (or with a negative amount takes) coins; false if the wallet would go below zero. */
+  addCoins(guildId: string, userId: string, delta: number, starting: number): boolean {
+    this.account(guildId, userId, starting);
+    return Number(this.db.prepare('UPDATE economy SET wallet = wallet + ? WHERE guild_id = ? AND user_id = ? AND wallet + ? >= 0').run(delta, guildId, userId, delta).changes) === 1;
+  }
+
+  /** Moves coins between wallets in one step; false if the sender doesn't have enough. */
+  transferCoins(guildId: string, from: string, to: string, amount: number, starting: number): boolean {
+    if (amount <= 0 || from === to) return false;
+    this.account(guildId, to, starting);
+    if (!this.addCoins(guildId, from, -amount, starting)) return false;
+    this.db.prepare('UPDATE economy SET wallet = wallet + ? WHERE guild_id = ? AND user_id = ?').run(amount, guildId, to);
+    return true;
+  }
+
+  /** Wallet ⇄ bank; false if there isn't enough on the side it comes from. */
+  moveToBank(guildId: string, userId: string, amount: number, deposit: boolean, starting: number): boolean {
+    this.account(guildId, userId, starting);
+    const sql = deposit
+      ? 'UPDATE economy SET wallet = wallet - ?, bank = bank + ? WHERE guild_id = ? AND user_id = ? AND wallet >= ?'
+      : 'UPDATE economy SET bank = bank - ?, wallet = wallet + ? WHERE guild_id = ? AND user_id = ? AND bank >= ?';
+    return Number(this.db.prepare(sql).run(amount, amount, guildId, userId, amount).changes) === 1;
+  }
+
+  setEconomyTimes(guildId: string, userId: string, t: { lastDaily?: number; streak?: number; lastWork?: number; lastRob?: number; lastChat?: number }): void {
+    const cols = { lastDaily: 'last_daily', streak: 'streak', lastWork: 'last_work', lastRob: 'last_rob', lastChat: 'last_chat' } as const;
+    for (const [k, v] of Object.entries(t)) this.db.prepare(`UPDATE economy SET ${cols[k as keyof typeof cols]} = ? WHERE guild_id = ? AND user_id = ?`).run(v, guildId, userId);
+  }
+
+  /** Staff: set a wallet to an exact amount (bank stays). */
+  setWallet(guildId: string, userId: string, wallet: number, starting: number): void {
+    this.account(guildId, userId, starting);
+    this.db.prepare('UPDATE economy SET wallet = ? WHERE guild_id = ? AND user_id = ?').run(wallet, guildId, userId);
+  }
+
+  richest(guildId: string, limit = 10): { userId: string; total: number }[] {
+    return this.db.prepare('SELECT user_id AS userId, wallet + bank AS total FROM economy WHERE guild_id = ? ORDER BY total DESC LIMIT ?').all(guildId, limit) as { userId: string; total: number }[];
+  }
+
+  resetEconomy(guildId: string, userId: string | null): number {
+    const r = userId ? this.db.prepare('DELETE FROM economy WHERE guild_id = ? AND user_id = ?').run(guildId, userId) : this.db.prepare('DELETE FROM economy WHERE guild_id = ?').run(guildId);
+    if (userId) this.db.prepare('DELETE FROM economy_items WHERE guild_id = ? AND user_id = ?').run(guildId, userId);
+    else this.db.prepare('DELETE FROM economy_items WHERE guild_id = ?').run(guildId);
+    return Number(r.changes);
+  }
+
+  addItem(guildId: string, userId: string, itemId: string): void {
+    this.db.prepare('INSERT INTO economy_items (guild_id, user_id, item_id, count) VALUES (?, ?, ?, 1) ON CONFLICT (guild_id, user_id, item_id) DO UPDATE SET count = count + 1').run(guildId, userId, itemId);
+  }
+
+  items(guildId: string, userId: string): { itemId: string; count: number }[] {
+    return this.db.prepare('SELECT item_id AS itemId, count FROM economy_items WHERE guild_id = ? AND user_id = ? ORDER BY item_id').all(guildId, userId) as { itemId: string; count: number }[];
+  }
+
+  // ─── Counting ────────────────────────────────────────────────────────────────────────────────────────────────────
+
+  counting(guildId: string): { count: number; lastUserId: string | null; record: number } {
+    const r = this.db.prepare('SELECT count, last_user_id, record FROM counting WHERE guild_id = ?').get(guildId) as { count: number; last_user_id: string | null; record: number } | undefined;
+    return r ? { count: r.count, lastUserId: r.last_user_id, record: r.record } : { count: 0, lastUserId: null, record: 0 };
+  }
+
+  /** Saves a good count (and the record), or a reset when `count` is 0. */
+  setCounting(guildId: string, count: number, lastUserId: string | null): void {
+    this.db
+      .prepare('INSERT INTO counting (guild_id, count, last_user_id, record) VALUES (?, ?, ?, ?) ON CONFLICT (guild_id) DO UPDATE SET count = excluded.count, last_user_id = excluded.last_user_id, record = MAX(record, excluded.count)')
+      .run(guildId, count, lastUserId, count);
+    if (lastUserId && count > 0) {
+      this.db.prepare('INSERT INTO counting_users (guild_id, user_id, n) VALUES (?, ?, 1) ON CONFLICT (guild_id, user_id) DO UPDATE SET n = n + 1').run(guildId, lastUserId);
+    }
+  }
+
+  topCounters(guildId: string, limit = 5): { userId: string; n: number }[] {
+    return this.db.prepare('SELECT user_id AS userId, n FROM counting_users WHERE guild_id = ? ORDER BY n DESC LIMIT ?').all(guildId, limit) as { userId: string; n: number }[];
+  }
+
   // ─── Shop counters (discount code uses, announced sales, vouch numbers) ───────────────────────────────────────────
 
   shopCount(guildId: string, key: string): number {
@@ -660,6 +933,11 @@ export class BotStore {
 
   saveChannelLock(guildId: string, channelId: string, previous: { allow: bigint; deny: bigint }): void {
     this.db.prepare('INSERT OR REPLACE INTO channel_locks (channel_id, guild_id, allow, deny) VALUES (?, ?, ?, ?)').run(channelId, guildId, String(previous.allow), String(previous.deny));
+  }
+
+  /** Channels currently locked by /lock or /lockdown in a server. */
+  channelLocks(guildId: string): string[] {
+    return (this.db.prepare('SELECT channel_id FROM channel_locks WHERE guild_id = ?').all(guildId) as { channel_id: string }[]).map((r) => r.channel_id);
   }
 
   removeChannelLock(channelId: string): void {

@@ -37,6 +37,14 @@ export async function onMemberJoin(ctx: ModuleContext, member: GuildMember): Pro
   }
 }
 
+/** Someone started boosting: thank them. */
+export async function onBoost(ctx: ModuleContext, member: GuildMember): Promise<void> {
+  const config = ctx.config(member.guild.id).welcome;
+  if (!config.enabled || !config.boost.enabled) return;
+  const channel = await sendableChannel(ctx, member.guild, config.boost.channelId, 'Booster message');
+  await channel?.send({ content: renderTemplate(config.boost.message, templateVars(member)), allowedMentions: { users: [member.id] } }).catch((e: Error) => ctx.log('warn', `Booster message: ${e.message}`));
+}
+
 /** The welcome message and DM (no roles). Also used by the "Send a test" button. */
 export async function sendWelcome(ctx: ModuleContext, member: GuildMember): Promise<{ posted: boolean; dm: boolean }> {
   const config = ctx.config(member.guild.id).welcome;
@@ -72,7 +80,10 @@ export async function sendWelcome(ctx: ModuleContext, member: GuildMember): Prom
             : { content: text, components: buttons, allowedMentions: SAFE_MENTIONS },
         )
         .then(
-          () => (posted = true),
+          (msg) => {
+            posted = true;
+            if (config.welcome.deleteAfterSeconds) setTimeout(() => void msg.delete().catch(() => null), config.welcome.deleteAfterSeconds * 1000);
+          },
           (e: Error) => ctx.log('warn', `Welcome: could not send message: ${e.message}`),
         );
     }
@@ -102,6 +113,8 @@ export async function sendGoodbye(ctx: ModuleContext, member: GuildMember | Part
     'user.id': member.user.id,
     server: member.guild.name,
     memberCount: member.guild.memberCount,
+    'user.joined': member.joinedTimestamp ? `<t:${Math.floor(member.joinedTimestamp / 1000)}:R>` : 'a while ago',
+    boosts: member.guild.premiumSubscriptionCount ?? 0,
   });
   const payload = config.goodbye.embed
     ? { embeds: [{ description: text, color: hexToInt(config.goodbye.color), thumbnail: { url: member.user.displayAvatarURL({ size: 128 }) } }], allowedMentions: { parse: [] as [] } }

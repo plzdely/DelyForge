@@ -51,7 +51,10 @@ describe('module schemas', () => {
 describe('computeIntents', () => {
   it('needs only Guilds with nothing enabled', () => {
     expect(computeIntents({})).toBe(BASE_INTENTS);
-    expect(computeIntents({ [G]: { utility: on(DEFAULT_MODULE_CONFIGS.utility) } })).toBe(BASE_INTENTS);
+    // /afk notices watch messages (no privileged intent); with /afk off utility needs nothing extra.
+    expect(computeIntents({ [G]: { utility: on(DEFAULT_MODULE_CONFIGS.utility) } })).toBe(BASE_INTENTS | INTENT_BITS.GuildMessages!);
+    const noAfk = { ...DEFAULT_MODULE_CONFIGS.utility, commands: { ...DEFAULT_MODULE_CONFIGS.utility.commands, afk: false } };
+    expect(computeIntents({ [G]: { utility: on(noAfk) } })).toBe(BASE_INTENTS);
   });
 
   it('adds Server Members for welcome and message intents for auto-moderation', () => {

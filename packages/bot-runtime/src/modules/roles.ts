@@ -48,6 +48,10 @@ export async function onRoleButton(ctx: ModuleContext, i: ButtonInteraction, pan
     await i.member.roles.remove(roleId, 'DelyForge reaction roles');
     return void (await ephemeral(i, `Removed <@&${roleId}>.`));
   }
+  const panelRoles = panel.roles.map((r) => r.roleId);
+  if (panel.maxRoles && !panel.oneRoleOnly && panelRoles.filter((r) => i.member.roles.cache.has(r)).length >= panel.maxRoles) {
+    return void (await ephemeral(i, `You can have at most ${panel.maxRoles} role(s) from this panel — remove one first.`));
+  }
   // One role only: swap out the others from this panel.
   const swapped = panel.oneRoleOnly ? assignable(i.member, panel.roles.map((r) => r.roleId)).filter((r) => r !== roleId && i.member.roles.cache.has(r)) : [];
   if (swapped.length) await i.member.roles.remove(swapped, 'DelyForge reaction roles (one role only)');
@@ -64,6 +68,7 @@ export async function onRoleMenu(ctx: ModuleContext, i: StringSelectMenuInteract
   if (panel.requiredRoleId && !i.member.roles.cache.has(panel.requiredRoleId)) return void (await ephemeral(i, `You need <@&${panel.requiredRoleId}> to use this panel.`));
   const panelRoles = panel.roles.map((r) => r.roleId);
   const chosen = i.values.filter((v) => panelRoles.includes(v)); // ignore anything not on the panel
+  if (panel.maxRoles && chosen.length > panel.maxRoles) return void (await ephemeral(i, `Pick at most ${panel.maxRoles} role(s) from this panel.`));
   const allowed = assignable(i.member, panelRoles);
   const add = chosen.filter((r) => allowed.includes(r) && !i.member.roles.cache.has(r));
   const remove = allowed.filter((r) => !chosen.includes(r) && i.member.roles.cache.has(r));

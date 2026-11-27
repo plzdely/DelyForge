@@ -74,7 +74,7 @@ describe('desiredCommands', () => {
     const cmds = desiredCommands({
       ...base,
       moderation: { ...base.moderation, enabled: true },
-      utility: { enabled: true, commands: { serverinfo: true, userinfo: false, avatar: true, poll: false, remind: false, roll: false } },
+      utility: { ...base.utility, enabled: true, commands: { ...base.utility.commands, serverinfo: true, userinfo: false, avatar: true, poll: false, remind: false, roll: false } },
     });
     const names = cmds.map((c) => c.name);
     expect(names).toEqual(expect.arrayContaining(['warn', 'ban', 'purge', 'serverinfo', 'avatar']));

@@ -18,7 +18,7 @@ export function ColorField({ id, value, onChange }: { id: string; value: string;
 }
 
 /** Title, text, button label, colour and channel of a posted panel. */
-function PanelFields({ prefix, p, set, guild, note }: { prefix: string; p: PanelConfig; set: (p: PanelConfig) => void; guild: GuildInfo; note: string }) {
+export function PanelFields({ prefix, p, set, guild, note }: { prefix: string; p: PanelConfig; set: (p: PanelConfig) => void; guild: GuildInfo; note: string }) {
   return (
     <>
       <ChannelSelect id={`${prefix}-channel`} label="Post the panel in" hint={note} guild={guild} value={p.channelId} onChange={(v) => set({ ...p, channelId: v })} />
@@ -66,6 +66,39 @@ export function LevelingForm({ c, set, guild }: Props<'leveling'>) {
         </Field>
         <NumberField id="xp-voice" label="Voice XP" suffix="XP per minute (0 = off)" hint="For members talking with at least one other person, not deafened. Not in the AFK channel." min={0} max={50} value={c.voiceXpPerMinute} onChange={(v) => set({ ...c, voiceXpPerMinute: v })} />
         <ToggleRow title="Reset XP when a member leaves" description="Their XP and level are deleted if they leave the server." checked={c.resetOnLeave} onChange={(v) => set({ ...c, resetOnLeave: v })} />
+        <ToggleRow title="Double XP weekends" description="Everyone earns 2× XP on Saturdays and Sundays (UTC)." checked={c.weekendDoubleXp} onChange={(v) => set({ ...c, weekendDoubleXp: v })} />
+        <NumberField id="xp-every" label="Announce every" suffix="levels (1 = every level)" hint="Fewer level-up messages in busy servers. Reward roles are still given at every level. Members can see all rewards with /rewards." min={1} max={100} value={c.announceEvery} onChange={(v) => set({ ...c, announceEvery: v })} />
+      </Section>
+      <Section title="Channel XP boosts" description="Chatting in these channels earns more XP, e.g. 2× in #events.">
+        {c.channelMultipliers.map((m, n) => (
+          <div key={n} className="flex items-end gap-2">
+            <div className="flex-1">
+              <ChannelSelect id={`xp-ch-${n}`} label="Channel" guild={guild} value={m.channelId} onChange={(v) => v && set({ ...c, channelMultipliers: c.channelMultipliers.map((x, i) => (i === n ? { ...x, channelId: v } : x)) })} />
+            </div>
+            <Field label="Boost" htmlFor={`xp-ch-mult-${n}`}>
+              <Select id={`xp-ch-mult-${n}`} className="w-28" value={String(m.multiplier)} onChange={(e) => set({ ...c, channelMultipliers: c.channelMultipliers.map((x, i) => (i === n ? { ...x, multiplier: Number(e.target.value) } : x)) })}>
+                {[1.5, 2, 3, 5].map((v) => (
+                  <option key={v} value={v}>
+                    {v}×
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Button size="icon" variant="ghost" aria-label="Remove channel boost" onClick={() => set({ ...c, channelMultipliers: c.channelMultipliers.filter((_, i) => i !== n) })}>
+              <Trash2 />
+            </Button>
+          </div>
+        ))}
+        <Button
+          size="sm"
+          disabled={c.channelMultipliers.length >= 10 || !guild.channels.some((ch) => ch.kind === 'text')}
+          onClick={() => {
+            const ch = guild.channels.find((x) => x.kind === 'text');
+            if (ch) set({ ...c, channelMultipliers: [...c.channelMultipliers, { channelId: ch.id, multiplier: 2 }] });
+          }}
+        >
+          <Plus /> Add a channel boost
+        </Button>
       </Section>
       <Section title="XP boosts" description="Members with these roles earn more XP (the biggest boost counts) — e.g. 2× for server boosters. Staff can also use /xp give, take or set.">
         <RoleValueRows
@@ -218,6 +251,10 @@ export function TicketsForm({ c, set, guild }: Props<'tickets'>) {
         <ChannelSelect id="tk-tr" label="Transcript channel" hint="Leave empty to not keep transcripts." guild={guild} value={c.transcriptChannelId} onChange={(v) => set({ ...c, transcriptChannelId: v })} />
         <ToggleRow title="Send the member a copy" checked={c.dmTranscript} onChange={(v) => set({ ...c, dmTranscript: v })} />
       </Section>
+      <Section title="Ticket log and ratings" description="Staff commands: /ticket add, remove, rename, claim, unclaim, transfer, priority, closerequest, close (with a reason) and stats.">
+        <ChannelSelect id="tk-log" label="Ticket log channel" hint="Opened, claimed, transferred and closed tickets, and ratings. Leave empty for none." guild={guild} value={c.logChannelId} onChange={(v) => set({ ...c, logChannelId: v })} />
+        <ToggleRow title="Ask for a rating" description="After a ticket closes, the member gets a DM with 1–5 star buttons. Ratings go to the ticket log." checked={c.feedback} onChange={(v) => set({ ...c, feedback: v })} />
+      </Section>
     </>
   );
 }
@@ -302,6 +339,9 @@ export function ReactionRolesForm({ c, set, guild }: Props<'reactionRoles'>) {
             )}
           </div>
           <RoleSelect id={`rr-${p.id}-req`} label="Only members with this role can use it (optional)" guild={guild} value={p.requiredRoleId} onChange={(v) => update(i, { ...p, requiredRoleId: v })} />
+          {!p.oneRoleOnly && (p.mode === 'buttons' || p.multiple) ? (
+            <NumberField id={`rr-${p.id}-max`} label="Most roles per member" suffix="(0 = no limit)" min={0} max={25} value={p.maxRoles} onChange={(v) => update(i, { ...p, maxRoles: v })} />
+          ) : null}
           <div className="space-y-2">
             {p.roles.map((r, k) => (
               <div key={k} className="grid grid-cols-[1fr_1fr_80px_auto] items-end gap-2">
@@ -332,7 +372,7 @@ export function ReactionRolesForm({ c, set, guild }: Props<'reactionRoles'>) {
             firstRole &&
             set({
               ...c,
-              panels: [...c.panels, { id: newPanelId(c.panels), channelId: null, title: 'Pick your roles', description: 'Click a button to add or remove a role.', color: '#7c5cff', mode: 'buttons', multiple: true, oneRoleOnly: false, requiredRoleId: null, roles: [{ roleId: firstRole.id, label: firstRole.name, emoji: '' }] }],
+              panels: [...c.panels, { id: newPanelId(c.panels), channelId: null, title: 'Pick your roles', description: 'Click a button to add or remove a role.', color: '#7c5cff', mode: 'buttons', multiple: true, oneRoleOnly: false, requiredRoleId: null, maxRoles: 0, roles: [{ roleId: firstRole.id, label: firstRole.name, emoji: '' }] }],
             })
           }
         >
@@ -356,6 +396,7 @@ export function SuggestionsForm({ c, set, guild }: Props<'suggestions'>) {
       <ToggleRow title="Discussion threads" description="Opens a thread on every suggestion so people can talk about it." checked={c.threads} onChange={(v) => set({ ...c, threads: v })} />
       <ToggleRow title="Anonymous" description="Hides who made each suggestion." checked={c.anonymous} onChange={(v) => set({ ...c, anonymous: v })} />
       <ToggleRow title="Tell the author" description="DM them when their idea is approved or rejected, with the reason." checked={c.dmOnDecision} onChange={(v) => set({ ...c, dmOnDecision: v })} />
+      <NumberField id="sug-cool" label="Wait between suggestions" suffix="minutes (0 = no wait)" min={0} max={1440} value={c.cooldownMinutes} onChange={(v) => set({ ...c, cooldownMinutes: v })} />
     </Section>
   );
 }
@@ -382,6 +423,11 @@ export function GiveawaysForm({ c, set, guild }: Props<'giveaways'>) {
           defaultValue={2}
         />
       </Field>
+      <div className="grid grid-cols-2 gap-3">
+        <NumberField id="gw-age" label="Account at least" suffix="days old (0 = any)" hint="Stops brand-new alt accounts farming giveaways." min={0} max={365} value={c.minAccountAgeDays} onChange={(v) => set({ ...c, minAccountAgeDays: v })} />
+        <NumberField id="gw-member" label="In the server for" suffix="days (0 = any)" min={0} max={365} value={c.minMemberDays} onChange={(v) => set({ ...c, minMemberDays: v })} />
+      </div>
+      <ToggleRow title="DM the winners" checked={c.dmWinners} onChange={(v) => set({ ...c, dmWinners: v })} />
     </Section>
   );
 }

@@ -1,6 +1,8 @@
 import {
   containsInvite,
   countEmoji,
+  dehoistedName,
+  isZalgo,
   disallowedLinks,
   isCapsSpam,
   matchBlockedWord,
@@ -15,8 +17,10 @@ import {
   type Client,
   type Guild,
   type GuildMember,
+  type GuildTextBasedChannel,
   type Message,
   MessageFlags,
+  type PartialGuildMember,
   PermissionFlagsBits,
 } from 'discord.js';
 import { COLORS, type ModuleContext, modLog, truncate, tryDM } from './context.js';
@@ -43,7 +47,44 @@ export const MODERATION_COMMANDS = new Set([
   'softban',
   'role',
   'nick',
+  'lockdown',
+  'unlockdown',
+  'temprole',
+  'reason',
+  'modstats',
+  'dehoist',
 ]);
+
+/**
+ * Locks or unlocks one channel for @everyone, remembering what it was so unlocking puts back exactly that
+ * (e.g. an announcements channel stays read-only). Returns 'ok', 'already' (nothing to do) or an error message.
+ */
+async function setChannelLock(ctx: ModuleContext, guild: Guild, channel: GuildTextBasedChannel, locking: boolean, why: string): Promise<'ok' | 'already' | string> {
+  if (!('permissionOverwrites' in channel) || channel.isThread()) return 'Pick a text channel.';
+  const saved = ctx.store.channelLock(channel.id);
+  if (locking === !!saved) return 'already';
+  const current = channel.permissionOverwrites.cache.get(guild.id);
+  const state = (bit: bigint, from: { allow: bigint; deny: bigint }) => ((from.allow & bit) !== 0n ? true : (from.deny & bit) !== 0n ? false : null);
+  const LOCKED = [PermissionFlagsBits.SendMessages, PermissionFlagsBits.SendMessagesInThreads, PermissionFlagsBits.CreatePublicThreads] as const;
+  const previous = saved ?? { allow: current?.allow.bitfield ?? 0n, deny: current?.deny.bitfield ?? 0n };
+  const edits = Object.fromEntries((['SendMessages', 'SendMessagesInThreads', 'CreatePublicThreads'] as const).map((name, n) => [name, locking ? false : state(LOCKED[n]!, previous)]));
+  try {
+    await channel.permissionOverwrites.edit(guild.roles.everyone, edits, { reason: why });
+  } catch (e) {
+    return `Couldn’t change the channel: ${(e as Error).message}`;
+  }
+  if (locking) ctx.store.saveChannelLock(guild.id, channel.id, previous);
+  else ctx.store.removeChannelLock(channel.id);
+  return 'ok';
+}
+
+/** Removes leading symbols from a member's nickname (when dehoisting is on). True if it changed something. */
+export async function dehoistMember(ctx: ModuleContext, member: GuildMember | PartialGuildMember): Promise<boolean> {
+  if (member.partial || member.user.bot || !ctx.config(member.guild.id).moderation.enabled || !ctx.config(member.guild.id).moderation.dehoist) return false;
+  const clean = dehoistedName(member.displayName);
+  if (!clean || !member.manageable) return false;
+  return member.setNickname(clean, 'Dehoist: names can’t start with symbols').then(() => true, () => false);
+}
 
 const CASE_LABELS: Record<string, string> = {
   warn: '⚠️ Warning',
@@ -212,31 +253,17 @@ export async function handleModerationCommand(ctx: ModuleContext, i: ChatInputCo
     }
     case 'lock':
     case 'unlock': {
-      const channel = i.options.getChannel('channel') ?? i.channel;
-      if (!channel || !('permissionOverwrites' in channel) || channel.isThread()) return void (await reply(i, 'Pick a text channel.'));
+      const picked = i.options.getChannel('channel') ?? i.channel;
+      const channel = picked ? guild.channels.cache.get(picked.id) : null;
+      if (!channel || !channel.isTextBased() || !('permissionOverwrites' in channel) || channel.isThread()) return void (await reply(i, 'Pick a text channel.'));
       const locking = i.commandName === 'lock';
       // The moderator needs the rights in *this* channel, not just somewhere in the server.
       if (!channel.permissionsFor(actor)?.has([PermissionFlagsBits.ManageChannels, PermissionFlagsBits.ManageRoles])) {
         return void (await reply(i, 'You need Manage Channels and Manage Permissions in that channel.'));
       }
-      const current = channel.permissionOverwrites.cache.get(guild.id);
-      const saved = ctx.store.channelLock(channel.id);
-      if (locking && saved) return void (await reply(i, `<#${channel.id}> is already locked.`));
-      if (!locking && !saved) return void (await reply(i, `<#${channel.id}> wasn’t locked with /lock, so there’s nothing to undo.`));
-      // /unlock puts back exactly what /lock changed (e.g. an announcements channel stays read-only).
-      const state = (bit: bigint, from: { allow: bigint; deny: bigint }) => ((from.allow & bit) !== 0n ? true : (from.deny & bit) !== 0n ? false : null);
-      const LOCKED = [PermissionFlagsBits.SendMessages, PermissionFlagsBits.SendMessagesInThreads, PermissionFlagsBits.CreatePublicThreads] as const;
-      const previous = saved ?? { allow: current?.allow.bitfield ?? 0n, deny: current?.deny.bitfield ?? 0n };
-      const edits = Object.fromEntries(
-        (['SendMessages', 'SendMessagesInThreads', 'CreatePublicThreads'] as const).map((name, n) => [name, locking ? false : state(LOCKED[n]!, previous)]),
-      );
-      try {
-        await channel.permissionOverwrites.edit(guild.roles.everyone, edits, { reason: `${locking ? 'Locked' : 'Unlocked'} by ${actor.user.tag}: ${reason}` });
-      } catch (e) {
-        return void (await reply(i, `Couldn’t change the channel: ${(e as Error).message}`));
-      }
-      if (locking) ctx.store.saveChannelLock(guild.id, channel.id, previous);
-      else ctx.store.removeChannelLock(channel.id);
+      const result = await setChannelLock(ctx, guild, channel, locking, `${locking ? 'Locked' : 'Unlocked'} by ${actor.user.tag}: ${reason}`);
+      if (result === 'already') return void (await reply(i, locking ? `<#${channel.id}> is already locked.` : `<#${channel.id}> wasn’t locked with /lock, so there’s nothing to undo.`));
+      if (result !== 'ok') return void (await reply(i, result));
       if ('send' in channel) await channel.send({ content: locking ? `🔒 This channel is locked by staff. ${reason}` : '🔓 This channel is open again.', allowedMentions: { parse: [] } }).catch(() => null);
       await modLog(ctx, guild, { title: locking ? 'Channel locked' : 'Channel unlocked', description: `<#${channel.id}> by <@${actor.id}>${locking ? `\n**Reason:** ${reason}` : ''}`, color: locking ? COLORS.warn : COLORS.success });
       await reply(i, `${locking ? '🔒 Locked' : '🔓 Unlocked'} <#${channel.id}>.`);
@@ -419,12 +446,22 @@ export async function handleModerationCommand(ctx: ModuleContext, i: ChatInputCo
       const amount = i.options.getInteger('amount', true);
       const only = i.options.getUser('member');
       const botsOnly = i.options.getBoolean('bots') ?? false;
+      const linksOnly = i.options.getBoolean('links') ?? false;
+      const filesOnly = i.options.getBoolean('attachments') ?? false;
       const contains = i.options.getString('contains')?.toLowerCase() ?? null;
       await i.deferReply({ flags: MessageFlags.Ephemeral });
       const recent = await channel.messages.fetch({ limit: 100 });
       const twoWeeks = Date.now() - 14 * 24 * 3600 * 1000 + 60_000; // Discord can’t bulk-delete older messages
       const targets = [...recent.values()]
-        .filter((m) => (!only || m.author.id === only.id) && (!botsOnly || m.author.bot) && (!contains || m.content.toLowerCase().includes(contains)) && m.createdTimestamp > twoWeeks)
+        .filter(
+          (m) =>
+            (!only || m.author.id === only.id) &&
+            (!botsOnly || m.author.bot) &&
+            (!linksOnly || /https?:\/\//i.test(m.content)) &&
+            (!filesOnly || m.attachments.size > 0) &&
+            (!contains || m.content.toLowerCase().includes(contains)) &&
+            m.createdTimestamp > twoWeeks,
+        )
         .slice(0, amount);
       const deleted = await channel.bulkDelete(targets, true).catch(() => null);
       const n = deleted?.size ?? 0;
@@ -432,6 +469,87 @@ export async function handleModerationCommand(ctx: ModuleContext, i: ChatInputCo
       await reply(i, `🧹 Deleted ${n} message${n === 1 ? '' : 's'}.${n < amount ? ' (Messages older than 14 days can’t be bulk-deleted.)' : ''}`);
       return;
     }
+    case 'lockdown':
+    case 'unlockdown': {
+      if (!actor.permissions.has(PermissionFlagsBits.ManageGuild)) return void (await reply(i, 'You need Manage Server for this.'));
+      const locking = i.commandName === 'lockdown';
+      await i.deferReply({ flags: MessageFlags.Ephemeral });
+      // Lock channels everyone can talk in now; unlock every channel the bot locked.
+      const everyone = guild.roles.everyone;
+      const ids = locking
+        ? [...guild.channels.cache.values()].filter((ch) => ch.isTextBased() && !ch.isThread() && !ch.isVoiceBased() && ch.permissionsFor(everyone).has([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages])).map((ch) => ch.id)
+        : ctx.store.channelLocks(guild.id);
+      // shortcut: at most 50 channels per run (Discord rate limits); run it again for bigger servers.
+      let changed = 0;
+      for (const id of ids.slice(0, 50)) {
+        const ch = guild.channels.cache.get(id);
+        if (!ch?.isTextBased()) {
+          if (!locking) ctx.store.removeChannelLock(id);
+          continue;
+        }
+        if ((await setChannelLock(ctx, guild, ch, locking, `${locking ? 'Lockdown' : 'Lockdown lifted'} by ${actor.user.tag}: ${reason}`)) === 'ok') changed++;
+      }
+      await modLog(ctx, guild, { title: locking ? '🚨 Server lockdown' : '✅ Lockdown lifted', description: `${changed} channel(s) by <@${actor.id}>${locking ? `\n**Reason:** ${reason}` : ''}`, color: locking ? COLORS.danger : COLORS.success });
+      await reply(i, locking ? `🚨 Locked ${changed} channel(s). Use /unlockdown to open them again.` : `✅ Unlocked ${changed} channel(s).`);
+      return;
+    }
+    case 'temprole': {
+      const target = await fetchTarget();
+      if (!target) return void (await reply(i, 'That person isn’t in this server.'));
+      const role = i.options.getRole('role', true);
+      const ms = parseDuration(i.options.getString('duration', true));
+      if (!ms) return void (await reply(i, 'Use a duration like `2h`, `1d` or `7d` (up to 30 days).'));
+      const me = guild.members.me;
+      if (role.managed || role.id === guild.id || !me || role.position >= me.roles.highest.position) return void (await reply(i, 'I can’t give that role — move my role above it.'));
+      if (actor.id !== guild.ownerId && role.position >= actor.roles.highest.position) return void (await reply(i, 'That role is the same as or above your highest role.'));
+      const given = await target.roles.add(role.id, `Temporary role from ${actor.user.tag}`).then(() => true, () => false);
+      if (!given) return void (await reply(i, 'I couldn’t give that role.'));
+      const until = Date.now() + ms;
+      ctx.store.addTempRole(guild.id, target.id, role.id, until);
+      await modLog(ctx, guild, { title: 'Temporary role', description: `<@${target.id}> got <@&${role.id}> until <t:${Math.floor(until / 1000)}:f> — by <@${actor.id}>`, color: COLORS.info });
+      await reply(i, `Gave <@${target.id}> <@&${role.id}> — it’s taken back <t:${Math.floor(until / 1000)}:R>.`);
+      return;
+    }
+    case 'reason': {
+      const number = i.options.getInteger('case', true);
+      const text = truncate(i.options.getString('reason', true), 400);
+      const existing = ctx.store.caseByNumber(guild.id, number);
+      if (!existing) return void (await reply(i, `There’s no case #${number}.`));
+      if (existing.moderatorId !== actor.id && !actor.permissions.has(PermissionFlagsBits.ManageGuild)) return void (await reply(i, 'Only the moderator who made the case (or Manage Server) can change it.'));
+      ctx.store.setCaseReason(guild.id, number, text);
+      await modLog(ctx, guild, { title: `Case #${number} updated`, description: `New reason by <@${actor.id}>: ${text}`, color: COLORS.info });
+      await reply(i, `Updated case #${number}.`);
+      return;
+    }
+    case 'modstats': {
+      const mod = i.options.getUser('moderator') ?? i.user;
+      const all = ctx.store.casesByModerator(guild.id, mod.id);
+      const month = ctx.store.casesByModerator(guild.id, mod.id, Date.now() - 30 * 86_400_000);
+      const line = (counts: Record<string, number>) => Object.entries(counts).map(([t, n]) => `${CASE_LABELS[t] ?? t}: **${n}**`).join('\n') || 'Nothing yet';
+      await i.reply({ embeds: [{ title: `🛡️ ${mod.username}’s moderation`, color: COLORS.info, fields: [{ name: 'Last 30 days', value: line(month), inline: true }, { name: 'All time', value: line(all), inline: true }] }], flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] } });
+      return;
+    }
+    case 'dehoist': {
+      await i.deferReply({ flags: MessageFlags.Ephemeral });
+      await guild.members.fetch().catch(() => null);
+      let n = 0;
+      for (const m of guild.members.cache.values()) {
+        if (n >= 100) break; // shortcut: 100 renames per run keeps clear of rate limits; run it again if needed.
+        const clean = m.user.bot ? null : dehoistedName(m.displayName);
+        if (clean && m.manageable && (await m.setNickname(clean, `Dehoisted by ${actor.user.tag}`).then(() => true, () => false))) n++;
+      }
+      await reply(i, n ? `Fixed ${n} nickname(s).` : 'No hoisted nicknames found.');
+      return;
+    }
+  }
+}
+
+/** Every 15 s: takes back temporary roles whose time is up. */
+export async function endTempRoles(ctx: ModuleContext, client: Client): Promise<void> {
+  for (const t of ctx.store.takeDueTempRoles(Date.now())) {
+    const guild = client.guilds.cache.get(t.guildId);
+    const member = await guild?.members.fetch(t.userId).catch(() => null);
+    await member?.roles.remove(t.roleId, 'Temporary role ended').catch((e: Error) => ctx.log('warn', `Temporary role: could not remove: ${e.message}`));
   }
 }
 
@@ -476,6 +594,11 @@ export async function automodCheck(ctx: ModuleContext, message: Message): Promis
   else if (a.words.enabled && matchBlockedWord(text, a.words.words)) rule = { label: 'using a blocked word', action: a.words.action };
   else if (a.caps.enabled && isCapsSpam(text, a.caps.minLength, a.caps.percent)) rule = { label: 'writing in all caps', action: a.caps.action };
   else if (a.emoji.enabled && countEmoji(text) > a.emoji.max) rule = { label: 'sending too many emoji', action: a.emoji.action };
+  else if (a.zalgo.enabled && isZalgo(text)) rule = { label: 'using glitched (zalgo) text', action: a.zalgo.action };
+  else if (a.lines.enabled && text.split('\n').length > a.lines.max) rule = { label: 'sending too many lines', action: a.lines.action };
+  else if (a.newMemberLinks.enabled && member.joinedTimestamp && Date.now() - member.joinedTimestamp < a.newMemberLinks.hours * 3_600_000 && /https?:\/\/|discord\.gg\//i.test(text)) {
+    rule = { label: 'posting links as a new member', action: a.newMemberLinks.action };
+  }
   else if (a.repeats.enabled && repeats >= a.repeats.count) {
     rule = { label: 'repeating the same message', action: a.repeats.action };
     lastMessage.delete(repeatKey);

@@ -9,6 +9,10 @@ export interface ServerCounts {
   boosts: number;
   channels: number;
   roles: number;
+  textChannels: number;
+  voiceChannels: number;
+  emojis: number;
+  boostTier: number;
 }
 
 /** A counter channel's name (Discord allows up to 100 characters). */
@@ -29,6 +33,10 @@ export async function updateStats(ctx: ModuleContext, guild: Guild): Promise<voi
     boosts: guild.premiumSubscriptionCount ?? 0,
     channels: guild.channels.cache.size,
     roles: Math.max(0, guild.roles.cache.size - 1), // without @everyone
+    textChannels: guild.channels.cache.filter((c) => c.isTextBased() && !c.isThread() && !c.isVoiceBased()).size,
+    voiceChannels: guild.channels.cache.filter((c) => c.isVoiceBased()).size,
+    emojis: guild.emojis.cache.size,
+    boostTier: guild.premiumTier,
   };
   for (const counter of config.counters) {
     const channel = guild.channels.cache.get(counter.channelId);

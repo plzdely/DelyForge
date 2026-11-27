@@ -143,6 +143,8 @@ const MODERATION: CommandJSON[] = [
     .addUserOption((o) => o.setName('member').setDescription('Only messages from this member'))
     .addBooleanOption((o) => o.setName('bots').setDescription('Only messages from bots'))
     .addStringOption((o) => o.setName('contains').setDescription('Only messages containing this text').setMaxLength(100))
+    .addBooleanOption((o) => o.setName('links').setDescription('Only messages with links'))
+    .addBooleanOption((o) => o.setName('attachments').setDescription('Only messages with files or images'))
     .toJSON(),
   new SlashCommandBuilder()
     .setName('softban')
@@ -171,6 +173,49 @@ const MODERATION: CommandJSON[] = [
     .setDMPermission(false)
     .addUserOption((o) => o.setName('member').setDescription('Who').setRequired(true))
     .addStringOption((o) => o.setName('nickname').setDescription('New nickname (leave empty to reset)').setMaxLength(32))
+    .toJSON(),
+  new SlashCommandBuilder()
+    .setName('lockdown')
+    .setDescription('Lock every text channel at once (raids, emergencies)')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+    .setDMPermission(false)
+    .addStringOption((o) => o.setName('reason').setDescription('Why').setMaxLength(400))
+    .toJSON(),
+  new SlashCommandBuilder()
+    .setName('unlockdown')
+    .setDescription('Unlock every channel that /lockdown locked')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+    .setDMPermission(false)
+    .toJSON(),
+  new SlashCommandBuilder()
+    .setName('temprole')
+    .setDescription('Give a member a role for a while (taken back automatically)')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles)
+    .setDMPermission(false)
+    .addUserOption((o) => o.setName('member').setDescription('Who').setRequired(true))
+    .addRoleOption((o) => o.setName('role').setDescription('Which role').setRequired(true))
+    .addStringOption((o) => o.setName('duration').setDescription('How long, e.g. 2h, 7d (max 30d)').setRequired(true).setMaxLength(20))
+    .toJSON(),
+  new SlashCommandBuilder()
+    .setName('reason')
+    .setDescription('Change the reason of a moderation case')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
+    .setDMPermission(false)
+    .addIntegerOption((o) => o.setName('case').setDescription('Case number').setRequired(true).setMinValue(1))
+    .addStringOption((o) => o.setName('reason').setDescription('The new reason').setRequired(true).setMaxLength(400))
+    .toJSON(),
+  new SlashCommandBuilder()
+    .setName('modstats')
+    .setDescription('How many actions a moderator took')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
+    .setDMPermission(false)
+    .addUserOption((o) => o.setName('moderator').setDescription('Who (defaults to you)'))
+    .toJSON(),
+  new SlashCommandBuilder()
+    .setName('dehoist')
+    .setDescription('Remove symbols from the start of nicknames (stops hoisting to the top of the list)')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageNicknames)
+    .setDMPermission(false)
     .toJSON(),
 ];
 
@@ -209,6 +254,48 @@ const UTILITY: Record<keyof ModuleConfigs['utility']['commands'], CommandJSON> =
     .addIntegerOption((o) => o.setName('sides').setDescription('Sides per die (default 6)').setMinValue(2).setMaxValue(1000))
     .addIntegerOption((o) => o.setName('dice').setDescription('How many dice (default 1)').setMinValue(1).setMaxValue(10))
     .toJSON(),
+  afk: new SlashCommandBuilder()
+    .setName('afk')
+    .setDescription('Tell people you’re away; it’s cleared when you talk again')
+    .setDMPermission(false)
+    .addStringOption((o) => o.setName('reason').setDescription('Why (optional)').setMaxLength(200))
+    .toJSON(),
+  roleinfo: new SlashCommandBuilder()
+    .setName('roleinfo')
+    .setDescription('Information about a role')
+    .setDMPermission(false)
+    .addRoleOption((o) => o.setName('role').setDescription('Which role').setRequired(true))
+    .toJSON(),
+  channelinfo: new SlashCommandBuilder()
+    .setName('channelinfo')
+    .setDescription('Information about a channel')
+    .setDMPermission(false)
+    .addChannelOption((o) => o.setName('channel').setDescription('Which channel (defaults to this one)'))
+    .toJSON(),
+  membercount: new SlashCommandBuilder().setName('membercount').setDescription('How many members, people and bots this server has').setDMPermission(false).toJSON(),
+  choose: new SlashCommandBuilder()
+    .setName('choose')
+    .setDescription('Let the bot pick for you')
+    .addStringOption((o) => o.setName('options').setDescription('Choices separated by | e.g. pizza | tacos | sushi').setRequired(true).setMaxLength(500))
+    .toJSON(),
+  emoji: new SlashCommandBuilder()
+    .setName('emoji')
+    .setDescription('Add an emoji from another server to this one')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuildExpressions)
+    .setDMPermission(false)
+    .addStringOption((o) => o.setName('emoji').setDescription('Paste the emoji (or its image link)').setRequired(true).setMaxLength(300))
+    .addStringOption((o) => o.setName('name').setDescription('Name for it here').setMinLength(2).setMaxLength(32))
+    .toJSON(),
+  timestamp: new SlashCommandBuilder()
+    .setName('timestamp')
+    .setDescription('Make a time that shows in everyone’s own time zone')
+    .addStringOption((o) => o.setName('in').setDescription('From now, e.g. 2h, 1d, 1h30m').setRequired(true).setMaxLength(20))
+    .toJSON(),
+  banner: new SlashCommandBuilder()
+    .setName('banner')
+    .setDescription('Show someone’s profile banner')
+    .addUserOption((o) => o.setName('user').setDescription('Who (defaults to you)'))
+    .toJSON(),
 };
 
 export function commandHash(c: RESTPostAPIApplicationCommandsJSONBody): string {
@@ -224,6 +311,7 @@ const LEVELING: CommandJSON[] = [
     .addUserOption((o) => o.setName('member').setDescription('Whose rank (defaults to you)'))
     .toJSON(),
   new SlashCommandBuilder().setName('leaderboard').setDescription('Top members by XP').setDMPermission(false).toJSON(),
+  new SlashCommandBuilder().setName('rewards').setDescription('The roles you get for reaching levels').setDMPermission(false).toJSON(),
   new SlashCommandBuilder()
     .setName('xp')
     .setDescription('Staff: give, take or set a member’s XP')
@@ -252,6 +340,61 @@ const VOUCH: CommandJSON = new SlashCommandBuilder()
   .addStringOption((o) => o.setName('review').setDescription('How was it?').setRequired(true).setMaxLength(1000))
   .addAttachmentOption((o) => o.setName('image').setDescription('A screenshot of what you got (optional)'))
   .toJSON();
+
+const MODMAIL: CommandJSON = new SlashCommandBuilder()
+  .setName('modmail')
+  .setDescription('Staff: manage modmail conversations')
+  .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
+  .setDMPermission(false)
+  .addSubcommand((s) => s.setName('open').setDescription('Start a conversation with a member').addUserOption((o) => o.setName('member').setDescription('Who').setRequired(true)))
+  .addSubcommand((s) => s.setName('close').setDescription('Close the conversation in this thread').addStringOption((o) => o.setName('reason').setDescription('Why (sent to the member)').setMaxLength(300)))
+  .addSubcommand((s) => s.setName('block').setDescription('Stop a member from using modmail').addUserOption((o) => o.setName('member').setDescription('Who').setRequired(true)))
+  .addSubcommand((s) => s.setName('unblock').setDescription('Let a member use modmail again').addUserOption((o) => o.setName('member').setDescription('Who').setRequired(true)))
+  .toJSON();
+
+const amount = (o: import('discord.js').SlashCommandStringOption) => o.setName('amount').setDescription('A number, or all / half / 50%').setRequired(true).setMaxLength(20);
+const ECONOMY: Record<string, CommandJSON> = {
+  balance: new SlashCommandBuilder().setName('balance').setDescription('Your coins (wallet and bank)').setDMPermission(false).addUserOption((o) => o.setName('member').setDescription('Whose (defaults to you)')).toJSON(),
+  daily: new SlashCommandBuilder().setName('daily').setDescription('Collect your daily coins (keep your streak going!)').setDMPermission(false).toJSON(),
+  work: new SlashCommandBuilder().setName('work').setDescription('Work for some coins').setDMPermission(false).toJSON(),
+  pay: new SlashCommandBuilder().setName('pay').setDescription('Give coins to someone').setDMPermission(false).addUserOption((o) => o.setName('member').setDescription('Who').setRequired(true)).addStringOption(amount).toJSON(),
+  deposit: new SlashCommandBuilder().setName('deposit').setDescription('Put coins in the bank (safe from /rob)').setDMPermission(false).addStringOption(amount).toJSON(),
+  withdraw: new SlashCommandBuilder().setName('withdraw').setDescription('Take coins out of the bank').setDMPermission(false).addStringOption(amount).toJSON(),
+  rob: new SlashCommandBuilder().setName('rob').setDescription('Try to steal from someone’s wallet (risky!)').setDMPermission(false).addUserOption((o) => o.setName('member').setDescription('Who').setRequired(true)).toJSON(),
+  rich: new SlashCommandBuilder().setName('rich').setDescription('The richest members').setDMPermission(false).toJSON(),
+  shopitems: new SlashCommandBuilder().setName('shopitems').setDescription('What you can buy with coins').setDMPermission(false).toJSON(),
+  buy: new SlashCommandBuilder().setName('buy').setDescription('Buy something from the coin shop').setDMPermission(false).addStringOption((o) => o.setName('item').setDescription('Start typing an item').setRequired(true).setAutocomplete(true).setMaxLength(40)).toJSON(),
+  inventory: new SlashCommandBuilder().setName('inventory').setDescription('What you bought').setDMPermission(false).addUserOption((o) => o.setName('member').setDescription('Whose (defaults to you)')).toJSON(),
+  coinflip: new SlashCommandBuilder()
+    .setName('coinflip')
+    .setDescription('Bet coins on heads or tails')
+    .setDMPermission(false)
+    .addStringOption((o) => o.setName('side').setDescription('Heads or tails').setRequired(true).addChoices({ name: 'Heads', value: 'heads' }, { name: 'Tails', value: 'tails' }))
+    .addStringOption(amount)
+    .toJSON(),
+  slots: new SlashCommandBuilder().setName('slots').setDescription('Spin the slot machine').setDMPermission(false).addStringOption(amount).toJSON(),
+  eco: new SlashCommandBuilder()
+    .setName('eco')
+    .setDescription('Staff: change members’ coins')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+    .setDMPermission(false)
+    .addSubcommand((s) => s.setName('give').setDescription('Give coins').addUserOption((o) => o.setName('member').setDescription('Who').setRequired(true)).addIntegerOption((o) => o.setName('amount').setDescription('How many').setRequired(true).setMinValue(1).setMaxValue(1_000_000_000)))
+    .addSubcommand((s) => s.setName('take').setDescription('Take coins').addUserOption((o) => o.setName('member').setDescription('Who').setRequired(true)).addIntegerOption((o) => o.setName('amount').setDescription('How many').setRequired(true).setMinValue(1).setMaxValue(1_000_000_000)))
+    .addSubcommand((s) => s.setName('set').setDescription('Set a wallet to an exact amount').addUserOption((o) => o.setName('member').setDescription('Who').setRequired(true)).addIntegerOption((o) => o.setName('amount').setDescription('New wallet').setRequired(true).setMinValue(0).setMaxValue(1_000_000_000)))
+    .addSubcommand((s) => s.setName('reset').setDescription('Wipe a member’s coins and items').addUserOption((o) => o.setName('member').setDescription('Who').setRequired(true)))
+    .toJSON(),
+};
+
+const GAMES = {
+  count: new SlashCommandBuilder().setName('count').setDescription('The counting channel’s current number, record and top counters').setDMPermission(false).toJSON(),
+  trivia: new SlashCommandBuilder().setName('trivia').setDescription('Start a trivia question — first right answer wins').setDMPermission(false).toJSON(),
+  rps: new SlashCommandBuilder()
+    .setName('rps')
+    .setDescription('Rock, paper, scissors against the bot')
+    .addStringOption((o) => o.setName('pick').setDescription('Your move').setRequired(true).addChoices({ name: '🪨 Rock', value: 'rock' }, { name: '📄 Paper', value: 'paper' }, { name: '✂️ Scissors', value: 'scissors' }))
+    .toJSON(),
+  eightball: new SlashCommandBuilder().setName('8ball').setDescription('Ask the magic 8-ball a question').addStringOption((o) => o.setName('question').setDescription('Your question').setRequired(true).setMaxLength(200)).toJSON(),
+} satisfies Record<string, CommandJSON>;
 
 const INVITES: CommandJSON[] = [
   new SlashCommandBuilder()
@@ -285,22 +428,50 @@ const TICKET: CommandJSON = new SlashCommandBuilder()
   .addSubcommand((s) =>
     s
       .setName('add')
-      .setDescription('Let another member see this ticket')
-      .addUserOption((o) => o.setName('member').setDescription('Who to add').setRequired(true)),
+      .setDescription('Let a member — or everyone with a role — see this ticket')
+      .addMentionableOption((o) => o.setName('who').setDescription('A member or a role').setRequired(true)),
   )
   .addSubcommand((s) =>
     s
       .setName('remove')
-      .setDescription('Take someone out of this ticket')
-      .addUserOption((o) => o.setName('member').setDescription('Who to remove').setRequired(true)),
+      .setDescription('Take a member or role out of this ticket')
+      .addMentionableOption((o) => o.setName('who').setDescription('A member or a role').setRequired(true)),
   )
+  .addSubcommand((s) => s.setName('claim').setDescription('Take this ticket'))
+  .addSubcommand((s) => s.setName('unclaim').setDescription('Give this ticket back so someone else can take it'))
+  .addSubcommand((s) =>
+    s
+      .setName('transfer')
+      .setDescription('Hand this ticket to another staff member')
+      .addUserOption((o) => o.setName('member').setDescription('Who takes over').setRequired(true)),
+  )
+  .addSubcommand((s) =>
+    s
+      .setName('priority')
+      .setDescription('Mark how urgent this ticket is (shown in the channel name)')
+      .addStringOption((o) =>
+        o.setName('level').setDescription('How urgent').setRequired(true).addChoices({ name: '🟢 Low', value: 'low' }, { name: '🟡 Medium', value: 'medium' }, { name: '🔴 High', value: 'high' }, { name: 'None', value: 'none' }),
+      ),
+  )
+  .addSubcommand((s) =>
+    s
+      .setName('closerequest')
+      .setDescription('Ask the member if the ticket can be closed')
+      .addStringOption((o) => o.setName('reason').setDescription('Why (optional)').setMaxLength(300)),
+  )
+  .addSubcommand((s) => s.setName('stats').setDescription('Open tickets and who handled the most this week'))
   .addSubcommand((s) =>
     s
       .setName('rename')
       .setDescription('Rename this ticket channel')
       .addStringOption((o) => o.setName('name').setDescription('New name').setRequired(true).setMaxLength(90)),
   )
-  .addSubcommand((s) => s.setName('close').setDescription('Close this ticket'))
+  .addSubcommand((s) =>
+    s
+      .setName('close')
+      .setDescription('Close this ticket')
+      .addStringOption((o) => o.setName('reason').setDescription('Why (shown in the transcript and the DM)').setMaxLength(300)),
+  )
   .toJSON();
 
 const VOICE: CommandJSON = new SlashCommandBuilder()
@@ -309,6 +480,12 @@ const VOICE: CommandJSON = new SlashCommandBuilder()
   .setDMPermission(false)
   .addSubcommand((s) => s.setName('lock').setDescription('Stop new people from joining'))
   .addSubcommand((s) => s.setName('unlock').setDescription('Let people join again'))
+  .addSubcommand((s) => s.setName('hide').setDescription('Hide the channel from everyone who isn’t in it'))
+  .addSubcommand((s) => s.setName('unhide').setDescription('Show the channel again'))
+  .addSubcommand((s) => s.setName('permit').setDescription('Let someone join even when locked').addUserOption((o) => o.setName('member').setDescription('Who').setRequired(true)))
+  .addSubcommand((s) => s.setName('kick').setDescription('Disconnect someone from your channel').addUserOption((o) => o.setName('member').setDescription('Who').setRequired(true)))
+  .addSubcommand((s) => s.setName('ban').setDescription('Disconnect someone and stop them joining again').addUserOption((o) => o.setName('member').setDescription('Who').setRequired(true)))
+  .addSubcommand((s) => s.setName('transfer').setDescription('Give your channel to someone in it').addUserOption((o) => o.setName('member').setDescription('Who').setRequired(true)))
   .addSubcommand((s) => s.setName('limit').setDescription('Set how many people can join').addIntegerOption((o) => o.setName('people').setDescription('0 = no limit').setRequired(true).setMinValue(0).setMaxValue(99)))
   .addSubcommand((s) => s.setName('rename').setDescription('Rename your channel').addStringOption((o) => o.setName('name').setDescription('New name').setRequired(true).setMaxLength(90)))
   .addSubcommand((s) => s.setName('claim').setDescription('Take over the channel if its owner left'))
@@ -369,5 +546,20 @@ export function desiredCommands(config: ModuleConfigs): CommandJSON[] {
   if (config.birthdays.enabled) out.push(BIRTHDAY);
   if (config.shop.enabled) out.push(PRICE);
   if (config.shop.enabled && config.shop.vouchChannelId) out.push(VOUCH);
+  if (config.modmail.enabled) out.push(MODMAIL);
+  if (config.economy.enabled) {
+    const e = config.economy;
+    for (const [name, def] of Object.entries(ECONOMY)) {
+      if (name === 'rob' && !e.rob.enabled) continue;
+      if ((name === 'coinflip' || name === 'slots') && !e.gambling.enabled) continue;
+      if ((name === 'shopitems' || name === 'buy' || name === 'inventory') && !e.shop.length) continue;
+      out.push(def);
+    }
+  }
+  if (config.games.enabled) {
+    if (config.games.counting.channelId) out.push(GAMES.count);
+    if (config.games.trivia.enabled) out.push(GAMES.trivia);
+    if (config.games.fun) out.push(GAMES.rps, GAMES.eightball);
+  }
   return out;
 }

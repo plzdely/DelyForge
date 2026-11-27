@@ -1,4 +1,6 @@
-import { type Guild, type GuildMember, GuildVerificationLevel } from 'discord.js';
+import { recordNukeAction } from '@delyforge/shared';
+import { AuditLogEvent, type Guild, type GuildMember, GuildVerificationLevel } from 'discord.js';
+import type { AuditLike } from './logging.js';
 import { COLORS, type ModuleContext, sendableChannel, tryDM } from './context.js';
 
 const DAY = 86_400_000;
@@ -14,9 +16,44 @@ export function recordJoin(guildId: string, userId: string, now: number, perSeco
   return list;
 }
 
-async function alert(ctx: ModuleContext, member: GuildMember, title: string, description: string): Promise<void> {
+async function alert(ctx: ModuleContext, member: Pick<GuildMember, 'guild'>, title: string, description: string): Promise<void> {
   const channel = await sendableChannel(ctx, member.guild, ctx.config(member.guild.id).antiRaid.alertChannelId, 'Raid protection');
   await channel?.send({ embeds: [{ title, description, color: COLORS.danger, timestamp: new Date().toISOString() }], allowedMentions: { parse: [] } }).catch(() => null);
+}
+
+/** Servers whose invites the bot paused during a raid (so it only un-pauses its own pause). */
+const pausedInvites = new Set<string>();
+
+// ─── Anti-nuke ────────────────────────────────────────────────────────────────────────────────────────────────────
+
+const NUKE_ACTIONS: ReadonlySet<AuditLogEvent> = new Set([AuditLogEvent.ChannelDelete, AuditLogEvent.RoleDelete, AuditLogEvent.MemberBanAdd, AuditLogEvent.MemberKick, AuditLogEvent.WebhookCreate, AuditLogEvent.EmojiDelete]);
+/** Recent destructive actions per server and person. */
+const nukes = new Map<string, number[]>();
+
+/** Audit-log entry: stops someone who deletes channels/roles or bans/kicks many people in a short time. */
+export async function onNukeAudit(ctx: ModuleContext, e: AuditLike, guild: Guild, now = Date.now()): Promise<void> {
+  const config = ctx.config(guild.id).antiRaid;
+  const n = config.antiNuke;
+  if (!config.enabled || !n.enabled || !NUKE_ACTIONS.has(e.action) || !e.executorId) return;
+  const who = e.executorId;
+  if (who === guild.ownerId || who === ctx.client.user.id || n.trustedUserIds.includes(who)) return;
+  const key = `${guild.id}:${who}`;
+  const times = nukes.get(key) ?? [];
+  nukes.set(key, times);
+  if (!recordNukeAction(times, now, n.maxActions, n.perSeconds)) return;
+  times.length = 0;
+  const member = await guild.members.fetch(who).catch(() => null);
+  const why = `Anti-nuke: ${n.maxActions} destructive actions in ${n.perSeconds}s`;
+  let done = false;
+  if (member) {
+    done =
+      n.action === 'ban'
+        ? await member.ban({ reason: why }).then(() => true, () => false)
+        : await member.roles.set(member.roles.cache.filter((r) => r.managed).map((r) => r.id), why).then(() => true, () => false); // a bot's own (managed) role can't be removed
+  }
+  ctx.log('warn', `Anti-nuke in “${guild.name}”: ${member?.user.tag ?? who} — ${done ? (n.action === 'ban' ? 'banned' : 'roles removed') : 'could not be stopped (their role is above mine?)'}.`);
+  await alert(ctx, { guild }, '🛡️ Anti-nuke triggered', `<@${who}> did ${n.maxActions} destructive actions (deleting channels/roles, banning/kicking) within ${n.perSeconds} seconds.
+**Action:** ${done ? (n.action === 'ban' ? 'banned' : 'all roles removed') : '⚠️ I couldn’t act — move my role to the top and check my permissions.'}`);
 }
 
 /** Verification level before a lockdown, per server, so it can be put back. */
@@ -40,7 +77,8 @@ async function raidOver(ctx: ModuleContext, member: GuildMember, locked: boolean
   const restored = locked && before !== undefined && guild.verificationLevel === GuildVerificationLevel.High
     ? await guild.setVerificationLevel(before, 'Raid protection: raid over').then(() => true, () => false)
     : false;
-  await alert(ctx, member, '✅ Raid protection back to normal', restored ? 'The raid window has ended and the server’s verification level was put back.' : 'The raid window has ended.');
+  const unpaused = pausedInvites.delete(guild.id) ? await guild.disableInvites(false).then(() => true, () => false) : false;
+  await alert(ctx, member, '✅ Raid protection back to normal', `The raid window has ended.${restored ? ' The verification level was put back.' : ''}${unpaused ? ' Invites work again.' : ''}`);
 }
 
 /** Runs first on every join. Returns true when the member was removed (so no welcome message is sent). */
@@ -74,6 +112,7 @@ export async function onMemberJoin(ctx: ModuleContext, member: GuildMember, now 
     );
     ctx.log('warn', `Raid protection: ${recent.length} joins in ${config.perSeconds}s in “${guild.name}”.`);
     const locked = config.lockdown ? await lockdown(ctx, guild) : false;
+    if (config.pauseInvites && (await guild.disableInvites(true).then(() => true, (e: Error) => (ctx.log('warn', `Raid protection: couldn’t pause invites: ${e.message}`), false)))) pausedInvites.add(guild.id);
     setTimeout(() => void raidOver(ctx, member, locked), config.raidMinutes * 60_000);
     // The accounts that set off the alarm joined before it — remove them as well.
     if (config.raidAction !== 'alert') {

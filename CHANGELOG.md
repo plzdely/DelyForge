@@ -5,6 +5,51 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-27
+
+117 new features: 4 new modules (59 features) and 58 additions to existing modules.
+
+### New modules
+- **Modmail** (14): members DM the bot to reach staff; each conversation is a thread in a staff-only channel with a
+  member card (account age, join date, roles, earlier conversations); staff reply by typing in the thread; `//` notes
+  stay private; anonymous replies option; files both ways; staff ping; server picker for members of several servers;
+  ✅/❌ delivery reactions; `/modmail open | close (reason) | block | unblock`; custom greeting and closing messages.
+- **Applications** (12): up to 10 forms, each with its own panel button and up to 5 questions (short/long, required);
+  answers go to a review channel with account age and join date; Accept / Deny (with an optional reason); accepting
+  gives a role and can take one away; templated DMs on accept and deny; cooldown after a decision; one waiting
+  application per person; reviewer roles; optional discussion thread per application.
+- **Economy** (20): `/balance`, `/daily` with streak bonus, `/work`, `/pay`, bank with `/deposit` and `/withdraw`,
+  `/rob` with success chance, fines, cooldown and minimum wallet, coins for chatting, `/rich` leaderboard, coin shop
+  (`/shopitems`, `/buy` with suggestions, roles given with refund if they can't be) and `/inventory`, `/coinflip`,
+  `/slots`, maximum bet, `/eco give | take | set | reset`, custom currency name and emoji, starting balance, amounts like
+  `all`, `half`, `50%`, `2k`.
+- **Counting & Games** (13): counting channel, no counting twice in a row, reset-to-1 or delete-wrong modes, ✅ and 🎉
+  reactions, record tracking, `/count` with top counters, `/trivia` with four buttons and a timer, 50 built-in questions,
+  your own questions, coin prizes with Economy, the answer revealed when time runs out, `/rps`, `/8ball`.
+
+### Added to existing modules
+- **Tickets** (11): `/ticket add` and `/ticket remove` take a role as well as a member; `/ticket claim`, `unclaim`,
+  `transfer`, `priority` (🟢🟡🔴 in the channel name), `closerequest` (the member confirms with a button), `close` with
+  a reason, `stats`; 1–5 star rating DM after closing; ticket log channel. The module page now lists every command.
+- **Moderation** (12): `/lockdown` and `/unlockdown` (every text channel, restored exactly), `/temprole`, `/reason`
+  (edit a case), `/modstats`, `/dehoist` plus automatic dehoisting, `/purge` filters for links and attachments, AutoMod
+  rules for zalgo text, too many lines and links from brand-new members.
+- **Utility** (9): `/afk` (pingers are told, cleared when you talk), `/roleinfo`, `/channelinfo`, `/membercount`,
+  `/choose`, `/emoji` (add an emoji from another server), `/timestamp`, `/banner`, DISBOARD bump reminder.
+- **Welcome** (4): booster thank-you message, auto-delete for welcome messages, `{user.joined}` and `{boosts}` variables.
+- **Leveling** (4): `/rewards`, double-XP weekends, announce only every N levels, channel XP boosts.
+- **Giveaways** (3): minimum account age, minimum time in the server, DM the winners.
+- **Suggestions** (1): cooldown between suggestions.
+- **Temporary voice** (5): `/voice hide | unhide`, `permit`, `kick`, `ban`, `transfer`.
+- **Raid protection** (4): anti-nuke (mass channel/role/emoji deletes, bans, kicks or webhooks by one person → roles
+  removed or banned), trusted people list, choice of action, pausing invites during a raid.
+- **Server stats** (4): `{textChannels}`, `{voiceChannels}`, `{emojis}`, `{boostTier}`.
+- **Reaction roles** (1): most roles per member per panel.
+
+### Notes
+- Utility now listens to messages when `/afk` is on (no privileged intent needed). Modmail and the counting channel need
+  **Message Content Intent** in the Developer Portal; the module pages say so.
+
 ## [0.4.4] - 2026-11-25 (local build, not published)
 
 ### Added

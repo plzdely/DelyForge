@@ -9,6 +9,7 @@ export * from './discord.js';
 export * from './runtime.js';
 export * from './modules.js';
 export * from './shop.js';
+export * from './games.js';
 export * from './builders.js';
 export * from './templates.js';
 export * from './account.js';

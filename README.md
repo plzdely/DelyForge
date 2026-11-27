@@ -27,7 +27,7 @@ Your bot's token (its password) is encrypted and never leaves your PC.
 | | |
 |---|---|
 | 🤖 **Many bots, one app** | Create, group, favorite, start and stop as many bots as you like. |
-| 🧩 **19 ready-made modules** | Moderation (cases, temp bans, AutoMod), Welcome, Tickets, Leveling, Logging (who did what), Verification, Utility, Reaction Roles, Suggestions, Giveaways, Invite Tracker, Starboard, Temporary Voice, Raid Protection, Sticky Messages, Server Stats, Birthdays, Social Alerts (YouTube + RSS), Scheduled Messages. |
+| 🧩 **24 ready-made modules** | Moderation (cases, temp bans, lockdown, AutoMod), Welcome, Tickets, Leveling, Logging (who did what), Verification, Utility, Reaction Roles, Suggestions, Giveaways, Invite Tracker, Starboard, Temporary Voice, Raid Protection (with anti-nuke), Sticky Messages, Server Stats, Birthdays, Social Alerts (YouTube + RSS), Scheduled Messages, Shop, Modmail, Applications, Economy, Counting & Games. |
 | 🩺 **Setup Doctor** | Checks a server for every module that's on and explains each problem in plain English, with the fix. |
 | 🧪 **Test buttons** | Send a test welcome, level-up, birthday or feed post with one click, and preview every message Discord-style. |
 | ⌨️ **Command Builder** | Make your own slash commands visually, with a live preview of how the reply looks in Discord. |

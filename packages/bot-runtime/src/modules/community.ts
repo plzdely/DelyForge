@@ -62,6 +62,9 @@ function suggestionMessage(s: { id: number; userId: string; content: string; sta
   };
 }
 
+/** When each member last suggested something (for the cooldown). */
+const lastSuggestion = new Map<string, number>();
+
 export async function handleSuggest(ctx: ModuleContext, i: ChatInputCommandInteraction): Promise<void> {
   if (!i.inCachedGuild()) return;
   const c = ctx.config(i.guildId).suggestions;
@@ -69,6 +72,10 @@ export async function handleSuggest(ctx: ModuleContext, i: ChatInputCommandInter
   const channel = await sendableChannel(ctx, i.guild, c.channelId, 'Suggestions');
   if (!channel) return void (await ephemeral(i, 'The suggestions channel isn’t available right now.'));
   const content = truncate(i.options.getString('idea', true).trim(), 1500);
+  const key = `${i.guildId}:${i.user.id}`;
+  const wait = c.cooldownMinutes ? (lastSuggestion.get(key) ?? 0) + c.cooldownMinutes * 60_000 - Date.now() : 0;
+  if (wait > 0) return void (await ephemeral(i, `You can suggest again <t:${Math.floor((Date.now() + wait) / 1000)}:R>.`));
+  lastSuggestion.set(key, Date.now());
   const id = ctx.store.addSuggestion(i.guildId, channel.id, i.user.id, content);
   const msg = await channel.send(suggestionMessage({ id, userId: i.user.id, content, status: 'open' }, { up: 0, down: 0 }, undefined, c.anonymous)).catch((e: Error) => {
     ctx.log('warn', `Suggestions: could not post: ${e.message}`);
@@ -232,6 +239,13 @@ async function announceWinners(ctx: ModuleContext, client: Client, g: Giveaway, 
     ? `🎉 ${reroll ? 'New winner' : 'Congratulations'} ${newWinners.map((w) => `<@${w}>`).join(', ')}! You won **${g.prize}**.`
     : `The giveaway for **${g.prize}** ended with no entries.`;
   await channel.send({ content, allowedMentions: { users: newWinners } }).catch(() => null);
+  if (config.dmWinners) {
+    const guildName = client.guilds.cache.get(g.guildId)?.name ?? 'the server';
+    for (const w of newWinners) {
+      const user = await client.users.fetch(w).catch(() => null);
+      await user?.send(`🎉 You won **${g.prize}** in **${guildName}**! Check the giveaway channel for how to claim it.`).catch(() => null);
+    }
+  }
 }
 
 /** Ends giveaways whose time is up. Runs every 15 s; safe to run twice (the store only lets one caller end each). */
@@ -320,6 +334,14 @@ export async function onGiveawayEnter(ctx: ModuleContext, i: ButtonInteraction, 
   // Members who lost the role can still leave; only joining needs it (winners are checked again when drawn).
   if (g.requiredRoleId && !i.member.roles.cache.has(g.requiredRoleId) && !ctx.store.entries(id).includes(i.user.id)) {
     return void (await ephemeral(i, `You need the <@&${g.requiredRoleId}> role to enter this giveaway.`));
+  }
+  const gc = ctx.config(i.guildId).giveaways;
+  const already = ctx.store.entries(id).includes(i.user.id);
+  if (!already && gc.minAccountAgeDays && Date.now() - i.user.createdTimestamp < gc.minAccountAgeDays * 86_400_000) {
+    return void (await ephemeral(i, `Your account must be at least ${gc.minAccountAgeDays} day(s) old to enter giveaways here.`));
+  }
+  if (!already && gc.minMemberDays && (!i.member.joinedTimestamp || Date.now() - i.member.joinedTimestamp < gc.minMemberDays * 86_400_000)) {
+    return void (await ephemeral(i, `You must have been in the server for ${gc.minMemberDays} day(s) to enter giveaways.`));
   }
   // Bonus entries: the biggest bonus from the member's roles.
   const bonus = ctx.config(i.guildId).giveaways.bonusRoles.reduce((best, b) => (i.member.roles.cache.has(b.roleId) ? Math.max(best, b.entries) : best), 1);

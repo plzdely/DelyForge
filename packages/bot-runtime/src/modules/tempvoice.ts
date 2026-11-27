@@ -105,6 +105,36 @@ export async function handleVoiceCommand(ctx: ModuleContext, i: ChatInputCommand
     );
     return void (await say(done ? (locking ? '🔒 Locked — nobody new can join.' : '🔓 Unlocked.') : 'I couldn’t change the channel (I need Manage Permissions).'));
   }
+  if (sub === 'hide' || sub === 'unhide') {
+    const hiding = sub === 'hide';
+    const done = await ok(
+      Promise.all([
+        channel.permissionOverwrites.edit(i.guild.roles.everyone, { ViewChannel: hiding ? false : null }),
+        ...(hiding ? [...channel.members.values()].map((m) => channel.permissionOverwrites.edit(m.id, { ViewChannel: true, Connect: true })) : []),
+      ]),
+    );
+    return void (await say(done ? (hiding ? '🙈 Hidden — only people inside (and those you /voice permit) can see it.' : '👀 Visible again.') : 'I couldn’t change the channel (I need Manage Permissions).'));
+  }
+  if (sub === 'permit' || sub === 'kick' || sub === 'ban' || sub === 'transfer') {
+    const target = await i.guild.members.fetch(i.options.getUser('member', true).id).catch(() => null);
+    if (!target || target.user.bot) return void (await say('Pick a member of this server.'));
+    if (target.id === i.user.id) return void (await say('Pick someone else.'));
+    if (sub === 'permit') {
+      const done = await ok(channel.permissionOverwrites.edit(target.id, { ViewChannel: true, Connect: true }));
+      return void (await say(done ? `✅ <@${target.id}> can join.` : 'I couldn’t change the channel.'));
+    }
+    if (sub === 'transfer') {
+      if (target.voice.channelId !== channel.id) return void (await say('They need to be in your channel.'));
+      ctx.store.setTempChannelOwner(channel.id, target.id);
+      await channel.permissionOverwrites.edit(target.id, { ViewChannel: true, Connect: true, MoveMembers: true, ManageChannels: true }).catch(() => null);
+      await channel.permissionOverwrites.edit(i.user.id, { MoveMembers: null, ManageChannels: null }).catch(() => null);
+      return void (await say(`🎙️ <@${target.id}> owns the channel now.`));
+    }
+    if (target.permissions.has('MoveMembers')) return void (await say('You can’t remove staff from your channel.'));
+    if (sub === 'ban') await channel.permissionOverwrites.edit(target.id, { Connect: false }).catch(() => null);
+    if (target.voice.channelId === channel.id) await target.voice.disconnect(sub === 'ban' ? 'Banned from the channel by its owner' : 'Kicked from the channel by its owner').catch(() => null);
+    return void (await say(sub === 'ban' ? `⛔ <@${target.id}> can’t join your channel any more.` : `👢 Disconnected <@${target.id}>.`));
+  }
   if (sub === 'limit') {
     const people = i.options.getInteger('people', true);
     const done = await ok(channel.setUserLimit(people));

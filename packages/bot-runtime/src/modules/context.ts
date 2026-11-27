@@ -38,6 +38,8 @@ export function templateVars(member: GuildMember | { user: User; guild: Guild; d
     server: member.guild.name,
     memberCount: member.guild.memberCount,
     'user.created': `<t:${Math.floor(member.user.createdTimestamp / 1000)}:R>`,
+    'user.joined': 'joinedTimestamp' in member && member.joinedTimestamp ? `<t:${Math.floor(member.joinedTimestamp / 1000)}:R>` : 'just now',
+    boosts: member.guild.premiumSubscriptionCount ?? 0,
   };
 }
 

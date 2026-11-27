@@ -398,7 +398,8 @@ describe('BotSupervisor — modules', () => {
     supervisor.start(id);
     FakeProcess.all[0]!.ready();
 
-    bots.setModules(id, { [G]: { utility: { ...DEFAULT_MODULE_CONFIGS.utility, enabled: true } } });
+    // Tickets need no extra gateway intents, so the change applies without a restart.
+    bots.setModules(id, { [G]: { tickets: { ...DEFAULT_MODULE_CONFIGS.tickets, enabled: true } } });
     expect(supervisor.applyModules(id)).toBe(false);
     expect(FakeProcess.all[0]!.received.at(-1)).toMatchObject({ type: 'set-modules' });
 

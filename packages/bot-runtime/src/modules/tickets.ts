@@ -14,6 +14,7 @@ import {
   type ModalSubmitInteraction,
   OverwriteType,
   PermissionFlagsBits,
+  Role,
   SnowflakeUtil,
   TextInputStyle,
 } from 'discord.js';
@@ -69,6 +70,22 @@ const reply = (i: Reply, content: string) =>
   i.replied || i.deferred
     ? i.editReply({ content, allowedMentions: { parse: [] } })
     : i.reply({ content, flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] } });
+
+/** Posts a ticket event (opened, claimed, closed, rated) to the ticket log channel, if one is set. */
+async function ticketLog(ctx: ModuleContext, guild: Guild, embed: { title: string; description: string; color: number }): Promise<void> {
+  const channel = await sendableChannel(ctx, guild, ctx.config(guild.id).tickets.logChannelId, 'Ticket log');
+  await channel?.send({ embeds: [{ ...embed, timestamp: new Date().toISOString() }], allowedMentions: { parse: [] } }).catch(() => null);
+}
+
+/** "🔴-ticket-12-dely" ← priority emoji in front of the channel name ('none' removes it). */
+export function withPriority(name: string, level: 'low' | 'medium' | 'high' | 'none'): string {
+  const bare = name.replace(/^(🟢|🟡|🔴)-?/u, '');
+  const emoji = { low: '🟢', medium: '🟡', high: '🔴', none: '' }[level];
+  return (emoji ? `${emoji}-${bare}` : bare).slice(0, 100);
+}
+
+/** Reasons given with /ticket close, used when the close is confirmed. */
+const closeReasons = new Map<string, string>();
 
 /** Members whose ticket is being created right now — a double click must not open two tickets. */
 const opening = new Set<string>();
@@ -171,6 +188,7 @@ async function openTicket(ctx: ModuleContext, i: ButtonInteraction<'cached'> | M
     })
     .catch((e: Error) => ctx.log('warn', `Tickets: could not post the welcome message in #${channel.name}: ${e.message}`));
   ctx.log('info', `Ticket opened by ${i.user.tag}: #${channel.name}`);
+  await ticketLog(ctx, i.guild, { title: '🎫 Ticket opened', description: `<#${channel.id}> by <@${i.user.id}>${reason ? `\n>>> ${truncate(reason, 500)}` : ''}`, color: COLORS.info });
   await reply(i, `Your ticket is ready: <#${channel.id}>`);
   return true;
 }
@@ -200,6 +218,7 @@ export async function onTicketClaim(ctx: ModuleContext, i: ButtonInteraction): P
     components: [{ type: ComponentType.ActionRow, components: [{ type: ComponentType.Button, style: ButtonStyle.Danger, label: 'Close ticket', custom_id: CID.ticketClose }] }],
   });
   if (i.channel?.isSendable()) await i.channel.send({ content: `🙋 <@${i.user.id}> will help you with this ticket.`, allowedMentions: { parse: [] } }).catch(() => null);
+  await ticketLog(ctx, i.guild, { title: '🙋 Ticket claimed', description: `<#${i.channelId}> by <@${i.user.id}>`, color: COLORS.info });
 }
 
 /** Close button: ask to confirm (closing deletes the channel). */
@@ -221,7 +240,29 @@ export async function onTicketCloseConfirm(ctx: ModuleContext, i: ButtonInteract
   if (!ticket || !canManageTicket(ctx, i.member, ticket)) return void (await reply(i, 'You can’t close this ticket.'));
   if (!ctx.store.closeTicket(i.channelId)) return void (await reply(i, 'This ticket is already closing.'));
   await i.update({ content: 'Closing… saving the transcript.', components: [] });
-  await finishClose(ctx, i.guild, i.channel, ticket, { id: i.user.id, tag: i.user.tag });
+  const why = closeReasons.get(i.channelId);
+  closeReasons.delete(i.channelId);
+  await finishClose(ctx, i.guild, i.channel, ticket, { id: i.user.id, tag: i.user.tag }, why ? ` — ${why}` : '');
+}
+
+/** Close-request buttons: the ticket owner closes it, or keeps it open. */
+export async function onCloseRequest(ctx: ModuleContext, i: ButtonInteraction, close: boolean): Promise<void> {
+  if (!i.inCachedGuild() || !i.channel) return;
+  const ticket = ctx.store.ticketByChannel(i.channelId);
+  if (!ticket || ticket.closed) return void (await reply(i, 'This ticket is already closed.'));
+  if (i.user.id !== ticket.userId && !isTicketStaff(ctx, i.member, ticket.panelId)) return void (await reply(i, 'Only the person who opened the ticket can answer.'));
+  if (!close) return void (await i.update({ content: `👍 <@${i.user.id}> wants to keep this ticket open.`, components: [], allowedMentions: { parse: [] } }));
+  if (!ctx.store.closeTicket(i.channelId)) return void (await reply(i, 'This ticket is already closing.'));
+  await i.update({ content: 'Closing… saving the transcript.', components: [] });
+  await finishClose(ctx, i.guild, i.channel, ticket, { id: i.user.id, tag: i.user.tag }, ' (accepted the close request)');
+}
+
+/** A star rating from the DM sent after a ticket closed. */
+export async function onTicketFeedback(ctx: ModuleContext, i: ButtonInteraction, guildId: string, stars: number): Promise<void> {
+  const guild = ctx.client.guilds.cache.get(guildId);
+  const ticketName = i.message.embeds[0]?.footer?.text ?? 'a ticket';
+  await i.update({ embeds: [{ description: `Thanks for your feedback! You gave **${'⭐'.repeat(stars)}**.`, color: COLORS.success }], components: [] });
+  if (guild) await ticketLog(ctx, guild, { title: `${'⭐'.repeat(stars)}${'☆'.repeat(5 - stars)} Ticket rating`, description: `<@${i.user.id}> rated ${ticketName}`, color: stars >= 4 ? COLORS.success : stars >= 3 ? COLORS.warn : COLORS.danger });
 }
 
 /** Saves the transcript, tells everyone, and deletes the channel a few seconds later. The ticket is already marked closed. */
@@ -274,6 +315,16 @@ async function finishClose(
     if (owner) await owner.send({ content: `Your ticket in **${guild.name}** was closed. Here’s a copy of the conversation.`, files: [file()] }).catch(() => null);
   }
   ctx.log('info', `Ticket #${channel.name} closed by ${closedBy.tag}${why}.`);
+  await ticketLog(ctx, guild, { title: '🔒 Ticket closed', description: `#${channel.name} (opened by <@${ticket.userId}>) closed by <@${closedBy.id}>${why}`, color: COLORS.info });
+  if (c.feedback) {
+    const owner = await ctx.client.users.fetch(ticket.userId).catch(() => null);
+    await owner
+      ?.send({
+        embeds: [{ description: `How did we do with your ticket in **${guild.name}**?`, color: COLORS.brand, footer: { text: `#${channel.name}` } }],
+        components: [{ type: ComponentType.ActionRow, components: [1, 2, 3, 4, 5].map((n) => ({ type: ComponentType.Button as const, style: ButtonStyle.Secondary, label: `${n} ⭐`, custom_id: `df:tfb:${guild.id}:${n}` })) }],
+      })
+      .catch(() => null);
+  }
   await channel.send({ content: `🔒 Ticket closed by <@${closedBy.id}>${why}. This channel will be deleted in a few seconds.`, allowedMentions: { parse: [] } }).catch(() => null);
   setTimeout(
     () => void channel.delete(`Ticket closed by ${closedBy.tag}`).catch((e: Error) => ctx.log('warn', `Tickets: could not delete #${channel.name}: ${e.message}`)),
@@ -299,13 +350,71 @@ export async function handleTicketCommand(ctx: ModuleContext, i: ChatInputComman
   if (!i.inCachedGuild()) return;
   if (!ctx.config(i.guildId).tickets.enabled) return void (await reply(i, 'Tickets aren’t enabled in this server.'));
   const sub = i.options.getSubcommand();
-  if (sub === 'close') return onTicketClose(ctx, i);
+  if (sub === 'close') {
+    const why = i.options.getString('reason');
+    if (why) closeReasons.set(i.channelId, truncate(why, 300));
+    return onTicketClose(ctx, i);
+  }
+  if (sub === 'stats') {
+    if (!isTicketStaff(ctx, i.member, null)) return void (await reply(i, 'Only ticket staff can see the stats.'));
+    const s = ctx.store.ticketStats(i.guildId, Date.now() - 7 * 86_400_000);
+    return void (await i.reply({
+      embeds: [{ title: '🎫 Tickets — last 7 days', color: COLORS.info, fields: [{ name: 'Open now', value: String(s.open), inline: true }, { name: 'Closed', value: String(s.closed), inline: true }, { name: 'Most claimed', value: s.claims.map((x, n) => `${n + 1}. <@${x.userId}> — ${x.n}`).join('\n') || '—' }] }],
+      flags: MessageFlags.Ephemeral,
+      allowedMentions: { parse: [] },
+    }));
+  }
 
   const ticket = ctx.store.ticketByChannel(i.channelId);
   if (!ticket || ticket.closed) return void (await reply(i, 'Use this inside an open ticket channel.'));
   if (!canManageTicket(ctx, i.member, ticket)) return void (await reply(i, 'Only the ticket owner or staff can do that.'));
   const channel = i.channel;
   if (!channel || channel.isThread() || !('permissionOverwrites' in channel)) return;
+
+  const staffOnly = () => reply(i, 'Only ticket staff can do that.');
+  if (sub === 'claim' || sub === 'unclaim' || sub === 'transfer') {
+    if (!isTicketStaff(ctx, i.member, ticket.panelId)) return void (await staffOnly());
+    if (sub === 'claim') {
+      if (ticket.claimedBy) return void (await reply(i, `<@${ticket.claimedBy}> already has this ticket. Use /ticket transfer to take over.`));
+      ctx.store.setTicketClaim(i.channelId, i.user.id);
+      await ticketLog(ctx, i.guild, { title: '🙋 Ticket claimed', description: `<#${i.channelId}> by <@${i.user.id}>`, color: COLORS.info });
+      return void (await i.reply({ content: `🙋 <@${i.user.id}> will help you with this ticket.`, allowedMentions: { parse: [] } }));
+    }
+    if (sub === 'unclaim') {
+      if (!ticket.claimedBy) return void (await reply(i, 'Nobody has claimed this ticket.'));
+      ctx.store.setTicketClaim(i.channelId, null);
+      return void (await i.reply({ content: `↩️ This ticket is free again — any staff member can claim it.`, allowedMentions: { parse: [] } }));
+    }
+    const to = await i.guild.members.fetch(i.options.getUser('member', true).id).catch(() => null);
+    if (!to || to.user.bot || !isTicketStaff(ctx, to, ticket.panelId)) return void (await reply(i, 'Pick a staff member who can see tickets.'));
+    ctx.store.setTicketClaim(i.channelId, to.id);
+    await channel.permissionOverwrites.edit(to.id, { ViewChannel: true, SendMessages: true, ReadMessageHistory: true }).catch(() => null);
+    await ticketLog(ctx, i.guild, { title: '🔁 Ticket transferred', description: `<#${i.channelId}> to <@${to.id}> by <@${i.user.id}>`, color: COLORS.info });
+    return void (await i.reply({ content: `🔁 <@${to.id}> is now handling this ticket.`, allowedMentions: { users: [to.id] } }));
+  }
+  if (sub === 'priority') {
+    if (!isTicketStaff(ctx, i.member, ticket.panelId)) return void (await staffOnly());
+    const level = i.options.getString('level', true) as 'low' | 'medium' | 'high' | 'none';
+    const renamed = await channel.setName(withPriority(channel.name, level)).then(() => true, () => false);
+    return void (await reply(i, renamed ? `Priority set to **${level}**.` : 'Couldn’t rename — Discord allows 2 renames every 10 minutes. Try again later.'));
+  }
+  if (sub === 'closerequest') {
+    if (!isTicketStaff(ctx, i.member, ticket.panelId)) return void (await staffOnly());
+    const why = i.options.getString('reason');
+    return void (await i.reply({
+      content: `<@${ticket.userId}>, <@${i.user.id}> thinks this ticket can be closed${why ? `: ${truncate(why, 300)}` : '.'} Is everything sorted?`,
+      components: [
+        {
+          type: ComponentType.ActionRow,
+          components: [
+            { type: ComponentType.Button, style: ButtonStyle.Success, label: 'Yes, close it', custom_id: 'df:ticket:crok' },
+            { type: ComponentType.Button, style: ButtonStyle.Secondary, label: 'Keep it open', custom_id: 'df:ticket:crno' },
+          ],
+        },
+      ],
+      allowedMentions: { users: [ticket.userId] },
+    }));
+  }
 
   if (sub === 'rename') {
     const name = (i.options.getString('name', true).toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '') || 'ticket').slice(0, 90);
@@ -314,18 +423,24 @@ export async function handleTicketCommand(ctx: ModuleContext, i: ChatInputComman
     return void (await reply(i, renamed ? `Renamed to #${name}.` : 'Couldn’t rename — Discord allows 2 renames every 10 minutes. Try again later.'));
   }
 
-  const user = i.options.getUser('member', true);
-  if (user.bot) return void (await reply(i, 'Bots can’t be added to or removed from tickets.'));
+  // A member or a whole role.
+  const who = i.options.getMentionable('who', true);
+  const isRole = who instanceof Role;
+  const id = isRole ? who.id : 'user' in who ? who.user.id : who.id;
+  const label = isRole ? `<@&${id}>` : `<@${id}>`;
+  if (!isRole && ('bot' in who ? who.bot : who.user.bot)) return void (await reply(i, 'Bots can’t be added to or removed from tickets.'));
+  if (isRole && id === i.guildId) return void (await reply(i, 'Pick a role other than @everyone — that would make the ticket public.'));
+  const failed = 'I couldn’t change this channel’s permissions — I need Manage Channels and Manage Permissions here.';
   if (sub === 'remove') {
-    if (user.id === ticket.userId) return void (await reply(i, 'You can’t remove the person who opened the ticket.'));
-    const removed = await channel.permissionOverwrites.delete(user.id).then(() => true, () => false);
-    if (!removed) return void (await reply(i, 'I couldn’t change this channel’s permissions — I need Manage Channels and Manage Permissions here.'));
-    return void (await i.reply({ content: `Removed <@${user.id}> from this ticket.`, allowedMentions: { parse: [] } }));
+    if (id === ticket.userId) return void (await reply(i, 'You can’t remove the person who opened the ticket.'));
+    const removed = await channel.permissionOverwrites.delete(id).then(() => true, () => false);
+    if (!removed) return void (await reply(i, failed));
+    return void (await i.reply({ content: `Removed ${label} from this ticket.`, allowedMentions: { parse: [] } }));
   }
-  const added = await channel.permissionOverwrites.edit(user.id, { ViewChannel: true, SendMessages: true, ReadMessageHistory: true, AttachFiles: true }).then(
+  const added = await channel.permissionOverwrites.edit(id, { ViewChannel: true, SendMessages: true, ReadMessageHistory: true, AttachFiles: true }).then(
     () => true,
     () => false,
   );
-  if (!added) return void (await reply(i, 'I couldn’t change this channel’s permissions — I need Manage Channels and Manage Permissions here.'));
-  await i.reply({ content: `Added <@${user.id}> to this ticket.`, allowedMentions: { users: [user.id] } });
+  if (!added) return void (await reply(i, failed));
+  await i.reply({ content: `Added ${label} to this ticket.`, allowedMentions: isRole ? { parse: [] } : { users: [id] } });
 }

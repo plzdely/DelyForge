@@ -62,7 +62,7 @@ function rolePanelMessage(p: RolePanelConfig): MessageCreateOptions {
             custom_id: CID.roleMenu(p.id),
             placeholder: p.multiple ? 'Pick your roles' : 'Pick a role',
             min_values: 0,
-            max_values: p.multiple ? p.roles.length : 1,
+            max_values: p.multiple ? (p.maxRoles ? Math.min(p.maxRoles, p.roles.length) : p.roles.length) : 1,
             options: p.roles.map((r) => ({ label: r.label, value: r.roleId, emoji: emoji(r.emoji) })),
           },
         ],
@@ -138,6 +138,11 @@ export function desiredPanels(config: ModuleConfigs, now = Date.now()): DesiredP
   if (config.reactionRoles.enabled) {
     for (const p of config.reactionRoles.panels) {
       if (p.channelId) out.push({ key: `rr:${p.id}`, channelId: p.channelId, payload: rolePanelMessage(p) });
+    }
+  }
+  if (config.applications.enabled) {
+    for (const f of config.applications.forms) {
+      if (f.panel.channelId && f.reviewChannelId) out.push({ key: `app:${f.id}`, channelId: f.panel.channelId, payload: buttonPanel(f.panel, `df:app:open:${f.id}`, ButtonStyle.Primary) });
     }
   }
   out.push(...shopPanels(config, now));

@@ -70,7 +70,9 @@ describe('names and counters', () => {
   it('builds temporary channel names and stats counters', () => {
     expect(tempChannelName('{user}’s channel', 'Ana')).toBe('Ana’s channel');
     expect(tempChannelName('x'.repeat(150), 'Ana')).toHaveLength(100);
-    expect(statName('Members: {members} · Bots: {bots}', { members: 120, humans: 110, bots: 10, boosts: 2, channels: 30, roles: 8 })).toBe('Members: 120 · Bots: 10');
+    const counts = { members: 120, humans: 110, bots: 10, boosts: 2, channels: 30, roles: 8, textChannels: 20, voiceChannels: 5, emojis: 40, boostTier: 1 };
+    expect(statName('Members: {members} · Bots: {bots}', counts)).toBe('Members: 120 · Bots: 10');
+    expect(statName('💬 {textChannels} · 🔊 {voiceChannels} · Tier {boostTier}', counts)).toBe('💬 20 · 🔊 5 · Tier 1');
   });
 });
 

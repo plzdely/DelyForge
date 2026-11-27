@@ -30,6 +30,10 @@ import {
   Settings,
   Shield,
   ShoppingBag,
+  Mail,
+  ClipboardList,
+  Coins,
+  Dices,
   Smile,
   Sparkles,
   SquareSlash,
@@ -252,6 +256,10 @@ export const MODULE_NAV_ITEMS: NavItem[] = [
   { id: 'birthdays', label: 'Birthdays', path: '/modules/birthdays', icon: Cake, available: true, phase: 4, feature: 'modules.standard', summary: 'Celebrate members on their birthday with a message and a role.' },
   { id: 'feeds', label: 'Social Alerts', path: '/modules/feeds', icon: Rss, available: true, phase: 4, feature: 'modules.standard', summary: 'Announce new YouTube videos and posts from news or RSS feeds.' },
   { id: 'scheduled', label: 'Scheduled Messages', path: '/modules/scheduled', icon: CalendarClock, available: true, phase: 4, feature: 'modules.standard', summary: 'Post announcements automatically on chosen days and times.' },
+  { id: 'modmail', label: 'Modmail', path: '/modules/modmail', icon: Mail, available: true, phase: 4, feature: 'modules.standard', summary: 'Members DM the bot to reach staff privately; staff reply from a thread.' },
+  { id: 'applications', label: 'Applications', path: '/modules/applications', icon: ClipboardList, available: true, phase: 4, feature: 'modules.standard', summary: 'Application forms with a review channel, Accept/Deny, roles and DMs.' },
+  { id: 'economy', label: 'Economy', path: '/modules/economy', icon: Coins, available: true, phase: 4, feature: 'modules.standard', summary: 'Server coins: daily, work, pay, rob, gambling, leaderboard and a role shop.' },
+  { id: 'games', label: 'Counting & Games', path: '/modules/games', icon: Dices, available: true, phase: 4, feature: 'modules.standard', summary: 'A counting channel with records, trivia with prizes, rock-paper-scissors and 8-ball.' },
   { id: 'shop', label: 'Shop', path: '/modules/shop', icon: ShoppingBag, available: true, phase: 4, feature: 'modules.standard', summary: 'A price list the bot keeps updated, automatic sales, an Order button, discount codes and vouches.' },
 ];
 

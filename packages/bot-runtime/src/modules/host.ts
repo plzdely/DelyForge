@@ -6,14 +6,18 @@ import { commandKey, customCommandJSON, dueScheduledWorkflows, matchingWorkflows
 import { commandHash, desiredCommands } from './commands.js';
 import type { ModuleContext } from './context.js';
 import * as logging from './logging.js';
-import { MODERATION_COMMANDS, automodCheck, endTempBans, handleModerationCommand, onAuditCase } from './moderation.js';
-import { UTILITY_COMMANDS, deliverReminders, handleUtilityCommand } from './utility.js';
+import { MODERATION_COMMANDS, automodCheck, dehoistMember, endTempBans, endTempRoles, handleModerationCommand, onAuditCase } from './moderation.js';
+import * as modmail from './modmail.js';
+import * as apps from './applications.js';
+import * as economy from './economy.js';
+import * as games from './games.js';
+import { UTILITY_COMMANDS, deliverReminders, handleUtilityCommand, onAfkMessage, onBumpMessage } from './utility.js';
 import { endDueGiveaways, handleGiveaway, handleSuggest, onGiveawayEnter, onSuggestionButton, onSuggestionDecision } from './community.js';
 import { LEVELING_COMMANDS, handleLevelingCommand, onMemberLeaveXp, onMessageXp, voiceXp } from './leveling.js';
 import { CID, shopPanelsStale, syncPanels } from './panels.js';
 import * as shop from './shop.js';
 import { kickUnverified, onRoleButton, onRoleMenu, onVerify, onVerifyAnswer } from './roles.js';
-import { autoCloseTickets, handleTicketCommand, onTicketClaim, onTicketClose, onTicketCloseConfirm, onTicketOpen, onTicketReason, TICKET_COMMANDS } from './tickets.js';
+import { autoCloseTickets, handleTicketCommand, onCloseRequest, onTicketClaim, onTicketClose, onTicketCloseConfirm, onTicketFeedback, onTicketOpen, onTicketReason, TICKET_COMMANDS } from './tickets.js';
 import * as welcome from './welcome.js';
 import * as antiRaid from './antiraid.js';
 import { checkBirthdays, handleBirthdayCommand } from './birthdays.js';
@@ -101,6 +105,7 @@ export class ModuleHost {
       if (this.store) void endDueGiveaways(this.ctx, this.client).catch((e: Error) => this.log('error', `Giveaways: ${e.message}`));
       if (this.store) void endTempBans(this.ctx, this.client).catch((e: Error) => this.log('error', `Temporary bans: ${e.message}`));
       if (this.store) void deliverReminders(this.ctx, this.client).catch((e: Error) => this.log('error', `Reminders: ${e.message}`));
+      if (this.store) void endTempRoles(this.ctx, this.client).catch((e: Error) => this.log('error', `Temporary roles: ${e.message}`));
     }, 15_000);
     void this.everyMinute();
     this.minuteTimer = setInterval(() => void this.everyMinute(), 30_000);
@@ -173,10 +178,13 @@ export class ModuleHost {
     this.syncing.add(guild.id);
     try {
       // Module commands are keyed by name; custom right-click commands by "type:name" (they may share a name).
-      const desired = [
-        ...desiredCommands(this.config(guild.id)).map((def) => ({ key: def.name, def: def as Parameters<typeof commandHash>[0] })),
-        ...this.builders.commands.filter((c) => c.enabled).map((c) => ({ key: commandKey(c), def: customCommandJSON(c) })),
-      ];
+      const moduleDefs = desiredCommands(this.config(guild.id)).map((def) => ({ key: def.name, def: def as Parameters<typeof commandHash>[0] }));
+      // Module commands added after a custom command was made can share its name (e.g. /daily); the module wins while
+      // it's on, and the custom command comes back when the module is turned off. (Its settings are never deleted.)
+      const taken = new Set(moduleDefs.map((d) => d.key));
+      const custom = this.builders.commands.filter((c) => c.enabled).map((c) => ({ key: commandKey(c), def: customCommandJSON(c) }));
+      for (const c of custom.filter((x) => taken.has(x.key))) this.log('warn', `Custom command /${c.key} is hidden in “${guild.name}” because a module uses that name — rename it in Commands.`);
+      const desired = [...moduleDefs, ...custom.filter((x) => !taken.has(x.key))];
       const byName = new Map(desired.map((c) => [c.key, c.def]));
       const plan = planCommandSync(
         desired.map((c) => ({ name: c.key, hash: commandHash(c.def) })),
@@ -342,6 +350,7 @@ export class ModuleHost {
         const removed = await antiRaid.onMemberJoin(ctx, m);
         const invitedBy = removed ? null : await invites.onMemberJoin(ctx, m);
         if (!removed) await welcome.onMemberJoin(ctx, m);
+        if (!removed) await dehoistMember(ctx, m);
         await logging.onMemberJoinLog(ctx, m, invitedBy);
       }),
     );
@@ -416,6 +425,20 @@ export class ModuleHost {
     c.on(Events.MessageReactionAdd, safe('Starboard', (r) => starboard.onReaction(ctx, r)));
     c.on(Events.MessageReactionRemove, safe('Starboard', (r) => starboard.onReaction(ctx, r)));
     c.on(Events.MessageCreate, safe('Sticky messages', async (m) => sticky.onMessage(ctx, m)));
+    c.on(Events.MessageCreate, safe('Modmail', async (m) => (m.inGuild() ? modmail.onModmailThreadMessage(ctx, m) : modmail.onModmailDM(ctx, m))));
+    c.on(Events.MessageCreate, safe('Economy', async (m) => economy.onMessageCoins(ctx, m)));
+    c.on(Events.MessageCreate, safe('Counting', (m) => games.onCountingMessage(ctx, m)));
+    c.on(Events.MessageCreate, safe('AFK', (m) => onAfkMessage(ctx, m)));
+    c.on(Events.MessageCreate, safe('Bump reminder', (m) => onBumpMessage(ctx, m)));
+    c.on(Events.GuildAuditLogEntryCreate, safe('Anti-nuke', (entry, guild) => antiRaid.onNukeAudit(ctx, entry, guild)));
+    c.on(
+      Events.GuildMemberUpdate,
+      safe('Members', async (before, after) => {
+        if (before.partial) return;
+        if (!before.premiumSince && after.premiumSince) await welcome.onBoost(ctx, after);
+        if (before.displayName !== after.displayName) await dehoistMember(ctx, after);
+      }),
+    );
 
     c.on(Events.InteractionCreate, async (i) => {
       if (!this.store) return;
@@ -424,6 +447,7 @@ export class ModuleHost {
       if (i.isButton() || i.isStringSelectMenu()) return this.runComponent(i);
       if (i.isModalSubmit()) return this.runModal(i);
       if (i.isAutocomplete() && i.commandName === 'price') return void shop.onPriceAutocomplete(this.ctx, i).catch((e: Error) => this.log('warn', `/price suggestions: ${e.message}`));
+      if (i.isAutocomplete() && i.commandName === 'buy') return void economy.onBuyAutocomplete(this.ctx, i).catch((e: Error) => this.log('warn', `/buy suggestions: ${e.message}`));
     });
   }
 
@@ -453,7 +477,13 @@ export class ModuleHost {
                           ? shop.handlePriceCommand
                           : n === 'vouch'
                             ? shop.handleVouchCommand
-                            : null;
+                            : n === 'modmail'
+                              ? modmail.handleModmailCommand
+                              : economy.ECONOMY_COMMANDS.has(n)
+                                ? economy.handleEconomyCommand
+                                : games.GAME_COMMANDS.has(n)
+                                  ? games.handleGameCommand
+                                  : null;
     if (!handler) return this.runCustom(i); // custom command, or e.g. /ping (handled elsewhere)
     const started = Date.now();
     try {
@@ -474,6 +504,7 @@ export class ModuleHost {
       if (i.isStringSelectMenu()) {
         if (kind === 'rrm' && a) await onRoleMenu(this.ctx, i, a);
         else if (kind === 'shop' && a === 'pick') await shop.onShopPick(this.ctx, i);
+        else if (i.customId === modmail.MODMAIL_PICK) await modmail.onModmailPick(this.ctx, i);
         return;
       }
       if (i.customId === CID.ticketOpen) await onTicketOpen(this.ctx, i);
@@ -483,6 +514,11 @@ export class ModuleHost {
       else if (i.customId === CID.ticketClaim) await onTicketClaim(this.ctx, i);
       else if (i.customId === CID.verify) await onVerify(this.ctx, i);
       else if (i.customId === CID.shopOrder) await shop.onShopOrder(this.ctx, i);
+      else if (kind === 'ticket' && (a === 'crok' || a === 'crno')) await onCloseRequest(this.ctx, i, a === 'crok');
+      else if (kind === 'tfb' && a && b) await onTicketFeedback(this.ctx, i, a, Math.min(5, Math.max(1, Number(b))));
+      else if (kind === 'app' && a === 'open' && b) await apps.onApplyOpen(this.ctx, i, b);
+      else if (kind === 'app' && (a === 'accept' || a === 'deny') && b) await apps.onApplyDecision(this.ctx, i, Number(b), a === 'accept');
+      else if (kind === 'triv' && a && b) await games.onTriviaAnswer(this.ctx, i, a, Number(b));
       else if (kind === 'rr' && a && b) await onRoleButton(this.ctx, i, a, b);
       else if (kind === 'sug' && a && b) await onSuggestionButton(this.ctx, i, a, Number(b));
       else if (kind === 'gw' && a === 'enter' && b) await onGiveawayEnter(this.ctx, i, Number(b));
@@ -501,6 +537,8 @@ export class ModuleHost {
       else if (kind === 'vq' && action === 'answer') await onVerifyAnswer(this.ctx, i);
       else if (kind === 'ticket' && action === 'reason') await onTicketReason(this.ctx, i, a ?? null);
       else if (kind === 'shop' && action === 'form' && a) await shop.onShopForm(this.ctx, i, a);
+      else if (kind === 'app' && action === 'submit' && a) await apps.onApplySubmit(this.ctx, i, a);
+      else if (kind === 'app' && action === 'reason' && a) await apps.onApplyDenyReason(this.ctx, i, Number(a));
     } catch (e) {
       this.log('error', `Form “${i.customId}” failed: ${(e as Error).message}`);
       await this.replyError(i);
