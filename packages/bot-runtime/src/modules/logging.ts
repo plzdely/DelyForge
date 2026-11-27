@@ -10,6 +10,7 @@ import {
   type PartialMessage,
   PermissionsBitField,
   type VoiceState,
+  type User,
 } from 'discord.js';
 import { COLORS, type ModuleContext, sendableChannel, truncate } from './context.js';
 
@@ -119,6 +120,20 @@ export async function onMemberLeaveLog(ctx: ModuleContext, member: GuildMember |
     color: COLORS.danger,
     footer: { text: `User ${member.id}` },
   });
+}
+
+/** Username, display name or avatar changes (fires once per member per server the bot shares with them). */
+export async function onProfileChange(ctx: ModuleContext, guild: Guild, before: { username: string; globalName: string | null; avatar: string | null }, after: User): Promise<void> {
+  const changes: string[] = [];
+  if (before.username !== after.username) changes.push(`**Username:** ${before.username} → ${after.username}`);
+  if (before.globalName !== after.globalName) changes.push(`**Display name:** ${before.globalName ?? '—'} → ${after.globalName ?? '—'}`);
+  if (before.avatar !== after.avatar) changes.push('**Avatar** changed');
+  if (!changes.length) return;
+  await post(ctx, guild, 'profiles', { title: 'Profile updated', description: `<@${after.id}>\n${changes.join('\n')}`, thumbnail: { url: after.displayAvatarURL({ size: 128 }) }, color: COLORS.info });
+}
+
+export async function onBoostChange(ctx: ModuleContext, member: GuildMember, started: boolean): Promise<void> {
+  await post(ctx, member.guild, 'boosts', { title: started ? '💜 New boost' : 'Boost ended', description: `<@${member.id}> ${started ? 'boosted the server' : 'stopped boosting'} · ${member.guild.premiumSubscriptionCount ?? 0} boosts now`, color: started ? COLORS.brand : COLORS.warn });
 }
 
 export async function onVoice(ctx: ModuleContext, before: VoiceState, after: VoiceState): Promise<void> {

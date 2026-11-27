@@ -33,6 +33,13 @@ export const MODULE_IDS = [
   'applications',
   'economy',
   'games',
+  'autoResponder',
+  'confessions',
+  'highlights',
+  'channelTools',
+  'activity',
+  'reputation',
+  'memberTools',
 ] as const;
 export type ModuleId = (typeof MODULE_IDS)[number];
 
@@ -136,6 +143,8 @@ export const moderationConfigSchema = z
     appealMessage: template(500).default(''),
     /** Remove symbols like "!" from the start of nicknames, so nobody hoists themselves to the top of the member list. */
     dehoist: z.boolean().default(false),
+    /** Where /report and "Report message" send reports, with buttons for staff (null = reporting off). */
+    reportChannelId: snowflakeSchema.nullable().default(null),
     automod: z
       .object({
         /** Pro feature (`moderation.advanced`). */
@@ -166,7 +175,8 @@ export const moderationConfigSchema = z
             action: z.enum(ACTIONS),
           })
           .strict(),
-        invites: z.object({ enabled: z.boolean(), action: z.enum(ACTIONS) }).strict(),
+        /** `allowOwn`: invites to this server itself are fine. */
+        invites: z.object({ enabled: z.boolean(), action: z.enum(ACTIONS), allowOwn: z.boolean().default(true) }).strict(),
         // Added in 0.3 — each has a default so settings saved earlier still load.
         caps: z
           .object({ enabled: z.boolean(), minLength: z.number().int().min(5).max(200), percent: z.number().int().min(50).max(100), action: z.enum(ACTIONS) })
@@ -196,6 +206,15 @@ export const moderationConfigSchema = z
           .object({ enabled: z.boolean(), hours: z.number().int().min(1).max(720), action: z.enum(ACTIONS) })
           .strict()
           .default({ enabled: false, hours: 24, action: 'delete' }),
+        /** Files people shouldn't send (programs and scripts that can carry viruses). */
+        files: z
+          .object({ enabled: z.boolean(), extensions: z.array(z.string().trim().toLowerCase().regex(/^[a-z0-9]{1,10}$/)).max(50), action: z.enum(ACTIONS) })
+          .strict()
+          .default({ enabled: false, extensions: ['exe', 'scr', 'bat', 'cmd', 'msi', 'vbs', 'jar', 'apk', 'ps1', 'com'], action: 'delete' }),
+        attachments: z
+          .object({ enabled: z.boolean(), max: z.number().int().min(1).max(10), action: z.enum(ACTIONS) })
+          .strict()
+          .default({ enabled: false, max: 4, action: 'delete' }),
       })
       .strict(),
   })
@@ -219,6 +238,8 @@ export const LOG_EVENTS = [
   'messageActions',
   'voice',
   'other',
+  'profiles',
+  'boosts',
 ] as const;
 export type LogEvent = (typeof LOG_EVENTS)[number];
 
@@ -266,6 +287,15 @@ export const utilityConfigSchema = z
         emoji: z.boolean().default(true),
         timestamp: z.boolean().default(true),
         banner: z.boolean().default(true),
+        quickpoll: z.boolean().default(true),
+        color: z.boolean().default(true),
+        calc: z.boolean().default(true),
+        servericon: z.boolean().default(true),
+        serverbanner: z.boolean().default(true),
+        firstmessage: z.boolean().default(true),
+        inrole: z.boolean().default(true),
+        say: z.boolean().default(true),
+        reminders: z.boolean().default(true),
       })
       .strict(),
     /** After someone bumps the server with DISBOARD, remind them in 2 hours to bump again. */
@@ -305,6 +335,8 @@ export const levelingConfigSchema = z
         message: template(1000),
         /** Send the level-up message as a DM instead. */
         dm: z.boolean().default(false),
+        /** Show it as a card with the member's avatar. */
+        embed: z.boolean().default(false),
       })
       .strict(),
     rewards: z.array(z.object({ level: z.number().int().min(1).max(500), roleId: snowflakeSchema }).strict()).max(25),
@@ -375,6 +407,25 @@ export const ticketsConfigSchema = z
     logChannelId: snowflakeSchema.nullable().default(null),
     /** After closing, DM the member a 1–5 star rating; ratings go to the ticket log. */
     feedback: z.boolean().default(false),
+    /** Also save transcripts as a web page that looks like Discord (opens in any browser). */
+    transcriptHtml: z.boolean().default(true),
+    /** Only allow new tickets during these hours (e.g. when staff are around). */
+    openHours: z
+      .object({
+        enabled: z.boolean(),
+        timezone: z.string().trim().min(1).max(64),
+        from: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Use a time like 09:00'),
+        to: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Use a time like 22:00'),
+        /** 0 = Sunday … 6 = Saturday; empty = every day. */
+        days: z.array(z.number().int().min(0).max(6)).max(7),
+        message: z.string().max(300),
+      })
+      .strict()
+      .default({ enabled: false, timezone: 'UTC', from: '09:00', to: '22:00', days: [], message: 'Tickets are closed right now — please come back during our opening hours.' }),
+    /** Most open tickets in the whole server at once (0 = no limit). */
+    maxOpenTotal: z.number().int().min(0).max(500).default(0),
+    /** Ping staff when the member has been waiting this many hours without a staff reply (0 = never). */
+    staffReminderHours: z.number().int().min(0).max(72).default(0),
     /** More panels, each opening its own kind of ticket. */
     extraPanels: z
       .array(ticketPanelSchema)
@@ -417,6 +468,8 @@ export const roleOptionSchema = z
     label: z.string().trim().min(1, 'Every role needs a label').max(80),
     /** A unicode emoji, e.g. 🎮 (optional). */
     emoji: z.string().max(16),
+    /** Small text under the role in a menu (optional). */
+    description: z.string().max(100).default(''),
   })
   .strict();
 
@@ -724,6 +777,8 @@ export const scheduledConfigSchema = z
             color: hexColor.default('#7c5cff'),
             /** Delete the previous post of this message when posting a new one (keeps the channel tidy). */
             deletePrevious: z.boolean().default(false),
+            /** A date (YYYY-MM-DD) for a one-time message; empty = repeat on the chosen days. */
+            date: z.union([z.literal(''), z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use a date like 2026-12-24')]).default(''),
           })
           .strict(),
       )
@@ -840,6 +895,12 @@ export const modmailConfigSchema = z
     greeting: template(1000),
     /** DM sent when staff close it. */
     closingMessage: template(1000),
+    /** Saved replies staff send with /modmail snippet. */
+    snippets: z.array(z.object({ name: z.string().trim().regex(/^[a-z0-9-]{1,32}$/, 'Snippet names are lowercase letters, numbers and dashes'), text: z.string().trim().min(1).max(2000) }).strict()).max(25).default([]),
+    /** Close conversations nobody wrote in for this many hours (0 = never). */
+    autoCloseHours: z.number().int().min(0).max(720).default(0),
+    /** Where a transcript of every closed conversation is saved (null = nowhere). */
+    logChannelId: snowflakeSchema.nullable().default(null),
   })
   .strict();
 export type ModmailConfig = z.infer<typeof modmailConfigSchema>;
@@ -869,6 +930,12 @@ export const applicationFormSchema = z
     cooldownHours: z.number().int().min(0).max(720),
     /** Open a discussion thread for staff on each application. */
     thread: z.boolean(),
+    /** Accepting applications right now (the button says so when closed). */
+    open: z.boolean().default(true),
+    /** Accounts younger than this can't apply (0 = any). */
+    minAccountAgeDays: z.number().int().min(0).max(365).default(0),
+    /** Ping the reviewer roles when an application comes in. */
+    pingReviewers: z.boolean().default(false),
   })
   .strict();
 export type ApplicationForm = z.infer<typeof applicationFormSchema>;
@@ -920,6 +987,13 @@ export const economyConfigSchema = z
       .strict(),
     /** /coinflip and /slots. */
     gambling: z.object({ enabled: z.boolean(), maxBet: z.number().int().min(1).max(1_000_000_000) }).strict(),
+    /** Daily interest on bank balances, in percent (0 = none). */
+    interestPercent: z.number().min(0).max(10).default(0),
+    /** /beg (small, random) and /crime (risky, pays well). */
+    beg: z.boolean().default(true),
+    crime: z.boolean().default(true),
+    /** Members with these roles earn more from /daily, /work and /crime (the biggest counts), e.g. boosters 2×. */
+    payMultipliers: z.array(z.object({ roleId: snowflakeSchema, multiplier: z.number().min(1).max(5) }).strict()).max(10).default([]),
     shop: z
       .array(
         z
@@ -979,6 +1053,152 @@ export const gamesConfigSchema = z
   .strict();
 export type GamesConfig = z.infer<typeof gamesConfigSchema>;
 
+// ─── Auto-responder ───────────────────────────────────────────────────────────────────────────────────────────────
+
+export const autoResponderSchema = z
+  .object({
+    id: shopId,
+    trigger: z.string().trim().min(1, 'Write the word or phrase that triggers it').max(100),
+    /** contains: anywhere; exact: the whole message; startsWith: at the start; word: as a whole word. */
+    match: z.enum(['contains', 'exact', 'startsWith', 'word']),
+    /** One is picked at random (empty when it only reacts). */
+    responses: z.array(template(2000)).max(10),
+    /** Answer as a reply to the message (instead of a normal message). */
+    reply: z.boolean(),
+    embed: z.boolean(),
+    color: hexColor,
+    /** Add this reaction to the message (optional). */
+    react: z.string().trim().max(64),
+    deleteTrigger: z.boolean(),
+    /** Send the response by DM instead. */
+    dm: z.boolean(),
+    /** Only in these channels (empty = everywhere). */
+    channelIds: z.array(snowflakeSchema).max(25),
+    /** Members with these roles never trigger it. */
+    ignoredRoleIds: roles,
+    /** Only members with one of these roles trigger it (empty = everyone). */
+    requiredRoleIds: roles,
+    cooldownSeconds: z.number().int().min(0).max(86_400),
+  })
+  .strict()
+  .refine((r) => r.responses.some((x) => x.trim()) || r.react, 'Add a response or a reaction');
+export type AutoResponder = z.infer<typeof autoResponderSchema>;
+
+export const autoResponderConfigSchema = z.object({ enabled: z.boolean(), responders: z.array(autoResponderSchema).max(50) }).strict();
+
+export const RESPONDER_VARIABLES = [
+  { key: '{user}', description: 'Mentions who triggered it' },
+  { key: '{user.name}', description: 'Their display name' },
+  { key: '{channel}', description: 'The channel it happened in' },
+  { key: '{server}', description: 'Server name' },
+  { key: '{args}', description: 'Whatever they wrote after the trigger' },
+] as const;
+
+// ─── Confessions ──────────────────────────────────────────────────────────────────────────────────────────────────
+
+export const confessionsConfigSchema = z
+  .object({
+    enabled: z.boolean(),
+    channelId: channel,
+    /** Staff-only: who sent each confession, so abuse can be dealt with (members are told staff can see this). */
+    logChannelId: channel,
+    /** Confessions wait here for a staff OK before they're posted (null = posted straight away). */
+    reviewChannelId: channel,
+    cooldownMinutes: z.number().int().min(0).max(1440),
+    /** A "Reply anonymously" button that answers in a thread. */
+    replies: z.boolean(),
+    title: z.string().trim().min(1).max(60),
+    color: hexColor,
+  })
+  .strict();
+export type ConfessionsConfig = z.infer<typeof confessionsConfigSchema>;
+
+// ─── Highlights ───────────────────────────────────────────────────────────────────────────────────────────────────
+
+export const highlightsConfigSchema = z
+  .object({
+    enabled: z.boolean(),
+    /** Words each member can watch. */
+    maxWords: z.number().int().min(1).max(25),
+    /** At most one DM per member every this many minutes. */
+    cooldownMinutes: z.number().int().min(1).max(60),
+    ignoredChannelIds: z.array(snowflakeSchema).max(50),
+  })
+  .strict();
+export type HighlightsConfig = z.infer<typeof highlightsConfigSchema>;
+
+// ─── Channel automation ───────────────────────────────────────────────────────────────────────────────────────────
+
+export const channelRuleSchema = z
+  .object({
+    channelId: snowflakeSchema,
+    /** Announcement channels: publish every message to following servers. */
+    autoPublish: z.boolean(),
+    /** Open a thread on every message (great for showcases or feedback). */
+    autoThread: z.boolean(),
+    threadName: z.string().trim().min(1).max(90),
+    /** Reactions added to every message (up to 5). */
+    reactions: z.array(z.string().trim().min(1).max(64)).max(5),
+    /** What messages must contain: anything, files/images, text only, or a link. */
+    only: z.enum(['any', 'media', 'text', 'links']),
+    /** Delete messages after this many seconds (0 = keep). */
+    deleteAfterSeconds: z.number().int().min(0).max(86_400),
+    /** Each member can post once every this many minutes (0 = no limit) — longer than Discord's slowmode allows. */
+    postCooldownMinutes: z.number().int().min(0).max(10_080),
+    /** DM members whose message was removed, saying why. */
+    notify: z.boolean(),
+  })
+  .strict();
+export type ChannelRule = z.infer<typeof channelRuleSchema>;
+
+export const channelToolsConfigSchema = z
+  .object({ enabled: z.boolean(), rules: z.array(channelRuleSchema).max(25).refine((r) => new Set(r.map((x) => x.channelId)).size === r.length, 'One rule set per channel') })
+  .strict();
+
+// ─── Activity stats ───────────────────────────────────────────────────────────────────────────────────────────────
+
+export const activityConfigSchema = z
+  .object({
+    enabled: z.boolean(),
+    ignoredChannelIds: z.array(snowflakeSchema).max(50),
+    /** A weekly summary post (top chatters, voice, messages). */
+    report: z.object({ channelId: channel, day: z.number().int().min(0).max(6), hourUtc: z.number().int().min(0).max(23) }).strict(),
+  })
+  .strict();
+export type ActivityConfig = z.infer<typeof activityConfigSchema>;
+
+// ─── Reputation ───────────────────────────────────────────────────────────────────────────────────────────────────
+
+export const reputationConfigSchema = z
+  .object({
+    enabled: z.boolean(),
+    /** Hours before a member can give rep again. */
+    cooldownHours: z.number().int().min(1).max(168),
+    /** "thanks @someone" gives them rep too. */
+    thanks: z.boolean(),
+    rewards: z.array(z.object({ reps: z.number().int().min(1).max(100_000), roleId: snowflakeSchema }).strict()).max(10),
+    logChannelId: channel,
+  })
+  .strict();
+export type ReputationConfig = z.infer<typeof reputationConfigSchema>;
+
+// ─── Member tools ─────────────────────────────────────────────────────────────────────────────────────────────────
+
+export const memberToolsConfigSchema = z
+  .object({
+    enabled: z.boolean(),
+    /** Give members their roles back when they leave and rejoin (stops dodging a punishment role). */
+    stickyRoles: z.boolean(),
+    stickyNickname: z.boolean(),
+    /** Roles never given back. */
+    excludedRoleIds: roles,
+    /** Roles for time in the server, e.g. "Regular" after 30 days. */
+    tenureRoles: z.array(z.object({ days: z.number().int().min(1).max(3650), roleId: snowflakeSchema }).strict()).max(10),
+    welcomeBack: z.object({ enabled: z.boolean(), channelId: channel, message: template(1000) }).strict(),
+  })
+  .strict();
+export type MemberToolsConfig = z.infer<typeof memberToolsConfigSchema>;
+
 // ─── Registry — the one list of built modules; everything below is derived from it ────────────────────────────────
 
 export const moduleConfigSchemas = {
@@ -1006,6 +1226,13 @@ export const moduleConfigSchemas = {
   applications: applicationsConfigSchema,
   economy: economyConfigSchema,
   games: gamesConfigSchema,
+  autoResponder: autoResponderConfigSchema,
+  confessions: confessionsConfigSchema,
+  highlights: highlightsConfigSchema,
+  channelTools: channelToolsConfigSchema,
+  activity: activityConfigSchema,
+  reputation: reputationConfigSchema,
+  memberTools: memberToolsConfigSchema,
 } as const;
 export type ImplementedModuleId = keyof typeof moduleConfigSchemas;
 export const IMPLEMENTED_MODULES = Object.keys(moduleConfigSchemas) as [ImplementedModuleId, ...ImplementedModuleId[]];
@@ -1050,6 +1277,7 @@ export const DEFAULT_MODULE_CONFIGS: ModuleConfigs = {
     warnExpiryDays: 0,
     appealMessage: '',
     dehoist: false,
+    reportChannelId: null,
     automod: {
       enabled: false,
       exemptRoleIds: [],
@@ -1058,7 +1286,7 @@ export const DEFAULT_MODULE_CONFIGS: ModuleConfigs = {
       spam: { enabled: true, maxMessages: 6, perSeconds: 5, action: 'timeout' },
       links: { enabled: false, allowedDomains: ['youtube.com', 'youtu.be', 'twitch.tv'], action: 'delete' },
       words: { enabled: false, words: [], action: 'delete' },
-      invites: { enabled: true, action: 'delete' },
+      invites: { enabled: true, action: 'delete', allowOwn: true },
       caps: { enabled: false, minLength: 10, percent: 70, action: 'delete' },
       mentions: { enabled: true, max: 5, action: 'timeout' },
       emoji: { enabled: false, max: 10, action: 'delete' },
@@ -1067,6 +1295,8 @@ export const DEFAULT_MODULE_CONFIGS: ModuleConfigs = {
       zalgo: { enabled: false, action: 'delete' },
       lines: { enabled: false, max: 15, action: 'delete' },
       newMemberLinks: { enabled: false, hours: 24, action: 'delete' },
+      files: { enabled: false, extensions: ['exe', 'scr', 'bat', 'cmd', 'msi', 'vbs', 'jar', 'apk', 'ps1', 'com'], action: 'delete' },
+      attachments: { enabled: false, max: 4, action: 'delete' },
     },
   },
   logging: {
@@ -1079,7 +1309,7 @@ export const DEFAULT_MODULE_CONFIGS: ModuleConfigs = {
   },
   utility: {
     enabled: false,
-    commands: { serverinfo: true, userinfo: true, avatar: true, poll: true, remind: true, roll: true, afk: true, roleinfo: true, channelinfo: true, membercount: true, choose: true, emoji: true, timestamp: true, banner: true },
+    commands: { serverinfo: true, userinfo: true, avatar: true, poll: true, remind: true, roll: true, afk: true, roleinfo: true, channelinfo: true, membercount: true, choose: true, emoji: true, timestamp: true, banner: true, quickpoll: true, color: true, calc: true, servericon: true, serverbanner: true, firstmessage: true, inrole: true, say: true, reminders: true },
     bumpReminder: { enabled: false, roleId: null },
   },
   leveling: {
@@ -1087,7 +1317,7 @@ export const DEFAULT_MODULE_CONFIGS: ModuleConfigs = {
     xpMin: 15,
     xpMax: 25,
     cooldownSeconds: 60,
-    levelUp: { enabled: true, channelId: null, message: '🎉 {user} reached **level {level}**!', dm: false },
+    levelUp: { enabled: true, channelId: null, message: '🎉 {user} reached **level {level}**!', dm: false, embed: false },
     rewards: [],
     stackRewards: true,
     noXpChannelIds: [],
@@ -1114,6 +1344,10 @@ export const DEFAULT_MODULE_CONFIGS: ModuleConfigs = {
     pingStaff: true,
     logChannelId: null,
     feedback: false,
+    transcriptHtml: true,
+    openHours: { enabled: false, timezone: 'UTC', from: '09:00', to: '22:00', days: [], message: 'Tickets are closed right now — please come back during our opening hours.' },
+    maxOpenTotal: 0,
+    staffReminderHours: 0,
     extraPanels: [],
   },
   verification: {
@@ -1166,6 +1400,9 @@ export const DEFAULT_MODULE_CONFIGS: ModuleConfigs = {
     anonymous: false,
     greeting: 'Thanks for your message! The staff team will reply here as soon as they can.',
     closingMessage: 'This conversation was closed by staff. Message me again any time if you need help.',
+    snippets: [],
+    autoCloseHours: 0,
+    logChannelId: null,
   },
   applications: { enabled: false, forms: [] },
   economy: {
@@ -1178,6 +1415,10 @@ export const DEFAULT_MODULE_CONFIGS: ModuleConfigs = {
     chat: { enabled: true, min: 1, max: 5, cooldownSeconds: 60 },
     rob: { enabled: true, successPercent: 40, maxStealPercent: 25, finePercent: 10, cooldownMinutes: 120, minWallet: 100 },
     gambling: { enabled: true, maxBet: 5000 },
+    interestPercent: 0,
+    beg: true,
+    crime: true,
+    payMultipliers: [],
     shop: [],
   },
   games: {
@@ -1185,6 +1426,20 @@ export const DEFAULT_MODULE_CONFIGS: ModuleConfigs = {
     counting: { channelId: null, noDoubleCount: true, onFail: 'reset' },
     trivia: { enabled: true, seconds: 20, reward: 50, custom: [] },
     fun: true,
+  },
+  autoResponder: { enabled: false, responders: [] },
+  confessions: { enabled: false, channelId: null, logChannelId: null, reviewChannelId: null, cooldownMinutes: 10, replies: true, title: 'Anonymous confession', color: '#c084fc' },
+  highlights: { enabled: false, maxWords: 10, cooldownMinutes: 5, ignoredChannelIds: [] },
+  channelTools: { enabled: false, rules: [] },
+  activity: { enabled: false, ignoredChannelIds: [], report: { channelId: null, day: 1, hourUtc: 12 } },
+  reputation: { enabled: false, cooldownHours: 24, thanks: true, rewards: [], logChannelId: null },
+  memberTools: {
+    enabled: false,
+    stickyRoles: true,
+    stickyNickname: true,
+    excludedRoleIds: [],
+    tenureRoles: [],
+    welcomeBack: { enabled: false, channelId: null, message: 'Welcome back, {user}! 👋' },
   },
 };
 
@@ -1242,6 +1497,13 @@ export const MODULES: readonly ModuleInfo[] = [
   { id: 'applications', name: 'Applications', summary: 'Staff, partner or any other applications: a form with your questions, a review channel, and Accept/Deny that gives roles and DMs the applicant.', feature: 'modules.standard', available: true, commands: [] },
   { id: 'economy', name: 'Economy', summary: 'Server coins: daily rewards, work, pay, rob, gambling, a leaderboard and a shop where members buy roles.', feature: 'modules.standard', available: true, commands: ['/balance', '/daily', '/work', '/pay', '/deposit', '/withdraw', '/rob', '/rich', '/shopitems', '/buy', '/inventory', '/coinflip', '/slots', '/eco'] },
   { id: 'games', name: 'Counting & Games', summary: 'A counting channel with records, plus trivia (with coin prizes), rock-paper-scissors and the magic 8-ball.', feature: 'modules.standard', available: true, commands: ['/count', '/trivia', '/rps', '/8ball'] },
+  { id: 'autoResponder', name: 'Auto-responder', summary: 'Automatic replies, reactions or DMs when someone says a word or phrase — with random answers, cooldowns and channel limits.', feature: 'modules.standard', available: true, commands: [] },
+  { id: 'confessions', name: 'Confessions', summary: 'Anonymous, numbered confessions with images, anonymous replies, an optional staff approval queue and a staff-only log.', feature: 'modules.standard', available: true, commands: ['/confess', '/confessions ban', '/confessions unban'] },
+  { id: 'highlights', name: 'Highlights', summary: 'Members get a DM when someone mentions a word they care about, with a link and the conversation around it.', feature: 'modules.standard', available: true, commands: ['/highlight add', '/highlight remove', '/highlight list', '/highlight clear', '/highlight ignore'] },
+  { id: 'channelTools', name: 'Channel Automation', summary: 'Per-channel rules: auto-publish, auto-threads, auto-reactions, media-only or link-only channels, auto-delete and post limits.', feature: 'modules.standard', available: true, commands: [] },
+  { id: 'activity', name: 'Activity Stats', summary: 'Messages and voice time per member, top chatters, a 7-day server chart and a weekly report.', feature: 'modules.standard', available: true, commands: ['/activity', '/topchatters', '/topvoice', '/serveractivity'] },
+  { id: 'reputation', name: 'Reputation', summary: 'Members thank each other with /rep or “thanks @name”, with a leaderboard and role rewards.', feature: 'modules.standard', available: true, commands: ['/rep give', '/rep check', '/rep top', '/rep set'] },
+  { id: 'memberTools', name: 'Member Tools', summary: 'Give roles and nicknames back when people rejoin, roles for time in the server, and a welcome-back message.', feature: 'modules.standard', available: true, commands: [] },
   { id: 'shop', name: 'Shop', summary: 'Your price list, kept up to date by the bot: sales that start and end on their own, an Order button that opens a ticket with the price, discount codes and vouches.', feature: 'modules.standard', available: true, commands: ['/price', '/vouch'] },
   { id: 'birthdays', name: 'Birthdays', summary: 'Members save their birthday; the bot celebrates them with a message and a role.', feature: 'modules.standard', available: true, commands: ['/birthday set', '/birthday remove', '/birthday upcoming'] },
 ];
@@ -1269,6 +1531,7 @@ export function moduleIntents<K extends ImplementedModuleId>(id: K, config: Modu
       if (e.memberJoin || e.memberLeave) bits |= I('GuildMembers');
       // Discord's live audit-log feed (who did what) arrives with the Moderation intent.
       if (AUDIT_LOG_EVENTS.some((k) => e[k])) bits |= I('GuildModeration');
+      if (e.profiles || e.boosts) bits |= I('GuildMembers');
       if (e.voice) bits |= I('GuildVoiceStates');
       return bits;
     }
@@ -1293,6 +1556,16 @@ export function moduleIntents<K extends ImplementedModuleId>(id: K, config: Modu
       return (config as EconomyConfig).chat.enabled ? I('GuildMessages') : 0;
     case 'games':
       return (config as GamesConfig).counting.channelId ? I('GuildMessages', 'MessageContent') : 0;
+    case 'autoResponder':
+    case 'highlights':
+    case 'channelTools':
+      return I('GuildMessages', 'MessageContent');
+    case 'activity':
+      return I('GuildMessages', 'GuildVoiceStates');
+    case 'reputation':
+      return (config as ReputationConfig).thanks ? I('GuildMessages', 'MessageContent') : 0;
+    case 'memberTools':
+      return I('GuildMembers');
     case 'utility': {
       const u = config as UtilityConfig;
       // AFK notices and the bump reminder watch messages (mentions and DISBOARD's reply don't need message content).
@@ -1587,6 +1860,19 @@ export function modulePermissions<K extends ImplementedModuleId>(id: K, config: 
       return base | ((config as EconomyConfig).shop.some((s) => s.roleId) ? ROLES : 0n);
     case 'games':
       return base | HISTORY | P(6n) | P(13n); // reactions, delete wrong numbers
+    case 'autoResponder':
+      return base | P(6n) | P(13n); // reactions, delete the trigger
+    case 'confessions':
+      return base | P(15n) | P(35n) | P(38n); // images, reply threads
+    case 'highlights':
+    case 'activity':
+      return base | HISTORY;
+    case 'channelTools':
+      return base | HISTORY | P(6n) | P(13n) | P(35n) | P(38n); // reactions, delete/publish, threads
+    case 'reputation':
+      return base | ((config as ReputationConfig).rewards.length ? ROLES : 0n);
+    case 'memberTools':
+      return base | ROLES | P(27n); // give roles back, nicknames
     default:
       return base;
   }

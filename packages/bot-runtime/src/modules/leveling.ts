@@ -87,11 +87,21 @@ async function afterXpChange(ctx: ModuleContext, member: GuildMember, beforeXp: 
   });
   if (c.levelUp.dm) return void (await tryDM(member.user, text));
   const channel = c.levelUp.channelId ? await sendableChannel(ctx, member.guild, c.levelUp.channelId, 'Level-up message') : here;
-  await channel?.send({ content: text, allowedMentions: { users: [member.id] } }).catch((e: Error) => ctx.log('warn', `Leveling: could not announce: ${e.message}`));
+  const payload = c.levelUp.embed
+    ? { content: `<@${member.id}>`, embeds: [{ title: `⬆️ Level ${after}`, description: text, thumbnail: { url: member.user.displayAvatarURL({ size: 128 }) }, color: member.displayColor || 0x7c5cff }], allowedMentions: { users: [member.id] } }
+    : { content: text, allowedMentions: { users: [member.id] } };
+  await channel?.send(payload).catch((e: Error) => ctx.log('warn', `Leveling: could not announce: ${e.message}`));
 }
 
 /** /xp give|take|set — staff tools. */
 async function handleXpCommand(ctx: ModuleContext, i: ChatInputCommandInteraction<'cached'>): Promise<void> {
+  if (i.options.getSubcommand() === 'resetall') {
+    if (!i.member.permissions.has('ManageGuild')) return void (await i.reply({ content: 'Only staff with Manage Server can do that.', flags: MessageFlags.Ephemeral }));
+    if (i.options.getString('confirm', true) !== 'RESET') return void (await i.reply({ content: 'Type RESET (in capitals) to confirm — this wipes everyone’s XP.', flags: MessageFlags.Ephemeral }));
+    const n = ctx.store.resetXp(i.guildId, null);
+    ctx.log('warn', `Leveling: ${i.user.tag} reset everyone’s XP in “${i.guild.name}” (${n} members).`);
+    return void (await i.reply({ content: `Reset XP for ${n} member(s). Reward roles stay until members level up again.`, flags: MessageFlags.Ephemeral }));
+  }
   const user = i.options.getUser('member', true);
   const member = await i.guild.members.fetch(user.id).catch(() => null);
   if (!member || user.bot) return void (await i.reply({ content: 'Pick a member of this server (not a bot).', flags: MessageFlags.Ephemeral }));
@@ -151,7 +161,9 @@ export async function handleLevelingCommand(ctx: ModuleContext, i: ChatInputComm
     });
     return;
   }
-  const top = ctx.store.leaderboard(i.guild.id, 10);
+  const page = i.options.getInteger('page') ?? 1;
+  const top = ctx.store.leaderboard(i.guild.id, 10, (page - 1) * 10);
+  if (!top.length && page > 1) return void (await i.reply({ content: `There’s no page ${page}.`, flags: MessageFlags.Ephemeral }));
   if (!top.length) {
     await i.reply({ content: 'Nobody has earned XP yet — start chatting!', flags: MessageFlags.Ephemeral });
     return;
@@ -160,8 +172,9 @@ export async function handleLevelingCommand(ctx: ModuleContext, i: ChatInputComm
   await i.reply({
     embeds: [
       {
-        title: `🏆 ${i.guild.name} leaderboard`,
-        description: top.map((t, n) => `${medals[n] ?? `**${n + 1}.**`} <@${t.userId}> — level ${levelFromXp(t.xp).level} · ${t.xp} XP`).join('\n'),
+        title: `🏆 ${i.guild.name} leaderboard${page > 1 ? ` — page ${page}` : ''}`,
+        description: top.map((t, n) => `${(page === 1 && medals[n]) || `**${(page - 1) * 10 + n + 1}.**`} <@${t.userId}> — level ${levelFromXp(t.xp).level} · ${t.xp} XP`).join('\n'),
+        footer: top.length === 10 ? { text: `Next: /leaderboard page:${page + 1}` } : undefined,
         color: BRAND_COLOR,
       },
     ],

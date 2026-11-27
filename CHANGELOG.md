@@ -7,7 +7,8 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [0.5.0] - 2026-11-27
 
-117 new features: 4 new modules (59 features) and 58 additions to existing modules.
+233 new features: 11 new modules (124 features) and 109 additions to existing modules. Counted one per separate
+thing you can switch on, set or run — options of the same feature aren't counted twice.
 
 ### New modules
 - **Modmail** (14): members DM the bot to reach staff; each conversation is a thread in a staff-only channel with a
@@ -27,7 +28,46 @@ versions follow [Semantic Versioning](https://semver.org/).
   reactions, record tracking, `/count` with top counters, `/trivia` with four buttons and a timer, 50 built-in questions,
   your own questions, coin prizes with Economy, the answer revealed when time runs out, `/rps`, `/8ball`.
 
+- **Auto-responder** (13): replies when someone says a word or phrase — anywhere, as a whole word, at the start or
+  as the whole message; several answers picked at random; reply, normal message or DM; card with a colour; a reaction;
+  delete the trigger; only in chosen channels; only for / never for chosen roles; cooldown; `{args}` and `{channel}`.
+- **Confessions** (10): `/confess` with an optional image, numbered posts, anonymous replies in a thread, an optional
+  staff approval queue, a staff-only log of who wrote what (members are told), cooldown, `/confessions ban | unban`,
+  custom title and colour.
+- **Highlights** (11): `/highlight add | remove | list | clear | ignore`; a DM with a jump link and the messages around
+  it; skipped while you're chatting there; only for channels you can read; DM cooldown; word limit; server-wide
+  ignored channels.
+- **Channel Automation** (10): per channel — auto-publish announcements, a thread on every message (name template),
+  auto-reactions, media-only, text-only or link-only channels, auto-delete after a time, one post per member per N
+  minutes/hours, staff bypass, a DM explaining why a message was removed.
+- **Activity Stats** (8): messages and voice minutes per member per day, `/activity` (today, 7 and 30 days, all time),
+  `/topchatters` and `/topvoice` by period, `/serveractivity` 7-day chart, weekly report, ignored channels.
+- **Reputation** (8): `/rep give` (with a reason), cooldown, `/rep check`, `/rep top`, "thanks @name" gives rep (⭐
+  reaction), role rewards, log channel, `/rep set`.
+- **Member Tools** (5): roles given back on rejoin, nickname given back, roles that are never given back, a
+  welcome-back message instead of the normal welcome, roles for time in the server.
+
 ### Added to existing modules
+- **Tickets** (11 + 6): web-page (HTML) transcripts that look like Discord, opening hours (days, overnight, time zone),
+  a server-wide open-ticket limit, `/ticket blacklist` and `unblacklist`, a staff reminder when the member has waited too
+  long.
+- **Moderation** (12 + 9): `/massban`, `/move`, `/disconnect`, `/report` and right-click **Report message** with
+  Time out / Delete / Done buttons for staff, AutoMod rules for dangerous file types and too many files, invites to your
+  own server allowed.
+- **Logging** (2): name and avatar changes, boosts started and stopped.
+- **Leveling** (+3): `/leaderboard page`, level-up message as a card, `/xp resetall` (typed confirmation).
+- **Utility** (+10): `/quickpoll`, `/color`, `/calc`, `/servericon`, `/serverbanner`, `/firstmessage`, `/inrole`,
+  `/say`, `/reminders` (list) and cancelling a reminder.
+- **Giveaways** (+2): `/giveaway drop` (first click wins), `/giveaway delete`.
+- **Temporary voice** (+2): `/voice bitrate`, `/voice info`.
+- **Birthdays** (1): `/birthday month`. **Scheduled messages** (1): one-time messages on a date.
+- **Economy** (+4): `/beg`, `/crime`, daily bank interest, pay boosts by role. **Counting & Games** (+4): `/tictactoe`
+  against another member, `/wouldyourather`, `/truth`, `/dare`.
+- **Modmail** (+3): saved-reply snippets, auto-close after idle hours, transcripts saved to a log channel.
+  **Applications** (+3): open/closed switch, minimum account age, ping reviewers. **Reaction roles** (+1): descriptions
+  under roles in menus.
+
+### Earlier in 0.5.0
 - **Tickets** (11): `/ticket add` and `/ticket remove` take a role as well as a member; `/ticket claim`, `unclaim`,
   `transfer`, `priority` (🟢🟡🔴 in the channel name), `closerequest` (the member confirms with a button), `close` with
   a reason, `stats`; 1–5 star rating DM after closing; ticket log channel. The module page now lists every command.
@@ -47,8 +87,9 @@ versions follow [Semantic Versioning](https://semver.org/).
 - **Reaction roles** (1): most roles per member per panel.
 
 ### Notes
-- Utility now listens to messages when `/afk` is on (no privileged intent needed). Modmail and the counting channel need
-  **Message Content Intent** in the Developer Portal; the module pages say so.
+- Utility now listens to messages when `/afk` is on (no privileged intent needed). Modmail, the counting channel,
+  Auto-responder, Highlights, Channel Automation and "thanks" rep need **Message Content Intent**; Member Tools needs
+  **Server Members Intent**. The module pages say so.
 
 ## [0.4.4] - 2026-11-25 (local build, not published)
 

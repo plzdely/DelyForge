@@ -1,9 +1,44 @@
 import { randomInt } from 'node:crypto';
-import { checkCount, countedNumber, EIGHT_BALL, rpsResult, shuffleTrivia, TRIVIA_QUESTIONS } from '@delyforge/shared';
+import { checkCount, countedNumber, DARES, EIGHT_BALL, rpsResult, shuffleTrivia, ticTacToeResult, TRIVIA_QUESTIONS, TRUTHS, WOULD_YOU_RATHER } from '@delyforge/shared';
 import { type ButtonInteraction, ButtonStyle, type ChatInputCommandInteraction, ComponentType, type Message, MessageFlags } from 'discord.js';
 import { COLORS, type ModuleContext, truncate } from './context.js';
 
-export const GAME_COMMANDS = new Set(['count', 'trivia', 'rps', '8ball']);
+export const GAME_COMMANDS = new Set(['count', 'trivia', 'rps', '8ball', 'tictactoe', 'wouldyourather', 'truth', 'dare']);
+
+// ─── Tic-tac-toe ──────────────────────────────────────────────────────────────────────────────────────────────────
+
+interface TttGame {
+  players: [string, string];
+  board: ('X' | 'O' | null)[];
+  turn: 0 | 1;
+  at: number;
+}
+const ttt = new Map<string, TttGame>();
+
+function tttComponents(token: string, g: TttGame, over: boolean) {
+  return [0, 1, 2].map((row) => ({
+    type: ComponentType.ActionRow as const,
+    components: [0, 1, 2].map((col) => {
+      const n = row * 3 + col;
+      const v = g.board[n];
+      return { type: ComponentType.Button as const, style: v === 'X' ? ButtonStyle.Primary : v === 'O' ? ButtonStyle.Danger : ButtonStyle.Secondary, label: v ?? '·', custom_id: `df:ttt:${token}:${n}`, disabled: over || v !== null };
+    }),
+  }));
+}
+
+/** A tic-tac-toe square was clicked. */
+export async function onTicTacToe(i: ButtonInteraction, token: string, square: number): Promise<void> {
+  const g = ttt.get(token);
+  if (!g) return void (await i.reply({ content: 'This game is over.', flags: MessageFlags.Ephemeral }));
+  if (i.user.id !== g.players[g.turn]) return void (await i.reply({ content: g.players.includes(i.user.id) ? 'It’s not your turn.' : 'You’re not in this game.', flags: MessageFlags.Ephemeral }));
+  if (g.board[square]) return void (await i.reply({ content: 'That square is taken.', flags: MessageFlags.Ephemeral }));
+  g.board[square] = g.turn === 0 ? 'X' : 'O';
+  const result = ticTacToeResult(g.board);
+  if (result) ttt.delete(token);
+  else g.turn = g.turn === 0 ? 1 : 0;
+  const text = result === 'draw' ? '🤝 It’s a draw!' : result ? `🏆 <@${g.players[result === 'X' ? 0 : 1]}> wins!` : `<@${g.players[g.turn]}>’s turn (${g.turn === 0 ? 'X' : 'O'})`;
+  await i.update({ content: `❌ <@${g.players[0]}> vs ⭕ <@${g.players[1]}>\n${text}`, components: tttComponents(token, g, !!result), allowedMentions: { parse: [] } });
+}
 
 // ─── Counting ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -53,6 +88,27 @@ export async function handleGameCommand(ctx: ModuleContext, i: ChatInputCommandI
     const icon = { rock: '🪨', paper: '📄', scissors: '✂️' };
     const result = rpsResult(player, bot);
     return void (await i.reply(`${icon[player]} vs ${icon[bot]} — ${result === 'win' ? 'you win! 🎉' : result === 'lose' ? 'I win! 😎' : 'it’s a draw.'}`));
+  }
+  if (i.commandName === 'tictactoe') {
+    const opponent = i.options.getUser('opponent', true);
+    if (opponent.bot || opponent.id === i.user.id) return void (await i.reply({ content: 'Pick another member to play against.', flags: MessageFlags.Ephemeral }));
+    for (const [k, v] of ttt) if (Date.now() - v.at > 3_600_000) ttt.delete(k);
+    const token = randomInt(1, 2 ** 31).toString(36);
+    const g: TttGame = { players: [i.user.id, opponent.id], board: Array(9).fill(null), turn: 0, at: Date.now() };
+    ttt.set(token, g);
+    return void (await i.reply({ content: `❌ <@${i.user.id}> vs ⭕ <@${opponent.id}>\n<@${i.user.id}>’s turn (X)`, components: tttComponents(token, g, false), allowedMentions: { users: [opponent.id] } }));
+  }
+  if (i.commandName === 'wouldyourather') {
+    const q = WOULD_YOU_RATHER[randomInt(WOULD_YOU_RATHER.length)]!;
+    const [a, b] = q.replace(/\?$/, '').split(' or ');
+    const msg = await i.reply({ embeds: [{ title: '🤔 Would you rather…', description: `🅰️ ${a}\n🅱️ ${b}`, color: COLORS.info }], withResponse: true });
+    const sent = msg.resource?.message;
+    if (sent) for (const e of ['🅰️', '🅱️']) await sent.react(e).catch(() => null);
+    return;
+  }
+  if (i.commandName === 'truth' || i.commandName === 'dare') {
+    const list = i.commandName === 'truth' ? TRUTHS : DARES;
+    return void (await i.reply({ embeds: [{ title: i.commandName === 'truth' ? '🗣️ Truth' : '🔥 Dare', description: list[randomInt(list.length)], color: i.commandName === 'truth' ? COLORS.info : COLORS.danger }] }));
   }
   if (i.commandName === '8ball') {
     return void (await i.reply({ content: `🎱 *${truncate(i.options.getString('question', true), 200)}*\n**${EIGHT_BALL[randomInt(EIGHT_BALL.length)]}**`, allowedMentions: { parse: [] } }));

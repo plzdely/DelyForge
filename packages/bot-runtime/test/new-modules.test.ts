@@ -168,11 +168,14 @@ describe('scheduled messages', () => {
     expect(localParts(new Date('2026-01-14T14:30:00Z'), 'America/Chicago')?.time).toBe('08:30');
     expect(localParts(new Date(), 'Not/AZone')).toBeNull();
     const msgs = [
-      { channelId: '1', text: 'daily', days: [], time: '09:30', roleId: null, embed: false, color: '#7c5cff', deletePrevious: false },
-      { channelId: '1', text: 'mondays', days: [1], time: '09:30', roleId: null, embed: false, color: '#7c5cff', deletePrevious: false },
+      { channelId: '1', text: 'daily', days: [], time: '09:30', roleId: null, embed: false, color: '#7c5cff', deletePrevious: false, date: '' },
+      { channelId: '1', text: 'mondays', days: [1], time: '09:30', roleId: null, embed: false, color: '#7c5cff', deletePrevious: false, date: '' },
     ];
     expect(dueMessages(msgs, { day: 3, time: '09:30' })).toEqual([0]);
     expect(dueMessages(msgs, { day: 1, time: '09:30' })).toEqual([0, 1]);
+    const once = [{ ...msgs[0]!, date: '2026-12-24' }];
+    expect(dueMessages(once, { day: 4, time: '09:30', date: '2026-12-24' })).toEqual([0]);
+    expect(dueMessages(once, { day: 4, time: '09:30', date: '2026-12-25' })).toEqual([]);
   });
 });
 

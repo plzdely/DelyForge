@@ -1,4 +1,5 @@
-import { type TicketsConfig, renderTemplate } from '@delyforge/shared';
+import { type TicketsConfig, renderTemplate, withinHours } from '@delyforge/shared';
+import { localParts } from './scheduled.js';
 import {
   AttachmentBuilder,
   type ButtonInteraction,
@@ -60,6 +61,20 @@ export function formatTranscript(channelName: string, messages: readonly { at: D
   return `Transcript of #${channelName} — ${messages.length} message(s)\n\n${lines.join('\n')}\n`;
 }
 
+const esc = (s: string) => s.replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]!);
+
+/** A transcript as a web page that looks like a Discord chat (everything escaped, no scripts, no remote content). */
+export function htmlTranscript(channelName: string, messages: readonly { at: Date; author: string; bot: boolean; content: string; attachments: string[] }[]): string {
+  const rows = messages
+    .map(
+      (m) =>
+        `<div class="m"><div class="h"><b>${esc(m.author)}</b>${m.bot ? '<span class="bot">BOT</span>' : ''}<time>${esc(m.at.toISOString().replace('T', ' ').slice(0, 19))} UTC</time></div>` +
+        `<div class="c">${esc(m.content).replace(/\n/g, '<br>')}</div>${m.attachments.map((a) => `<div class="a">📎 ${esc(a)}</div>`).join('')}</div>`,
+    )
+    .join('\n');
+  return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'"><title>#${esc(channelName)}</title><style>body{background:#313338;color:#dbdee1;font:15px system-ui,sans-serif;margin:0;padding:24px}h1{color:#fff;font-size:18px}.m{padding:6px 0;border-bottom:1px solid #3f4147}.h b{color:#fff}.bot{background:#5865f2;color:#fff;font-size:10px;border-radius:3px;padding:1px 4px;margin-left:6px}time{color:#949ba4;font-size:12px;margin-left:8px}.c{white-space:pre-wrap;margin-top:2px}.a{color:#00a8fc;font-size:13px}</style></head><body><h1>#${esc(channelName)} — ${messages.length} message(s)</h1>${rows}</body></html>`;
+}
+
 /** True when a ticket had no messages for `hours` (the last message, or the opening time if it has none). */
 export function ticketIsIdle(lastActivityMs: number, hours: number, now: number): boolean {
   return hours > 0 && now - lastActivityMs >= hours * 3_600_000;
@@ -94,6 +109,8 @@ const opening = new Set<string>();
 export async function onTicketOpen(ctx: ModuleContext, i: ButtonInteraction, panelId: string | null = null): Promise<void> {
   if (!i.inCachedGuild()) return;
   const c = ctx.config(i.guildId).tickets;
+  const blocked = c.enabled ? openProblem(ctx, i.guildId, i.user.id) : null;
+  if (blocked) return void (await reply(i, blocked));
   if (c.enabled && c.askReason && ticketKind(c, panelId) && !tooMany(ctx, i)) {
     return void (await i.showModal({
       title: 'Open a ticket',
@@ -131,10 +148,24 @@ async function guardedOpen(ctx: ModuleContext, i: ButtonInteraction<'cached'> | 
   }
 }
 
+/** Why this member can't open a ticket right now (blacklist, opening hours, server-wide limit), or null. */
+function openProblem(ctx: ModuleContext, guildId: string, userId: string, now = new Date()): string | null {
+  const c = ctx.config(guildId).tickets;
+  if (ctx.store.ticketBlacklisted(guildId, userId)) return 'You can’t open tickets in this server.';
+  if (c.openHours.enabled) {
+    const at = localParts(now, c.openHours.timezone) ?? localParts(now, 'UTC')!;
+    if (!withinHours(c.openHours, at.day, at.time)) return `🕐 ${c.openHours.message} (Open ${c.openHours.from}–${c.openHours.to}, ${c.openHours.timezone}.)`;
+  }
+  if (c.maxOpenTotal && ctx.store.openTicketCount(guildId) >= c.maxOpenTotal) return 'Our staff are handling a lot of tickets right now — please try again a little later.';
+  return null;
+}
+
 async function openTicket(ctx: ModuleContext, i: ButtonInteraction<'cached'> | ModalSubmitInteraction<'cached'>, reason: string | null, panelId: string | null, label: string): Promise<boolean> {
   const c = ctx.config(i.guildId).tickets;
   const kind = ticketKind(c, panelId);
   if (!c.enabled || !kind) return (await reply(i, 'Tickets aren’t open right now.'), false);
+  const problem = openProblem(ctx, i.guildId, i.user.id);
+  if (problem) return (await reply(i, problem), false);
   const open = tooMany(ctx, i);
   if (open) return (await reply(i, `You already have an open ticket: ${open.map((id) => `<#${id}>`).join(', ')}`), false);
   await i.deferReply({ flags: MessageFlags.Ephemeral });
@@ -294,7 +325,10 @@ async function finishClose(
       attachments: [...m.attachments.values()].map((a) => a.url),
     })),
   );
-  const file = () => new AttachmentBuilder(Buffer.from(text, 'utf8'), { name: `${channel.name}.txt` });
+  const page = c.transcriptHtml
+    ? htmlTranscript(channel.name, messages.map((m) => ({ at: m.createdAt, author: m.author.tag, bot: m.author.bot, content: m.content || (m.embeds[0]?.description ?? ''), attachments: [...m.attachments.values()].map((a) => a.url) })))
+    : null;
+  const file = () => [new AttachmentBuilder(Buffer.from(text, 'utf8'), { name: `${channel.name}.txt` }), ...(page ? [new AttachmentBuilder(Buffer.from(page, 'utf8'), { name: `${channel.name}.html` })] : [])];
   const summary = {
     title: `Ticket closed — #${channel.name}`,
     description: [
@@ -309,10 +343,10 @@ async function finishClose(
   };
 
   const transcriptChannel = await sendableChannel(ctx, guild, c.transcriptChannelId, 'Ticket transcripts');
-  await transcriptChannel?.send({ embeds: [summary], files: [file()], allowedMentions: { parse: [] } }).catch((e: Error) => ctx.log('warn', `Tickets: transcript not saved: ${e.message}`));
+  await transcriptChannel?.send({ embeds: [summary], files: file(), allowedMentions: { parse: [] } }).catch((e: Error) => ctx.log('warn', `Tickets: transcript not saved: ${e.message}`));
   if (c.dmTranscript) {
     const owner = await ctx.client.users.fetch(ticket.userId).catch(() => null);
-    if (owner) await owner.send({ content: `Your ticket in **${guild.name}** was closed. Here’s a copy of the conversation.`, files: [file()] }).catch(() => null);
+    if (owner) await owner.send({ content: `Your ticket in **${guild.name}** was closed. Here’s a copy of the conversation.`, files: file() }).catch(() => null);
   }
   ctx.log('info', `Ticket #${channel.name} closed by ${closedBy.tag}${why}.`);
   await ticketLog(ctx, guild, { title: '🔒 Ticket closed', description: `#${channel.name} (opened by <@${ticket.userId}>) closed by <@${closedBy.id}>${why}`, color: COLORS.info });
@@ -333,12 +367,28 @@ async function finishClose(
 }
 
 /** Every 10 minutes: closes tickets nobody wrote in for the configured number of hours. */
+/** Tickets whose staff were already reminded (until someone writes again). */
+const reminded = new Set<string>();
+
 export async function autoCloseTickets(ctx: ModuleContext, guild: Guild, now = Date.now()): Promise<void> {
   const c = ctx.config(guild.id).tickets;
-  if (!c.enabled || !c.autoCloseHours) return;
+  if (!c.enabled || (!c.autoCloseHours && !c.staffReminderHours)) return;
   for (const t of ctx.store.openTicketsInGuild(guild.id)) {
     const channel = guild.channels.cache.get(t.channelId);
     if (!channel?.isTextBased()) continue;
+    // Staff reminder: the newest message is the member's and nobody answered it for a while.
+    if (c.staffReminderHours && channel.lastMessageId) {
+      const last = await channel.messages.fetch(channel.lastMessageId).catch(() => null);
+      const waiting = last && last.author.id === t.userId && now - last.createdTimestamp >= c.staffReminderHours * 3_600_000;
+      if (!waiting) reminded.delete(channel.id);
+      else if (!reminded.has(channel.id)) {
+        reminded.add(channel.id);
+        const staff = (ticketKind(c, t.panelId)?.staffRoleIds ?? c.staffRoleIds).filter((id) => guild.roles.cache.has(id));
+        const who = t.claimedBy ? [`<@${t.claimedBy}>`] : staff.map((id) => `<@&${id}>`);
+        await channel.send({ content: `⏰ ${who.join(' ') || 'Staff'} — <@${t.userId}> has been waiting ${c.staffReminderHours} hour(s) for a reply.`, allowedMentions: { users: t.claimedBy ? [t.claimedBy] : [], roles: t.claimedBy ? [] : staff } }).catch(() => null);
+      }
+    }
+    if (!c.autoCloseHours) continue;
     const last = channel.lastMessageId ? Number(SnowflakeUtil.timestampFrom(channel.lastMessageId)) : Date.parse(t.openedAt);
     if (!ticketIsIdle(last, c.autoCloseHours, now) || !ctx.store.closeTicket(t.channelId)) continue;
     await finishClose(ctx, guild, channel, t, { id: ctx.client.user.id, tag: ctx.client.user.tag }, ` (no messages for ${c.autoCloseHours} h)`);
@@ -354,6 +404,12 @@ export async function handleTicketCommand(ctx: ModuleContext, i: ChatInputComman
     const why = i.options.getString('reason');
     if (why) closeReasons.set(i.channelId, truncate(why, 300));
     return onTicketClose(ctx, i);
+  }
+  if (sub === 'blacklist' || sub === 'unblacklist') {
+    if (!isTicketStaff(ctx, i.member, null)) return void (await reply(i, 'Only ticket staff can do that.'));
+    const user = i.options.getUser('member', true);
+    ctx.store.setTicketBlacklisted(i.guildId, user.id, sub === 'blacklist');
+    return void (await reply(i, sub === 'blacklist' ? `🚫 <@${user.id}> can’t open tickets any more.` : `✅ <@${user.id}> can open tickets again.`));
   }
   if (sub === 'stats') {
     if (!isTicketStaff(ctx, i.member, null)) return void (await reply(i, 'Only ticket staff can see the stats.'));

@@ -84,6 +84,10 @@ export async function handleVoiceCommand(ctx: ModuleContext, i: ChatInputCommand
   const owner = ctx.store.tempChannelOwner(channel.id);
   const sub = i.options.getSubcommand();
 
+  if (sub === 'info') {
+    const locked = channel.permissionOverwrites.cache.get(i.guild.roles.everyone.id)?.deny.has('Connect') ?? false;
+    return void (await say(`🎙️ **${channel.name}** — owner ${owner ? `<@${owner}>` : 'nobody (use /voice claim)'} · ${channel.members.size}/${channel.userLimit || '∞'} people · ${Math.round(channel.bitrate / 1000)} kbps · ${locked ? '🔒 locked' : '🔓 open'}`));
+  }
   if (sub === 'claim') {
     if (owner === i.user.id) return void (await say('This channel is already yours.'));
     if (owner && channel.members.has(owner)) return void (await say(`<@${owner}> is still here — only an empty owner seat can be claimed.`));
@@ -134,6 +138,13 @@ export async function handleVoiceCommand(ctx: ModuleContext, i: ChatInputCommand
     if (sub === 'ban') await channel.permissionOverwrites.edit(target.id, { Connect: false }).catch(() => null);
     if (target.voice.channelId === channel.id) await target.voice.disconnect(sub === 'ban' ? 'Banned from the channel by its owner' : 'Kicked from the channel by its owner').catch(() => null);
     return void (await say(sub === 'ban' ? `⛔ <@${target.id}> can’t join your channel any more.` : `👢 Disconnected <@${target.id}>.`));
+  }
+  if (sub === 'bitrate') {
+    const kbps = i.options.getInteger('kbps', true);
+    // Discord's limit depends on the server's boost level.
+    const max = [96, 128, 256, 384][i.guild.premiumTier] ?? 96;
+    const done = await ok(channel.setBitrate(Math.min(kbps, max) * 1000));
+    return void (await say(done ? `Sound quality set to ${Math.min(kbps, max)} kbps.${kbps > max ? ` (The most this server allows is ${max}.)` : ''}` : 'I couldn’t change it.'));
   }
   if (sub === 'limit') {
     const people = i.options.getInteger('people', true);

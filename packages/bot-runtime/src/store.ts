@@ -315,6 +315,67 @@ export class BotStore {
         since    INTEGER NOT NULL,
         PRIMARY KEY (guild_id, user_id)
       );
+      CREATE TABLE IF NOT EXISTS confessions (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        guild_id   TEXT NOT NULL,
+        user_id    TEXT NOT NULL,
+        text       TEXT NOT NULL,
+        image      TEXT,
+        status     TEXT NOT NULL,
+        number     INTEGER,
+        created_at INTEGER NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS confession_bans (
+        guild_id TEXT NOT NULL,
+        user_id  TEXT NOT NULL,
+        PRIMARY KEY (guild_id, user_id)
+      );
+      CREATE TABLE IF NOT EXISTS highlights (
+        guild_id TEXT NOT NULL,
+        user_id  TEXT NOT NULL,
+        word     TEXT NOT NULL,
+        PRIMARY KEY (guild_id, user_id, word)
+      );
+      CREATE TABLE IF NOT EXISTS highlight_ignores (
+        guild_id   TEXT NOT NULL,
+        user_id    TEXT NOT NULL,
+        channel_id TEXT NOT NULL,
+        PRIMARY KEY (guild_id, user_id, channel_id)
+      );
+      CREATE TABLE IF NOT EXISTS channel_posts (
+        channel_id TEXT NOT NULL,
+        user_id    TEXT NOT NULL,
+        at         INTEGER NOT NULL,
+        PRIMARY KEY (channel_id, user_id)
+      );
+      CREATE TABLE IF NOT EXISTS activity_daily (
+        guild_id TEXT NOT NULL,
+        user_id  TEXT NOT NULL,
+        day      TEXT NOT NULL,
+        messages INTEGER NOT NULL DEFAULT 0,
+        voice    INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (guild_id, user_id, day)
+      );
+      CREATE TABLE IF NOT EXISTS reputation (
+        guild_id TEXT NOT NULL,
+        user_id  TEXT NOT NULL,
+        reps     INTEGER NOT NULL DEFAULT 0,
+        given_at INTEGER,
+        PRIMARY KEY (guild_id, user_id)
+      );
+      CREATE TABLE IF NOT EXISTS member_snapshots (
+        guild_id TEXT NOT NULL,
+        user_id  TEXT NOT NULL,
+        roles    TEXT NOT NULL,
+        nick     TEXT,
+        left_at  INTEGER NOT NULL,
+        PRIMARY KEY (guild_id, user_id)
+      );
+      CREATE TABLE IF NOT EXISTS ticket_blacklist (
+        guild_id TEXT NOT NULL,
+        user_id  TEXT NOT NULL,
+        PRIMARY KEY (guild_id, user_id)
+      );
       CREATE TABLE IF NOT EXISTS shop_counters (
         guild_id TEXT NOT NULL,
         key      TEXT NOT NULL,
@@ -339,6 +400,8 @@ export class BotStore {
     this.addColumnIfMissing('tickets', 'panel_id', 'TEXT');
     this.addColumnIfMissing('starboard', 'author_id', 'TEXT');
     this.addColumnIfMissing('starboard', 'stars', 'INTEGER NOT NULL DEFAULT 0');
+    this.addColumnIfMissing('economy', 'last_beg', 'INTEGER');
+    this.addColumnIfMissing('economy', 'last_crime', 'INTEGER');
   }
 
   private addColumnIfMissing(table: string, column: string, type: string): void {
@@ -482,8 +545,8 @@ export class BotStore {
     );
   }
 
-  leaderboard(guildId: string, limit = 10): { userId: string; xp: number }[] {
-    const rows = this.db.prepare('SELECT user_id, xp FROM xp WHERE guild_id = ? ORDER BY xp DESC LIMIT ?').all(guildId, limit) as { user_id: string; xp: number }[];
+  leaderboard(guildId: string, limit = 10, offset = 0): { userId: string; xp: number }[] {
+    const rows = this.db.prepare('SELECT user_id, xp FROM xp WHERE guild_id = ? ORDER BY xp DESC LIMIT ? OFFSET ?').all(guildId, limit, offset) as { user_id: string; xp: number }[];
     return rows.map((r) => ({ userId: r.user_id, xp: r.xp }));
   }
 
@@ -882,6 +945,199 @@ export class BotStore {
 
   topCounters(guildId: string, limit = 5): { userId: string; n: number }[] {
     return this.db.prepare('SELECT user_id AS userId, n FROM counting_users WHERE guild_id = ? ORDER BY n DESC LIMIT ?').all(guildId, limit) as { userId: string; n: number }[];
+  }
+
+  // ─── Reminders (list / cancel) ───────────────────────────────────────────────────────────────────────────────────
+
+  remindersOf(guildId: string, userId: string): { id: number; text: string; dueAt: number }[] {
+    return (this.db.prepare('SELECT id, text, due_at FROM reminders WHERE guild_id = ? AND user_id = ? ORDER BY due_at LIMIT 25').all(guildId, userId) as { id: number; text: string; due_at: number }[]).map((r) => ({ id: r.id, text: r.text, dueAt: r.due_at }));
+  }
+
+  cancelReminder(id: number, userId: string): boolean {
+    return Number(this.db.prepare('DELETE FROM reminders WHERE id = ? AND user_id = ?').run(id, userId).changes) === 1;
+  }
+
+  // ─── Ticket blacklist ────────────────────────────────────────────────────────────────────────────────────────────
+
+  setTicketBlacklisted(guildId: string, userId: string, on: boolean): void {
+    if (on) this.db.prepare('INSERT OR IGNORE INTO ticket_blacklist (guild_id, user_id) VALUES (?, ?)').run(guildId, userId);
+    else this.db.prepare('DELETE FROM ticket_blacklist WHERE guild_id = ? AND user_id = ?').run(guildId, userId);
+  }
+
+  ticketBlacklisted(guildId: string, userId: string): boolean {
+    return !!this.db.prepare('SELECT 1 FROM ticket_blacklist WHERE guild_id = ? AND user_id = ?').get(guildId, userId);
+  }
+
+  openTicketCount(guildId: string): number {
+    return (this.db.prepare('SELECT COUNT(*) AS n FROM tickets WHERE guild_id = ? AND closed_at IS NULL').get(guildId) as { n: number }).n;
+  }
+
+  openModmails(guildId: string): { threadId: string; userId: string }[] {
+    return (this.db.prepare('SELECT thread_id, user_id FROM modmail_threads WHERE guild_id = ? AND open = 1').all(guildId) as { thread_id: string; user_id: string }[]).map((r) => ({ threadId: r.thread_id, userId: r.user_id }));
+  }
+
+  // ─── Economy (round 2) ───────────────────────────────────────────────────────────────────────────────────────────
+
+  lastBegCrime(guildId: string, userId: string): { beg: number | null; crime: number | null } {
+    const r = this.db.prepare('SELECT last_beg, last_crime FROM economy WHERE guild_id = ? AND user_id = ?').get(guildId, userId) as { last_beg: number | null; last_crime: number | null } | undefined;
+    return { beg: r?.last_beg ?? null, crime: r?.last_crime ?? null };
+  }
+
+  setBegCrime(guildId: string, userId: string, which: 'beg' | 'crime', at: number): void {
+    this.db.prepare(`UPDATE economy SET ${which === 'beg' ? 'last_beg' : 'last_crime'} = ? WHERE guild_id = ? AND user_id = ?`).run(at, guildId, userId);
+  }
+
+  /** Adds `percent`% interest to every bank balance in a server (rounded down). */
+  applyInterest(guildId: string, percent: number): number {
+    return Number(this.db.prepare('UPDATE economy SET bank = bank + CAST(bank * ? / 100 AS INTEGER) WHERE guild_id = ? AND bank > 0').run(percent, guildId).changes);
+  }
+
+  // ─── Confessions ─────────────────────────────────────────────────────────────────────────────────────────────────
+
+  addConfession(guildId: string, userId: string, text: string, image: string | null, status: 'pending' | 'posted', now: number): { id: number; number: number | null } {
+    const number = status === 'posted' ? this.nextConfessionNumber(guildId) : null;
+    const id = Number(this.db.prepare('INSERT INTO confessions (guild_id, user_id, text, image, status, number, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)').run(guildId, userId, text, image, status, number, now).lastInsertRowid);
+    return { id, number };
+  }
+
+  private nextConfessionNumber(guildId: string): number {
+    return (this.db.prepare("SELECT COALESCE(MAX(number), 0) + 1 AS n FROM confessions WHERE guild_id = ?").get(guildId) as { n: number }).n;
+  }
+
+  confession(id: number): { id: number; guildId: string; userId: string; text: string; image: string | null; status: string; number: number | null } | null {
+    const r = this.db.prepare('SELECT * FROM confessions WHERE id = ?').get(id) as { id: number; guild_id: string; user_id: string; text: string; image: string | null; status: string; number: number | null } | undefined;
+    return r ? { id: r.id, guildId: r.guild_id, userId: r.user_id, text: r.text, image: r.image, status: r.status, number: r.number } : null;
+  }
+
+  /** Approve (gets the next number) or deny a waiting confession, once. */
+  decideConfession(id: number, approve: boolean): number | null | false {
+    const c = this.confession(id);
+    if (!c || c.status !== 'pending') return false;
+    const number = approve ? this.nextConfessionNumber(c.guildId) : null;
+    this.db.prepare("UPDATE confessions SET status = ?, number = ? WHERE id = ? AND status = 'pending'").run(approve ? 'posted' : 'denied', number, id);
+    return number;
+  }
+
+  lastConfessionAt(guildId: string, userId: string): number | null {
+    return (this.db.prepare('SELECT MAX(created_at) AS at FROM confessions WHERE guild_id = ? AND user_id = ?').get(guildId, userId) as { at: number | null }).at;
+  }
+
+  setConfessionBanned(guildId: string, userId: string, on: boolean): void {
+    if (on) this.db.prepare('INSERT OR IGNORE INTO confession_bans (guild_id, user_id) VALUES (?, ?)').run(guildId, userId);
+    else this.db.prepare('DELETE FROM confession_bans WHERE guild_id = ? AND user_id = ?').run(guildId, userId);
+  }
+
+  confessionBanned(guildId: string, userId: string): boolean {
+    return !!this.db.prepare('SELECT 1 FROM confession_bans WHERE guild_id = ? AND user_id = ?').get(guildId, userId);
+  }
+
+  // ─── Highlights ──────────────────────────────────────────────────────────────────────────────────────────────────
+
+  highlightWords(guildId: string, userId: string): string[] {
+    return (this.db.prepare('SELECT word FROM highlights WHERE guild_id = ? AND user_id = ? ORDER BY word').all(guildId, userId) as { word: string }[]).map((r) => r.word);
+  }
+
+  /** Everyone's words in a server: word → member IDs. */
+  allHighlights(guildId: string): Map<string, string[]> {
+    const out = new Map<string, string[]>();
+    for (const r of this.db.prepare('SELECT word, user_id FROM highlights WHERE guild_id = ?').all(guildId) as { word: string; user_id: string }[]) out.set(r.word, [...(out.get(r.word) ?? []), r.user_id]);
+    return out;
+  }
+
+  addHighlight(guildId: string, userId: string, word: string): boolean {
+    return Number(this.db.prepare('INSERT OR IGNORE INTO highlights (guild_id, user_id, word) VALUES (?, ?, ?)').run(guildId, userId, word).changes) === 1;
+  }
+
+  removeHighlight(guildId: string, userId: string, word: string | null): number {
+    return Number(
+      (word ? this.db.prepare('DELETE FROM highlights WHERE guild_id = ? AND user_id = ? AND word = ?').run(guildId, userId, word) : this.db.prepare('DELETE FROM highlights WHERE guild_id = ? AND user_id = ?').run(guildId, userId)).changes,
+    );
+  }
+
+  /** Toggles ignoring a channel for a member's highlights; true when it's now ignored. */
+  toggleHighlightIgnore(guildId: string, userId: string, channelId: string): boolean {
+    if (Number(this.db.prepare('DELETE FROM highlight_ignores WHERE guild_id = ? AND user_id = ? AND channel_id = ?').run(guildId, userId, channelId).changes)) return false;
+    this.db.prepare('INSERT INTO highlight_ignores (guild_id, user_id, channel_id) VALUES (?, ?, ?)').run(guildId, userId, channelId);
+    return true;
+  }
+
+  highlightIgnored(guildId: string, userId: string, channelId: string): boolean {
+    return !!this.db.prepare('SELECT 1 FROM highlight_ignores WHERE guild_id = ? AND user_id = ? AND channel_id = ?').get(guildId, userId, channelId);
+  }
+
+  // ─── Channel automation ──────────────────────────────────────────────────────────────────────────────────────────
+
+  /** Records a post and says whether the member was still within the cooldown (true = too soon; nothing recorded). */
+  tooSoonInChannel(channelId: string, userId: string, cooldownMs: number, now: number): boolean {
+    const r = this.db.prepare('SELECT at FROM channel_posts WHERE channel_id = ? AND user_id = ?').get(channelId, userId) as { at: number } | undefined;
+    if (r && now - r.at < cooldownMs) return true;
+    this.db.prepare('INSERT OR REPLACE INTO channel_posts (channel_id, user_id, at) VALUES (?, ?, ?)').run(channelId, userId, now);
+    return false;
+  }
+
+  // ─── Activity ────────────────────────────────────────────────────────────────────────────────────────────────────
+
+  addActivity(guildId: string, userId: string, day: string, messages: number, voice: number): void {
+    this.db
+      .prepare('INSERT INTO activity_daily (guild_id, user_id, day, messages, voice) VALUES (?, ?, ?, ?, ?) ON CONFLICT (guild_id, user_id, day) DO UPDATE SET messages = messages + excluded.messages, voice = voice + excluded.voice')
+      .run(guildId, userId, day, messages, voice);
+  }
+
+  /** A member's messages and voice minutes since `fromDay` (YYYY-MM-DD, '' = all time). */
+  activityOf(guildId: string, userId: string, fromDay: string): { messages: number; voice: number } {
+    const r = this.db.prepare('SELECT COALESCE(SUM(messages), 0) AS m, COALESCE(SUM(voice), 0) AS v FROM activity_daily WHERE guild_id = ? AND user_id = ? AND day >= ?').get(guildId, userId, fromDay) as { m: number; v: number };
+    return { messages: r.m, voice: r.v };
+  }
+
+  topActivity(guildId: string, fromDay: string, by: 'messages' | 'voice', limit = 10): { userId: string; n: number }[] {
+    return this.db.prepare(`SELECT user_id AS userId, SUM(${by}) AS n FROM activity_daily WHERE guild_id = ? AND day >= ? GROUP BY user_id HAVING n > 0 ORDER BY n DESC LIMIT ?`).all(guildId, fromDay, limit) as { userId: string; n: number }[];
+  }
+
+  serverActivity(guildId: string, fromDay: string): { day: string; messages: number; voice: number; members: number }[] {
+    return this.db.prepare('SELECT day, SUM(messages) AS messages, SUM(voice) AS voice, COUNT(*) AS members FROM activity_daily WHERE guild_id = ? AND day >= ? GROUP BY day ORDER BY day').all(guildId, fromDay) as { day: string; messages: number; voice: number; members: number }[];
+  }
+
+  // ─── Reputation ──────────────────────────────────────────────────────────────────────────────────────────────────
+
+  reps(guildId: string, userId: string): number {
+    return (this.db.prepare('SELECT reps FROM reputation WHERE guild_id = ? AND user_id = ?').get(guildId, userId) as { reps: number } | undefined)?.reps ?? 0;
+  }
+
+  /** Gives one rep if the giver is past their cooldown; returns the receiver's new total, or null when too soon. */
+  giveRep(guildId: string, giverId: string, receiverId: string, cooldownMs: number, now: number): number | null {
+    const g = this.db.prepare('SELECT given_at FROM reputation WHERE guild_id = ? AND user_id = ?').get(guildId, giverId) as { given_at: number | null } | undefined;
+    if (g?.given_at != null && now - g.given_at < cooldownMs) return null;
+    this.db.prepare('INSERT INTO reputation (guild_id, user_id, given_at) VALUES (?, ?, ?) ON CONFLICT (guild_id, user_id) DO UPDATE SET given_at = excluded.given_at').run(guildId, giverId, now);
+    this.db.prepare('INSERT INTO reputation (guild_id, user_id, reps) VALUES (?, ?, 1) ON CONFLICT (guild_id, user_id) DO UPDATE SET reps = reps + 1').run(guildId, receiverId);
+    return this.reps(guildId, receiverId);
+  }
+
+  /** When the giver can give rep again (null = now). */
+  repReadyAt(guildId: string, giverId: string, cooldownMs: number): number | null {
+    const g = this.db.prepare('SELECT given_at FROM reputation WHERE guild_id = ? AND user_id = ?').get(guildId, giverId) as { given_at: number | null } | undefined;
+    return g?.given_at != null ? g.given_at + cooldownMs : null;
+  }
+
+  setReps(guildId: string, userId: string, reps: number): void {
+    this.db.prepare('INSERT INTO reputation (guild_id, user_id, reps) VALUES (?, ?, ?) ON CONFLICT (guild_id, user_id) DO UPDATE SET reps = excluded.reps').run(guildId, userId, reps);
+  }
+
+  topReps(guildId: string, limit = 10): { userId: string; reps: number }[] {
+    return this.db.prepare('SELECT user_id AS userId, reps FROM reputation WHERE guild_id = ? AND reps > 0 ORDER BY reps DESC LIMIT ?').all(guildId, limit) as { userId: string; reps: number }[];
+  }
+
+  // ─── Member snapshots (sticky roles, welcome back) ───────────────────────────────────────────────────────────────
+
+  saveSnapshot(guildId: string, userId: string, roles: string[], nick: string | null, now: number): void {
+    this.db.prepare('INSERT OR REPLACE INTO member_snapshots (guild_id, user_id, roles, nick, left_at) VALUES (?, ?, ?, ?, ?)').run(guildId, userId, JSON.stringify(roles), nick, now);
+  }
+
+  /** The snapshot from when they left, removed as it's taken. */
+  takeSnapshot(guildId: string, userId: string): { roles: string[]; nick: string | null; leftAt: number } | null {
+    const r = this.db.prepare('SELECT roles, nick, left_at FROM member_snapshots WHERE guild_id = ? AND user_id = ?').get(guildId, userId) as { roles: string; nick: string | null; left_at: number } | undefined;
+    if (!r) return null;
+    this.db.prepare('DELETE FROM member_snapshots WHERE guild_id = ? AND user_id = ?').run(guildId, userId);
+    return { roles: JSON.parse(r.roles) as string[], nick: r.nick, leftAt: r.left_at };
   }
 
   // ─── Shop counters (discount code uses, announced sales, vouch numbers) ───────────────────────────────────────────

@@ -304,9 +304,31 @@ export async function handleGiveaway(ctx: ModuleContext, i: ChatInputCommandInte
     }));
   }
 
+  if (sub === 'drop') {
+    const target = i.options.getChannel('channel') ?? i.channel;
+    const channel = target ? await sendableChannel(ctx, i.guild, target.id, 'Giveaway drop') : null;
+    if (!channel || !channel.permissionsFor(i.member)?.has([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages])) return void (await ephemeral(i, 'Pick a channel where you (and I) can post.'));
+    const prize = truncate(i.options.getString('prize', true).trim(), 200);
+    const token = randomInt(1, 2 ** 31).toString(36);
+    drops.set(token, { prize, guildId: i.guildId, hostId: i.user.id });
+    await channel.send({
+      embeds: [{ title: `⚡ Drop: ${prize}`, description: 'The **first** person to click wins!', color: hexToInt(c.color), footer: { text: `Hosted by ${i.user.username}` } }],
+      components: [{ type: ComponentType.ActionRow, components: [{ type: ComponentType.Button, style: ButtonStyle.Success, label: 'Claim', emoji: { name: '⚡' }, custom_id: `df:gw:drop:${token}` }] }],
+      allowedMentions: { parse: [] },
+    });
+    return void (await ephemeral(i, 'Drop posted!'));
+  }
+
   const id = i.options.getInteger('id', true);
   const g = ctx.store.giveaway(id);
   if (!g || g.guildId !== i.guildId) return void (await ephemeral(i, `There’s no giveaway #${id} in this server.`));
+
+  if (sub === 'delete') {
+    if (!ctx.store.endGiveaway(id, [])) return void (await ephemeral(i, 'That giveaway has already ended.'));
+    const channel = await i.client.channels.fetch(g.channelId).catch(() => null);
+    if (g.messageId && channel?.isTextBased()) await channel.messages.edit(g.messageId, { embeds: [{ title: `🚫 ${g.prize}`, description: 'This giveaway was cancelled.', color: COLORS.danger }], components: [] }).catch(() => null);
+    return void (await ephemeral(i, `Giveaway #${id} cancelled.`));
+  }
 
   if (sub === 'end') {
     if (g.ended) return void (await ephemeral(i, 'That giveaway has already ended.'));
@@ -324,6 +346,18 @@ export async function handleGiveaway(ctx: ModuleContext, i: ChatInputCommandInte
   ctx.store.setWinners(id, winnerIds);
   await announceWinners(ctx, i.client, { ...g, winnerIds }, true, fresh);
   await ephemeral(i, `Rerolled giveaway #${id}.`);
+}
+
+/** Running drops (first click wins). */
+const drops = new Map<string, { prize: string; guildId: string; hostId: string }>();
+
+export async function onDropClaim(ctx: ModuleContext, i: ButtonInteraction, token: string): Promise<void> {
+  const d = drops.get(token);
+  if (!d) return void (await ephemeral(i, 'Too late — someone already claimed it!'));
+  if (i.user.id === d.hostId) return void (await ephemeral(i, 'You can’t claim your own drop.'));
+  drops.delete(token);
+  await i.update({ embeds: [{ title: `⚡ ${d.prize}`, description: `🏆 <@${i.user.id}> claimed it first!`, color: COLORS.success }], components: [] });
+  ctx.log('info', `Giveaway drop “${d.prize}” claimed by ${i.user.tag}.`);
 }
 
 export async function onGiveawayEnter(ctx: ModuleContext, i: ButtonInteraction, id: number): Promise<void> {

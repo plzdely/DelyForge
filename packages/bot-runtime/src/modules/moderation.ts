@@ -13,7 +13,11 @@ import {
 import {
   type APIEmbed,
   AuditLogEvent,
+  type ButtonInteraction,
+  ButtonStyle,
   type ChatInputCommandInteraction,
+  ComponentType,
+  type MessageContextMenuCommandInteraction,
   type Client,
   type Guild,
   type GuildMember,
@@ -23,7 +27,7 @@ import {
   type PartialGuildMember,
   PermissionFlagsBits,
 } from 'discord.js';
-import { COLORS, type ModuleContext, modLog, truncate, tryDM } from './context.js';
+import { COLORS, type ModuleContext, modLog, sendableChannel, truncate, tryDM } from './context.js';
 import { parseDuration } from './community.js';
 import type { AuditLike } from './logging.js';
 
@@ -53,6 +57,10 @@ export const MODERATION_COMMANDS = new Set([
   'reason',
   'modstats',
   'dehoist',
+  'massban',
+  'move',
+  'disconnect',
+  'report',
 ]);
 
 /**
@@ -531,6 +539,37 @@ export async function handleModerationCommand(ctx: ModuleContext, i: ChatInputCo
       await i.reply({ embeds: [{ title: `🛡️ ${mod.username}’s moderation`, color: COLORS.info, fields: [{ name: 'Last 30 days', value: line(month), inline: true }, { name: 'All time', value: line(all), inline: true }] }], flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] } });
       return;
     }
+    case 'massban': {
+      if (!actor.permissions.has(PermissionFlagsBits.BanMembers)) return void (await reply(i, 'You need Ban Members.'));
+      const ids = [...new Set(i.options.getString('user_ids', true).match(/\d{17,20}/g) ?? [])].slice(0, 50);
+      if (!ids.length) return void (await reply(i, 'Paste user IDs separated by spaces.'));
+      await i.deferReply({ flags: MessageFlags.Ephemeral });
+      let banned = 0;
+      const skipped: string[] = [];
+      for (const id of ids) {
+        const m = await guild.members.fetch(id).catch(() => null);
+        if (m && hierarchyProblem(guild, actor, m)) {
+          skipped.push(id);
+          continue;
+        }
+        if (await guild.bans.create(id, { reason: `Mass ban by ${actor.user.tag}: ${reason}` }).then(() => true, () => false)) banned++;
+        else skipped.push(id);
+      }
+      await logCase(ctx, guild, { type: 'ban', userId: ids[0]!, moderatorId: actor.id, reason: `Mass ban of ${banned} account(s): ${reason}` }, { title: '🔨 Mass ban', description: `${banned} account(s) by <@${actor.id}>\n**Reason:** ${reason}`, color: COLORS.danger });
+      await reply(i, `🔨 Banned ${banned} account(s).${skipped.length ? ` Skipped ${skipped.length} (above you or me, or not bannable).` : ''}`);
+      return;
+    }
+    case 'move':
+    case 'disconnect': {
+      const target = await fetchTarget();
+      if (!target?.voice.channelId) return void (await reply(i, 'That member isn’t in a voice channel.'));
+      const to = i.commandName === 'move' ? i.options.getChannel('channel', true) : null;
+      const done = await target.voice.setChannel(to ? to.id : null, `${i.commandName === 'move' ? 'Moved' : 'Disconnected'} by ${actor.user.tag}`).then(() => true, () => false);
+      await reply(i, done ? (to ? `Moved <@${target.id}> to <#${to.id}>.` : `Disconnected <@${target.id}>.`) : 'I couldn’t do that (I need Move Members, and Connect in the target channel).');
+      return;
+    }
+    case 'report':
+      return reportMember(ctx, i, actor);
     case 'dehoist': {
       await i.deferReply({ flags: MessageFlags.Ephemeral });
       await guild.members.fetch().catch(() => null);
@@ -589,7 +628,11 @@ export async function automodCheck(ctx: ModuleContext, message: Message): Promis
   lastMessage.set(repeatKey, { text: normalized, count: repeats, at: Date.now() });
   if (lastMessage.size > 5000) for (const [k, v] of lastMessage) if (Date.now() - v.at > 60_000) lastMessage.delete(k);
 
-  if (a.invites.enabled && containsInvite(text)) rule = { label: 'posting server invites', action: a.invites.action };
+  const ownInvite = a.invites.allowOwn && (await ownInviteOnly(message.guild, text));
+  if (a.invites.enabled && containsInvite(text) && !ownInvite) rule = { label: 'posting server invites', action: a.invites.action };
+  else if (a.files.enabled && [...message.attachments.values()].some((f) => a.files.extensions.includes((f.name.split('.').pop() ?? '').toLowerCase()))) {
+    rule = { label: 'sending a blocked file type', action: a.files.action };
+  } else if (a.attachments.enabled && message.attachments.size > a.attachments.max) rule = { label: 'sending too many files', action: a.attachments.action };
   else if (a.scams.enabled && scamLinks(text).length) rule = { label: 'posting a scam link', action: a.scams.action };
   else if (a.mentions.enabled && mentions > a.mentions.max) rule = { label: 'mentioning too many people', action: a.mentions.action };
   else if (a.links.enabled && disallowedLinks(text, a.links.allowedDomains).length) rule = { label: 'posting links', action: a.links.action };
@@ -637,6 +680,97 @@ export async function automodCheck(ctx: ModuleContext, message: Message): Promis
     { type: 'automod', userId: member.id, moderatorId: ctx.client.user.id, reason: `${rule.label}${extra}` },
     { title: 'Auto-moderation', description: `Message by <@${member.id}> in <#${message.channel.id}> removed for **${rule.label}**${extra}.\n>>> ${truncate(text, 900) || '(no text)'}`, color: COLORS.warn },
   );
+}
+
+/** True when every invite in the text points at this server (allowed with "allow own invites"). */
+const inviteCodes = new Map<string, { codes: Set<string>; at: number }>();
+async function ownInviteOnly(guild: Guild, text: string): Promise<boolean> {
+  const found = [...text.matchAll(/(?:discord(?:app)?\.com\/invite|discord\.gg)\/([\w-]+)/gi)].map((m) => m[1]!.toLowerCase());
+  if (!found.length) return false;
+  let cached = inviteCodes.get(guild.id);
+  if (!cached || Date.now() - cached.at > 300_000) {
+    const invites = await guild.invites.fetch().catch(() => null);
+    cached = { codes: new Set([...(invites?.keys() ?? [])].map((c) => c.toLowerCase())), at: Date.now() };
+    if (guild.vanityURLCode) cached.codes.add(guild.vanityURLCode.toLowerCase());
+    inviteCodes.set(guild.id, cached);
+  }
+  return found.every((c) => cached.codes.has(c));
+}
+
+// ─── Reports ──────────────────────────────────────────────────────────────────────────────────────────────────────
+
+const reportCooldown = new Map<string, number>();
+const reportRow = (userId: string, messageUrl: string | null) => ({
+  type: ComponentType.ActionRow as const,
+  components: [
+    { type: ComponentType.Button as const, style: ButtonStyle.Danger, label: 'Time out 1 h', custom_id: `df:rep:timeout:${userId}` },
+    ...(messageUrl ? [{ type: ComponentType.Button as const, style: ButtonStyle.Secondary, label: 'Delete message', custom_id: `df:rep:delete:${messageUrl.split('/').slice(-2).join(':')}` }] : []),
+    { type: ComponentType.Button as const, style: ButtonStyle.Success, label: 'Done', custom_id: 'df:rep:done' },
+  ],
+});
+
+/** Sends a report to the staff report channel. Members can report once a minute. */
+async function sendReport(ctx: ModuleContext, guild: Guild, reporterId: string, target: { id: string; tag: string }, reason: string, message: Message | null): Promise<string> {
+  const key = `${guild.id}:${reporterId}`;
+  if (Date.now() - (reportCooldown.get(key) ?? 0) < 60_000) return 'You just sent a report — please wait a minute.';
+  const channel = await sendableChannel(ctx, guild, ctx.config(guild.id).moderation.reportChannelId, 'Reports');
+  if (!channel) return 'Reports aren’t set up right now — please contact staff directly.';
+  reportCooldown.set(key, Date.now());
+  await channel.send({
+    embeds: [
+      {
+        title: '🚩 New report',
+        color: COLORS.danger,
+        fields: [
+          { name: 'Reported', value: `<@${target.id}> · ${target.tag}`, inline: true },
+          { name: 'By', value: `<@${reporterId}>`, inline: true },
+          { name: 'Reason', value: truncate(reason, 1000) },
+          ...(message ? [{ name: 'Message', value: `${truncate(message.content || '(no text)', 900)}\n[Jump to it](${message.url})` }] : []),
+        ],
+        timestamp: new Date().toISOString(),
+      },
+    ],
+    components: [reportRow(target.id, message ? message.url : null)],
+    allowedMentions: { parse: [] },
+  });
+  return '🚩 Thanks — your report was sent to the staff privately.';
+}
+
+async function reportMember(ctx: ModuleContext, i: ChatInputCommandInteraction, actor: GuildMember): Promise<void> {
+  if (!i.guild) return;
+  const user = i.options.getUser('member', true);
+  if (user.id === actor.id || user.bot) return void (await reply(i, 'Pick another member.'));
+  await reply(i, await sendReport(ctx, i.guild, actor.id, { id: user.id, tag: user.tag }, i.options.getString('reason', true), null));
+}
+
+/** Right-click a message → Apps → Report message. */
+export async function onReportMessage(ctx: ModuleContext, i: MessageContextMenuCommandInteraction): Promise<void> {
+  if (!i.inCachedGuild()) return;
+  const m = i.targetMessage;
+  if (m.author.id === i.user.id || m.author.bot) return void (await i.reply({ content: 'You can’t report that message.', flags: MessageFlags.Ephemeral }));
+  await i.reply({ content: await sendReport(ctx, i.guild, i.user.id, { id: m.author.id, tag: m.author.tag }, 'Reported this message', m), flags: MessageFlags.Ephemeral });
+}
+
+/** Staff buttons under a report. */
+export async function onReportButton(ctx: ModuleContext, i: ButtonInteraction, action: string, a: string | undefined, b: string | undefined): Promise<void> {
+  if (!i.inCachedGuild()) return;
+  if (!i.member.permissions.has(PermissionFlagsBits.ModerateMembers)) return void (await i.reply({ content: 'Only moderators can act on reports.', flags: MessageFlags.Ephemeral }));
+  const embed = i.message.embeds[0];
+  const done = (note: string) => i.update({ embeds: embed ? [{ ...embed.toJSON(), color: COLORS.success, footer: { text: `${note} — ${i.user.tag}` } }] : [], components: [] });
+  if (action === 'done') return void (await done('Handled'));
+  if (action === 'timeout' && a) {
+    const member = await i.guild.members.fetch(a).catch(() => null);
+    const problem = member ? hierarchyProblem(i.guild, i.member, member) : 'They left the server.';
+    if (problem) return void (await i.reply({ content: problem, flags: MessageFlags.Ephemeral }));
+    await member!.timeout(3_600_000, `Report handled by ${i.user.tag}`).catch(() => null);
+    await logCase(ctx, i.guild, { type: 'timeout', userId: a, moderatorId: i.user.id, reason: 'From a member report', duration: '60m' }, { title: '⏳ Timeout', description: `<@${a}> timed out for 1 hour from a report, by <@${i.user.id}>.`, color: COLORS.warn });
+    return void (await done('Timed out for 1 hour'));
+  }
+  if (action === 'delete' && a && b) {
+    const ch = i.guild.channels.cache.get(a);
+    const ok = ch?.isTextBased() ? await ch.messages.delete(b).then(() => true, () => false) : false;
+    return void (await i.reply({ content: ok ? 'Message deleted.' : 'I couldn’t delete it (already gone?).', flags: MessageFlags.Ephemeral }));
+  }
 }
 
 // ─── Temporary bans and actions taken outside DelyForge ───────────────────────────────────────────────────────────

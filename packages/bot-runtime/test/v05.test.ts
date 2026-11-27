@@ -132,12 +132,12 @@ describe('helpers and registration', () => {
     expect(eco).toEqual(expect.arrayContaining(['balance', 'daily', 'work', 'pay', 'rob', 'coinflip', 'slots', 'eco', 'rich']));
     expect(eco).not.toContain('buy'); // no shop items yet
     expect(on({ economy: { ...base.economy, enabled: true, rob: { ...base.economy.rob, enabled: false }, gambling: { ...base.economy.gambling, enabled: false } } })).not.toEqual(expect.arrayContaining(['rob']));
-    expect(on({ games: { ...base.games, enabled: true } })).toEqual(['trivia', 'rps', '8ball']);
+    expect(on({ games: { ...base.games, enabled: true } })).toEqual(['trivia', 'rps', '8ball', 'tictactoe', 'wouldyourather', 'truth', 'dare']);
     expect(on({ games: { ...base.games, enabled: true, counting: { ...base.games.counting, channelId: C } } })).toContain('count');
   });
 
   it('posts an application panel only with a panel and a review channel', () => {
-    const form = { id: 'staff', name: 'Staff', panel: { channelId: C, title: 'Apply', description: '', buttonLabel: 'Apply', color: '#7c5cff' }, reviewChannelId: null, reviewerRoleIds: [], questions: [{ label: 'Why?', style: 'short' as const, required: true }], acceptRoleId: null, removeRoleId: null, acceptMessage: '', denyMessage: '', cooldownHours: 0, thread: false };
+    const form = { id: 'staff', name: 'Staff', panel: { channelId: C, title: 'Apply', description: '', buttonLabel: 'Apply', color: '#7c5cff' }, reviewChannelId: null, reviewerRoleIds: [], questions: [{ label: 'Why?', style: 'short' as const, required: true }], acceptRoleId: null, removeRoleId: null, acceptMessage: '', denyMessage: '', cooldownHours: 0, thread: false, open: true, minAccountAgeDays: 0, pingReviewers: false };
     const panels = (f: typeof form) => desiredPanels({ ...base, applications: { enabled: true, forms: [f] } }, 0).map((p) => p.key);
     expect(panels(form)).toEqual([]);
     expect(panels({ ...form, reviewChannelId: C } as never)).toEqual(['app:staff']);

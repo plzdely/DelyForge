@@ -63,7 +63,7 @@ function rolePanelMessage(p: RolePanelConfig): MessageCreateOptions {
             placeholder: p.multiple ? 'Pick your roles' : 'Pick a role',
             min_values: 0,
             max_values: p.multiple ? (p.maxRoles ? Math.min(p.maxRoles, p.roles.length) : p.roles.length) : 1,
-            options: p.roles.map((r) => ({ label: r.label, value: r.roleId, emoji: emoji(r.emoji) })),
+            options: p.roles.map((r) => ({ label: r.label, value: r.roleId, emoji: emoji(r.emoji), description: r.description || undefined })),
           },
         ],
       } as Row,
@@ -142,7 +142,9 @@ export function desiredPanels(config: ModuleConfigs, now = Date.now()): DesiredP
   }
   if (config.applications.enabled) {
     for (const f of config.applications.forms) {
-      if (f.panel.channelId && f.reviewChannelId) out.push({ key: `app:${f.id}`, channelId: f.panel.channelId, payload: buttonPanel(f.panel, `df:app:open:${f.id}`, ButtonStyle.Primary) });
+      if (!f.panel.channelId || !f.reviewChannelId) continue;
+      const payload = buttonPanel(f.open ? f.panel : { ...f.panel, buttonLabel: 'Applications closed' }, `df:app:open:${f.id}`, f.open ? ButtonStyle.Primary : ButtonStyle.Secondary);
+      out.push({ key: `app:${f.id}`, channelId: f.panel.channelId, payload });
     }
   }
   out.push(...shopPanels(config, now));

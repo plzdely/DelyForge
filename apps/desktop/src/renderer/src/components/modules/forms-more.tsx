@@ -394,6 +394,9 @@ export function ScheduledForm({ c, set, guild }: Props<'scheduled'>) {
             {m.embed ? <ColorField id={`sched-color-${n}`} value={m.color} onChange={(v) => update(n, { color: v })} /> : null}
           </div>
           <ToggleRow title="Delete the previous post" description="Keeps only the latest copy in the channel (good for daily reminders)." checked={m.deletePrevious} onChange={(v) => update(n, { deletePrevious: v })} />
+          <Field label="Only once, on this date (optional)" htmlFor={`sched-date-${n}`} hint="Leave empty to repeat on the days above.">
+            <Input id={`sched-date-${n}`} type="date" value={m.date} onChange={(e) => update(n, { date: e.target.value })} />
+          </Field>
         </div>
       ))}
       <Button
@@ -403,7 +406,7 @@ export function ScheduledForm({ c, set, guild }: Props<'scheduled'>) {
           const ch = guild.channels.find((x) => x.kind === 'text');
           // The first message fills in your own time zone instead of the UTC default.
           const timezone = !c.messages.length && c.timezone === 'UTC' ? myTimeZone() : c.timezone;
-          if (ch) set({ ...c, timezone, messages: [...c.messages, { channelId: ch.id, text: '', days: [], time: '09:00', roleId: null, embed: false, color: '#7c5cff', deletePrevious: false }] });
+          if (ch) set({ ...c, timezone, messages: [...c.messages, { channelId: ch.id, text: '', days: [], time: '09:00', roleId: null, embed: false, color: '#7c5cff', deletePrevious: false, date: '' }] });
         }}
       >
         <Plus /> Add scheduled message

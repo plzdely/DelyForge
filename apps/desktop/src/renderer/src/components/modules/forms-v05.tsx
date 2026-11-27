@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Field, Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
-import { RoleSelect, Section, TemplateField } from './fields';
+import { RoleSelect, RoleValueRows, Section, TemplateField } from './fields';
 import { PanelFields } from './forms';
 import { ChannelSelect, NumberField, RoleChecklist, ToggleRow } from './pickers';
 
@@ -30,6 +30,24 @@ export function ModmailForm({ c, set, guild }: Props<'modmail'>) {
       <Section title="Messages to the member" description="Needs Message Content Intent switched on in the Developer Portal, so the bot can read DMs and staff replies.">
         <TemplateField id="mm-greet" label="When they start a conversation" max={1000} value={c.greeting} onChange={(v) => set({ ...c, greeting: v })} variables={[]} />
         <TemplateField id="mm-close" label="When staff close it" max={1000} value={c.closingMessage} onChange={(v) => set({ ...c, closingMessage: v })} variables={[]} />
+      </Section>
+      <Section title="Closing and records">
+        <NumberField id="mm-auto" label="Close conversations after" suffix="hours without messages (0 = never)" min={0} max={720} value={c.autoCloseHours} onChange={(v) => set({ ...c, autoCloseHours: v })} />
+        <ChannelSelect id="mm-log" label="Save transcripts in" emptyLabel="Don’t save transcripts" guild={guild} value={c.logChannelId} onChange={(v) => set({ ...c, logChannelId: v })} />
+      </Section>
+      <Section title="Snippets" description="Saved replies staff send with /modmail snippet (e.g. rules, “we’ll get back to you”).">
+        {c.snippets.map((s, n) => (
+          <div key={n} className="grid grid-cols-[10rem_1fr_auto] items-start gap-2">
+            <Input aria-label="Snippet name" maxLength={32} value={s.name} onChange={(e) => set({ ...c, snippets: c.snippets.map((x, i) => (i === n ? { ...x, name: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-') } : x)) })} />
+            <Input aria-label="Snippet text" maxLength={2000} value={s.text} onChange={(e) => set({ ...c, snippets: c.snippets.map((x, i) => (i === n ? { ...x, text: e.target.value } : x)) })} />
+            <Button size="icon" variant="ghost" aria-label={`Remove snippet ${s.name}`} onClick={() => set({ ...c, snippets: c.snippets.filter((_, i) => i !== n) })}>
+              <Trash2 />
+            </Button>
+          </div>
+        ))}
+        <Button size="sm" disabled={c.snippets.length >= 25} onClick={() => set({ ...c, snippets: [...c.snippets, { name: nextId('reply', c.snippets.map((s) => s.name)), text: 'Thanks for reaching out — a staff member will look into this shortly.' }] })}>
+          <Plus /> Add a snippet
+        </Button>
       </Section>
     </>
   );
@@ -100,6 +118,9 @@ export function ApplicationsForm({ c, set, guild }: Props<'applications'>) {
           <TemplateField id={`app-den-${f.id}`} label="DM when denied" max={1000} value={f.denyMessage} onChange={(v) => update(n, { denyMessage: v })} variables={APP_VARIABLES} />
           <NumberField id={`app-cool-${f.id}`} label="Can apply again after" suffix="hours (0 = straight away)" hint="Counted from the decision. Nobody can have two applications waiting at once." min={0} max={720} value={f.cooldownHours} onChange={(v) => update(n, { cooldownHours: v })} />
           <ToggleRow title="Discussion thread" description="Opens a thread on each application so staff can talk about it." checked={f.thread} onChange={(v) => update(n, { thread: v })} />
+          <ToggleRow title="Accepting applications" description="Off: the button says “Applications closed”." checked={f.open} onChange={(v) => update(n, { open: v })} />
+          <ToggleRow title="Ping reviewers" description="Mention the reviewer roles when a new application comes in." checked={f.pingReviewers} onChange={(v) => update(n, { pingReviewers: v })} />
+          <NumberField id={`app-age-${f.id}`} label="Account at least" suffix="days old (0 = any)" min={0} max={365} value={f.minAccountAgeDays} onChange={(v) => update(n, { minAccountAgeDays: v })} />
         </Card>
       ))}
       {c.forms.length < 10 ? (
@@ -126,6 +147,9 @@ export function ApplicationsForm({ c, set, guild }: Props<'applications'>) {
                   denyMessage: 'Thanks for applying to {server}, {user.name}. Unfortunately it wasn’t accepted this time.',
                   cooldownHours: 72,
                   thread: false,
+                  open: true,
+                  minAccountAgeDays: 0,
+                  pingReviewers: true,
                 },
               ],
             })
@@ -189,6 +213,14 @@ export function EconomyForm({ c, set, guild }: Props<'economy'>) {
       <Section title="Gambling" description="/coinflip doubles the bet or loses it; /slots pays 1.5× for two of a kind and up to 25× for three diamonds.">
         <ToggleRow title="Allow /coinflip and /slots" checked={c.gambling.enabled} onChange={(v) => set({ ...c, gambling: { ...c.gambling, enabled: v } })} />
         {c.gambling.enabled ? <NumberField id="eco-maxbet" label="Biggest bet" suffix="coins" min={1} max={1_000_000_000} value={c.gambling.maxBet} onChange={(v) => set({ ...c, gambling: { ...c.gambling, maxBet: v } })} /> : null}
+      </Section>
+      <Section title="More ways to earn" description="/beg every 10 minutes for a few coins; /crime every 2 hours — 45% chance of big pay, otherwise a fine.">
+        <ToggleRow title="Allow /beg" checked={c.beg} onChange={(v) => set({ ...c, beg: v })} />
+        <ToggleRow title="Allow /crime" checked={c.crime} onChange={(v) => set({ ...c, crime: v })} />
+        <NumberField id="eco-interest" label="Daily bank interest" suffix="% (0 = none)" hint="Paid once a day to everyone’s bank balance — a reason to /deposit." min={0} max={10} value={c.interestPercent} onChange={(v) => set({ ...c, interestPercent: v })} />
+        <Field label="Pay boosts" htmlFor="eco-boost" hint="Members with these roles earn more from /daily, /work and /crime (the biggest counts).">
+          <RoleValueRows id="eco-boost" guild={guild} rows={c.payMultipliers.map((p) => ({ roleId: p.roleId, value: p.multiplier }))} onChange={(rows) => set({ ...c, payMultipliers: rows.map((r) => ({ roleId: r.roleId, multiplier: r.value })) })} valueLabel="Boost" min={1} max={5} choices={[1.5, 2, 3].map((v) => ({ value: v, label: `${v}×` }))} addLabel="Add a pay boost" maxRows={10} defaultValue={2} />
+        </Field>
       </Section>
       <Section title="Coin shop" description="Members see it with /shopitems and buy with /buy. An item can give a role (the bot refunds if it can’t), or just sit in their /inventory.">
         {c.shop.map((s, n) => {

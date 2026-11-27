@@ -6,7 +6,7 @@ import { assignable } from './roles.js';
 
 /** Economy: coins per server, kept in the bot's own database. */
 
-export const ECONOMY_COMMANDS = new Set(['balance', 'daily', 'work', 'pay', 'deposit', 'withdraw', 'rob', 'rich', 'shopitems', 'buy', 'inventory', 'coinflip', 'slots', 'eco']);
+export const ECONOMY_COMMANDS = new Set(['beg', 'crime', 'balance', 'daily', 'work', 'pay', 'deposit', 'withdraw', 'rob', 'rich', 'shopitems', 'buy', 'inventory', 'coinflip', 'slots', 'eco']);
 
 const roll = () => randomInt(0, 1_000_000) / 1_000_000;
 const JOBS = ['delivered pizzas', 'walked some dogs', 'fixed a computer', 'streamed for a few hours', 'mowed lawns', 'washed cars', 'designed a logo', 'babysat', 'coded a website', 'sold lemonade'];
@@ -27,8 +27,34 @@ export async function handleEconomyCommand(ctx: ModuleContext, i: ChatInputComma
   const me = i.user.id;
   const start = c.startingBalance;
   const now = Date.now();
+  // Role boosts (e.g. boosters 2×) for /daily, /work and /crime.
+  const boost = c.payMultipliers.reduce((best, p) => (i.member.roles.cache.has(p.roleId) ? Math.max(best, p.multiplier) : best), 1);
 
   switch (i.commandName) {
+    case 'beg': {
+      ctx.store.account(g, me, start);
+      const last = ctx.store.lastBegCrime(g, me).beg;
+      if (last && now - last < 600_000) return void (await say(i, `Nobody’s listening. Try again ${until(last + 600_000)}.`, COLORS.warn, true));
+      ctx.store.setBegCrime(g, me, 'beg', now);
+      const n = randomInt(0, 4) === 0 ? 0 : randomInt(1, Math.max(2, Math.ceil(c.work.min / 4)) + 1);
+      if (!n) return void (await say(i, '🙁 Someone walked right past you. No coins this time.', COLORS.warn));
+      ctx.store.addCoins(g, me, n, start);
+      return void (await say(i, `🥺 A kind stranger gave you ${fmt(c, n)}.`, COLORS.success));
+    }
+    case 'crime': {
+      const wallet = ctx.store.account(g, me, start).wallet;
+      const last = ctx.store.lastBegCrime(g, me).crime;
+      if (last && now - last < 7_200_000) return void (await say(i, `Lie low — you can try again ${until(last + 7_200_000)}.`, COLORS.warn, true));
+      ctx.store.setBegCrime(g, me, 'crime', now);
+      if (randomInt(0, 100) < 45) {
+        const n = Math.round(randomInt(c.work.max, c.work.max * 3 + 1) * boost);
+        ctx.store.addCoins(g, me, n, start);
+        return void (await say(i, `🕶️ The heist worked! You got away with ${fmt(c, n)}.`, COLORS.success));
+      }
+      const fine = Math.min(wallet, randomInt(c.work.min, c.work.max * 2 + 1));
+      if (fine) ctx.store.addCoins(g, me, -fine, start);
+      return void (await say(i, `🚔 Busted! You paid a fine of ${fmt(c, fine)}.`, COLORS.danger));
+    }
     case 'balance': {
       const user = i.options.getUser('member') ?? i.user;
       if (user.bot) return void (await say(i, 'Bots don’t have wallets.', COLORS.warn, true));
@@ -42,15 +68,16 @@ export async function handleEconomyCommand(ctx: ModuleContext, i: ChatInputComma
       const a = ctx.store.account(g, me, start);
       const r = dailyReward(c.daily, a.lastDaily, a.streak, now);
       if (!r.ok) return void (await say(i, `You already collected today. Come back ${until(r.nextAt)}.`, COLORS.warn, true));
-      ctx.store.addCoins(g, me, r.amount, start);
+      const amount = Math.round(r.amount * boost);
+      ctx.store.addCoins(g, me, amount, start);
       ctx.store.setEconomyTimes(g, me, { lastDaily: now, streak: r.streak });
-      return void (await say(i, `📅 You collected ${fmt(c, r.amount)}!${r.streak > 1 ? ` 🔥 ${r.streak}-day streak.` : ''}`, COLORS.success));
+      return void (await say(i, `📅 You collected ${fmt(c, amount)}!${r.streak > 1 ? ` 🔥 ${r.streak}-day streak.` : ''}${boost > 1 ? ` (${boost}× role bonus)` : ''}`, COLORS.success));
     }
     case 'work': {
       const a = ctx.store.account(g, me, start);
       const next = (a.lastWork ?? 0) + c.work.cooldownMinutes * 60_000;
       if (now < next) return void (await say(i, `You’re tired. You can work again ${until(next)}.`, COLORS.warn, true));
-      const pay = randomInt(c.work.min, c.work.max + 1);
+      const pay = Math.round(randomInt(c.work.min, c.work.max + 1) * boost);
       ctx.store.addCoins(g, me, pay, start);
       ctx.store.setEconomyTimes(g, me, { lastWork: now });
       return void (await say(i, `💼 You ${JOBS[randomInt(JOBS.length)]} and earned ${fmt(c, pay)}.`, COLORS.success));
@@ -170,6 +197,15 @@ export async function onBuyAutocomplete(ctx: ModuleContext, i: AutocompleteInter
   const c = ctx.config(i.guildId).economy;
   const q = i.options.getFocused().toLowerCase();
   await i.respond(c.shop.filter((s) => s.name.toLowerCase().includes(q)).slice(0, 25).map((s) => ({ name: truncate(`${s.name} — ${s.price.toLocaleString('en-US')} ${c.currencyName}`, 100), value: s.id }))).catch(() => null);
+}
+
+/** Once a day (checked every 10 minutes): bank interest. */
+export function payInterest(ctx: ModuleContext, guildId: string, now = Date.now()): void {
+  const c = ctx.config(guildId).economy;
+  if (!c.enabled || !c.interestPercent) return;
+  if (ctx.store.bumpShopCount(guildId, `eco-interest:${new Date(now).toISOString().slice(0, 10)}`) !== 1) return;
+  const n = ctx.store.applyInterest(guildId, c.interestPercent);
+  if (n) ctx.log('info', `Economy: paid ${c.interestPercent}% bank interest to ${n} member(s).`);
 }
 
 /** Coins for chatting, at most once per cooldown per member. */

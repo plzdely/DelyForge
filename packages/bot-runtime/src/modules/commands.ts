@@ -1,7 +1,9 @@
 import { createHash } from 'node:crypto';
 import type { ModuleConfigs } from '@delyforge/shared';
 import {
+  ApplicationCommandType,
   ChannelType,
+  ContextMenuCommandBuilder,
   PermissionFlagsBits,
   type RESTPostAPIApplicationCommandsJSONBody,
   type RESTPostAPIChatInputApplicationCommandsJSONBody,
@@ -212,6 +214,29 @@ const MODERATION: CommandJSON[] = [
     .addUserOption((o) => o.setName('moderator').setDescription('Who (defaults to you)'))
     .toJSON(),
   new SlashCommandBuilder()
+    .setName('massban')
+    .setDescription('Ban many accounts at once by ID (raids)')
+    .setDefaultMemberPermissions(PermissionFlagsBits.BanMembers)
+    .setDMPermission(false)
+    .addStringOption((o) => o.setName('user_ids').setDescription('User IDs separated by spaces (up to 50)').setRequired(true).setMaxLength(1100))
+    .addStringOption((o) => o.setName('reason').setDescription('Why').setMaxLength(400))
+    .toJSON(),
+  new SlashCommandBuilder()
+    .setName('move')
+    .setDescription('Move a member to another voice channel')
+    .setDefaultMemberPermissions(PermissionFlagsBits.MoveMembers)
+    .setDMPermission(false)
+    .addUserOption((o) => o.setName('member').setDescription('Who').setRequired(true))
+    .addChannelOption((o) => o.setName('channel').setDescription('Where to').setRequired(true).addChannelTypes(ChannelType.GuildVoice, ChannelType.GuildStageVoice))
+    .toJSON(),
+  new SlashCommandBuilder()
+    .setName('disconnect')
+    .setDescription('Disconnect a member from voice')
+    .setDefaultMemberPermissions(PermissionFlagsBits.MoveMembers)
+    .setDMPermission(false)
+    .addUserOption((o) => o.setName('member').setDescription('Who').setRequired(true))
+    .toJSON(),
+  new SlashCommandBuilder()
     .setName('dehoist')
     .setDescription('Remove symbols from the start of nicknames (stops hoisting to the top of the list)')
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageNicknames)
@@ -296,7 +321,62 @@ const UTILITY: Record<keyof ModuleConfigs['utility']['commands'], CommandJSON> =
     .setDescription('Show someone’s profile banner')
     .addUserOption((o) => o.setName('user').setDescription('Who (defaults to you)'))
     .toJSON(),
+  quickpoll: new SlashCommandBuilder()
+    .setName('quickpoll')
+    .setDescription('A quick yes/no poll with 👍 👎 reactions')
+    .setDMPermission(false)
+    .addStringOption((o) => o.setName('question').setDescription('The question').setRequired(true).setMaxLength(300))
+    .toJSON(),
+  color: new SlashCommandBuilder()
+    .setName('color')
+    .setDescription('Preview a colour')
+    .addStringOption((o) => o.setName('hex').setDescription('Like #7c5cff').setRequired(true).setMaxLength(7))
+    .toJSON(),
+  calc: new SlashCommandBuilder()
+    .setName('calc')
+    .setDescription('Do some maths')
+    .addStringOption((o) => o.setName('expression').setDescription('e.g. (12 + 8) * 3 / 4').setRequired(true).setMaxLength(200))
+    .toJSON(),
+  servericon: new SlashCommandBuilder().setName('servericon').setDescription('Show the server’s icon in full size').setDMPermission(false).toJSON(),
+  serverbanner: new SlashCommandBuilder().setName('serverbanner').setDescription('Show the server’s banner').setDMPermission(false).toJSON(),
+  firstmessage: new SlashCommandBuilder()
+    .setName('firstmessage')
+    .setDescription('A link to the first message in a channel')
+    .setDMPermission(false)
+    .addChannelOption((o) => o.setName('channel').setDescription('Which channel (defaults to this one)').addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement))
+    .toJSON(),
+  inrole: new SlashCommandBuilder()
+    .setName('inrole')
+    .setDescription('Who has a role')
+    .setDMPermission(false)
+    .addRoleOption((o) => o.setName('role').setDescription('Which role').setRequired(true))
+    .toJSON(),
+  say: new SlashCommandBuilder()
+    .setName('say')
+    .setDescription('Staff: make the bot say something')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
+    .setDMPermission(false)
+    .addStringOption((o) => o.setName('message').setDescription('What to say').setRequired(true).setMaxLength(2000))
+    .addChannelOption((o) => o.setName('channel').setDescription('Where (defaults to here)').addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement))
+    .toJSON(),
+  reminders: new SlashCommandBuilder()
+    .setName('reminders')
+    .setDescription('Your reminders in this server')
+    .setDMPermission(false)
+    .addIntegerOption((o) => o.setName('cancel').setDescription('Cancel a reminder by its number in the list').setMinValue(1).setMaxValue(25))
+    .toJSON(),
 };
+
+/** Right-click a message → Apps → Report message (sends it to the staff report channel). */
+export const REPORT_MESSAGE = 'Report message';
+const REPORT_CONTEXT = new ContextMenuCommandBuilder().setName(REPORT_MESSAGE).setType(ApplicationCommandType.Message).setDMPermission(false).toJSON();
+const REPORT: CommandJSON = new SlashCommandBuilder()
+  .setName('report')
+  .setDescription('Report a member to the staff privately')
+  .setDMPermission(false)
+  .addUserOption((o) => o.setName('member').setDescription('Who').setRequired(true))
+  .addStringOption((o) => o.setName('reason').setDescription('What happened').setRequired(true).setMaxLength(500))
+  .toJSON();
 
 export function commandHash(c: RESTPostAPIApplicationCommandsJSONBody): string {
   return createHash('sha256').update(JSON.stringify(c)).digest('hex').slice(0, 16);
@@ -310,7 +390,7 @@ const LEVELING: CommandJSON[] = [
     .setDMPermission(false)
     .addUserOption((o) => o.setName('member').setDescription('Whose rank (defaults to you)'))
     .toJSON(),
-  new SlashCommandBuilder().setName('leaderboard').setDescription('Top members by XP').setDMPermission(false).toJSON(),
+  new SlashCommandBuilder().setName('leaderboard').setDescription('Top members by XP').setDMPermission(false).addIntegerOption((o) => o.setName('page').setDescription('Which page (10 per page)').setMinValue(1).setMaxValue(100)).toJSON(),
   new SlashCommandBuilder().setName('rewards').setDescription('The roles you get for reaching levels').setDMPermission(false).toJSON(),
   new SlashCommandBuilder()
     .setName('xp')
@@ -320,6 +400,7 @@ const LEVELING: CommandJSON[] = [
     .addSubcommand((s) => s.setName('give').setDescription('Give XP').addUserOption((o) => o.setName('member').setDescription('Who').setRequired(true)).addIntegerOption((o) => o.setName('amount').setDescription('How much').setRequired(true).setMinValue(1).setMaxValue(1_000_000)))
     .addSubcommand((s) => s.setName('take').setDescription('Take XP away').addUserOption((o) => o.setName('member').setDescription('Who').setRequired(true)).addIntegerOption((o) => o.setName('amount').setDescription('How much').setRequired(true).setMinValue(1).setMaxValue(1_000_000)))
     .addSubcommand((s) => s.setName('set').setDescription('Set XP to an exact amount').addUserOption((o) => o.setName('member').setDescription('Who').setRequired(true)).addIntegerOption((o) => o.setName('amount').setDescription('New total').setRequired(true).setMinValue(0).setMaxValue(10_000_000)))
+    .addSubcommand((s) => s.setName('resetall').setDescription('Wipe everyone’s XP in this server').addStringOption((o) => o.setName('confirm').setDescription('Type RESET to confirm').setRequired(true).setMaxLength(10)))
     .toJSON(),
 ];
 
@@ -341,16 +422,27 @@ const VOUCH: CommandJSON = new SlashCommandBuilder()
   .addAttachmentOption((o) => o.setName('image').setDescription('A screenshot of what you got (optional)'))
   .toJSON();
 
-const MODMAIL: CommandJSON = new SlashCommandBuilder()
-  .setName('modmail')
-  .setDescription('Staff: manage modmail conversations')
-  .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
-  .setDMPermission(false)
-  .addSubcommand((s) => s.setName('open').setDescription('Start a conversation with a member').addUserOption((o) => o.setName('member').setDescription('Who').setRequired(true)))
-  .addSubcommand((s) => s.setName('close').setDescription('Close the conversation in this thread').addStringOption((o) => o.setName('reason').setDescription('Why (sent to the member)').setMaxLength(300)))
-  .addSubcommand((s) => s.setName('block').setDescription('Stop a member from using modmail').addUserOption((o) => o.setName('member').setDescription('Who').setRequired(true)))
-  .addSubcommand((s) => s.setName('unblock').setDescription('Let a member use modmail again').addUserOption((o) => o.setName('member').setDescription('Who').setRequired(true)))
-  .toJSON();
+/** /modmail — with a "snippet" subcommand listing the saved replies when there are any (Discord shows up to 25). */
+function modmailCommand(snippets: readonly { name: string }[]): CommandJSON {
+  const b = new SlashCommandBuilder()
+    .setName('modmail')
+    .setDescription('Staff: manage modmail conversations')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
+    .setDMPermission(false)
+    .addSubcommand((s) => s.setName('open').setDescription('Start a conversation with a member').addUserOption((o) => o.setName('member').setDescription('Who').setRequired(true)))
+    .addSubcommand((s) => s.setName('close').setDescription('Close the conversation in this thread').addStringOption((o) => o.setName('reason').setDescription('Why (sent to the member)').setMaxLength(300)))
+    .addSubcommand((s) => s.setName('block').setDescription('Stop a member from using modmail').addUserOption((o) => o.setName('member').setDescription('Who').setRequired(true)))
+    .addSubcommand((s) => s.setName('unblock').setDescription('Let a member use modmail again').addUserOption((o) => o.setName('member').setDescription('Who').setRequired(true)));
+  if (snippets.length) {
+    b.addSubcommand((s) =>
+      s
+        .setName('snippet')
+        .setDescription('Send a saved reply in this thread')
+        .addStringOption((o) => o.setName('name').setDescription('Which snippet').setRequired(true).addChoices(...snippets.slice(0, 25).map((x) => ({ name: x.name, value: x.name })))),
+    );
+  }
+  return b.toJSON();
+}
 
 const amount = (o: import('discord.js').SlashCommandStringOption) => o.setName('amount').setDescription('A number, or all / half / 50%').setRequired(true).setMaxLength(20);
 const ECONOMY: Record<string, CommandJSON> = {
@@ -360,6 +452,8 @@ const ECONOMY: Record<string, CommandJSON> = {
   pay: new SlashCommandBuilder().setName('pay').setDescription('Give coins to someone').setDMPermission(false).addUserOption((o) => o.setName('member').setDescription('Who').setRequired(true)).addStringOption(amount).toJSON(),
   deposit: new SlashCommandBuilder().setName('deposit').setDescription('Put coins in the bank (safe from /rob)').setDMPermission(false).addStringOption(amount).toJSON(),
   withdraw: new SlashCommandBuilder().setName('withdraw').setDescription('Take coins out of the bank').setDMPermission(false).addStringOption(amount).toJSON(),
+  beg: new SlashCommandBuilder().setName('beg').setDescription('Ask for a few coins (every 10 minutes)').setDMPermission(false).toJSON(),
+  crime: new SlashCommandBuilder().setName('crime').setDescription('Commit a crime — big pay or a big fine (every 2 hours)').setDMPermission(false).toJSON(),
   rob: new SlashCommandBuilder().setName('rob').setDescription('Try to steal from someone’s wallet (risky!)').setDMPermission(false).addUserOption((o) => o.setName('member').setDescription('Who').setRequired(true)).toJSON(),
   rich: new SlashCommandBuilder().setName('rich').setDescription('The richest members').setDMPermission(false).toJSON(),
   shopitems: new SlashCommandBuilder().setName('shopitems').setDescription('What you can buy with coins').setDMPermission(false).toJSON(),
@@ -393,8 +487,55 @@ const GAMES = {
     .setDescription('Rock, paper, scissors against the bot')
     .addStringOption((o) => o.setName('pick').setDescription('Your move').setRequired(true).addChoices({ name: '🪨 Rock', value: 'rock' }, { name: '📄 Paper', value: 'paper' }, { name: '✂️ Scissors', value: 'scissors' }))
     .toJSON(),
+  tictactoe: new SlashCommandBuilder().setName('tictactoe').setDescription('Play tic-tac-toe against someone').setDMPermission(false).addUserOption((o) => o.setName('opponent').setDescription('Who to play').setRequired(true)).toJSON(),
+  wouldyourather: new SlashCommandBuilder().setName('wouldyourather').setDescription('A “would you rather” question to vote on').setDMPermission(false).toJSON(),
+  truth: new SlashCommandBuilder().setName('truth').setDescription('A truth question').toJSON(),
+  dare: new SlashCommandBuilder().setName('dare').setDescription('A dare').toJSON(),
   eightball: new SlashCommandBuilder().setName('8ball').setDescription('Ask the magic 8-ball a question').addStringOption((o) => o.setName('question').setDescription('Your question').setRequired(true).setMaxLength(200)).toJSON(),
 } satisfies Record<string, CommandJSON>;
+
+const CONFESS: CommandJSON = new SlashCommandBuilder()
+  .setName('confess')
+  .setDescription('Post an anonymous confession')
+  .setDMPermission(false)
+  .addStringOption((o) => o.setName('message').setDescription('Your confession').setRequired(true).setMaxLength(1500))
+  .addAttachmentOption((o) => o.setName('image').setDescription('An image (optional)'))
+  .toJSON();
+const CONFESSIONS: CommandJSON = new SlashCommandBuilder()
+  .setName('confessions')
+  .setDescription('Staff: who may confess')
+  .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
+  .setDMPermission(false)
+  .addSubcommand((s) => s.setName('ban').setDescription('Stop a member from confessing').addUserOption((o) => o.setName('member').setDescription('Who').setRequired(true)))
+  .addSubcommand((s) => s.setName('unban').setDescription('Let a member confess again').addUserOption((o) => o.setName('member').setDescription('Who').setRequired(true)))
+  .toJSON();
+const HIGHLIGHT: CommandJSON = new SlashCommandBuilder()
+  .setName('highlight')
+  .setDescription('Get a DM when someone mentions a word')
+  .setDMPermission(false)
+  .addSubcommand((s) => s.setName('add').setDescription('Watch a word').addStringOption((o) => o.setName('word').setDescription('The word').setRequired(true).setMinLength(2).setMaxLength(40)))
+  .addSubcommand((s) => s.setName('remove').setDescription('Stop watching a word').addStringOption((o) => o.setName('word').setDescription('The word').setRequired(true).setMaxLength(40)))
+  .addSubcommand((s) => s.setName('list').setDescription('Your watched words'))
+  .addSubcommand((s) => s.setName('clear').setDescription('Stop watching every word'))
+  .addSubcommand((s) => s.setName('ignore').setDescription('Ignore (or stop ignoring) a channel').addChannelOption((o) => o.setName('channel').setDescription('Which channel').setRequired(true)))
+  .toJSON();
+const PERIOD = (o: import('discord.js').SlashCommandStringOption) =>
+  o.setName('period').setDescription('How far back (default 7 days)').addChoices({ name: 'Today', value: '1' }, { name: '7 days', value: '7' }, { name: '30 days', value: '30' }, { name: 'All time', value: 'all' });
+const ACTIVITY: CommandJSON[] = [
+  new SlashCommandBuilder().setName('activity').setDescription('Messages and voice time for a member').setDMPermission(false).addUserOption((o) => o.setName('member').setDescription('Who (defaults to you)')).toJSON(),
+  new SlashCommandBuilder().setName('topchatters').setDescription('Who sent the most messages').setDMPermission(false).addStringOption(PERIOD).toJSON(),
+  new SlashCommandBuilder().setName('topvoice').setDescription('Who spent the most time in voice').setDMPermission(false).addStringOption(PERIOD).toJSON(),
+  new SlashCommandBuilder().setName('serveractivity').setDescription('Messages and voice in the server over the last 7 days').setDMPermission(false).toJSON(),
+];
+const REP: CommandJSON = new SlashCommandBuilder()
+  .setName('rep')
+  .setDescription('Reputation: thank people who helped')
+  .setDMPermission(false)
+  .addSubcommand((s) => s.setName('give').setDescription('Give someone a rep point').addUserOption((o) => o.setName('member').setDescription('Who helped').setRequired(true)).addStringOption((o) => o.setName('reason').setDescription('What for (optional)').setMaxLength(200)))
+  .addSubcommand((s) => s.setName('check').setDescription('Someone’s rep').addUserOption((o) => o.setName('member').setDescription('Who (defaults to you)')))
+  .addSubcommand((s) => s.setName('top').setDescription('Most helpful members'))
+  .addSubcommand((s) => s.setName('set').setDescription('Staff: set someone’s rep').addUserOption((o) => o.setName('member').setDescription('Who').setRequired(true)).addIntegerOption((o) => o.setName('amount').setDescription('New total').setRequired(true).setMinValue(0).setMaxValue(100_000)))
+  .toJSON();
 
 const INVITES: CommandJSON[] = [
   new SlashCommandBuilder()
@@ -419,6 +560,7 @@ const BIRTHDAY: CommandJSON = new SlashCommandBuilder()
   )
   .addSubcommand((s) => s.setName('remove').setDescription('Forget your birthday'))
   .addSubcommand((s) => s.setName('upcoming').setDescription('The next birthdays in this server'))
+  .addSubcommand((s) => s.setName('month').setDescription('Every birthday in a month').addIntegerOption((o) => o.setName('month').setDescription('1–12 (defaults to this month)').setMinValue(1).setMaxValue(12)))
   .toJSON();
 
 const TICKET: CommandJSON = new SlashCommandBuilder()
@@ -460,6 +602,8 @@ const TICKET: CommandJSON = new SlashCommandBuilder()
       .addStringOption((o) => o.setName('reason').setDescription('Why (optional)').setMaxLength(300)),
   )
   .addSubcommand((s) => s.setName('stats').setDescription('Open tickets and who handled the most this week'))
+  .addSubcommand((s) => s.setName('blacklist').setDescription('Stop a member from opening tickets').addUserOption((o) => o.setName('member').setDescription('Who').setRequired(true)))
+  .addSubcommand((s) => s.setName('unblacklist').setDescription('Let a member open tickets again').addUserOption((o) => o.setName('member').setDescription('Who').setRequired(true)))
   .addSubcommand((s) =>
     s
       .setName('rename')
@@ -486,6 +630,8 @@ const VOICE: CommandJSON = new SlashCommandBuilder()
   .addSubcommand((s) => s.setName('kick').setDescription('Disconnect someone from your channel').addUserOption((o) => o.setName('member').setDescription('Who').setRequired(true)))
   .addSubcommand((s) => s.setName('ban').setDescription('Disconnect someone and stop them joining again').addUserOption((o) => o.setName('member').setDescription('Who').setRequired(true)))
   .addSubcommand((s) => s.setName('transfer').setDescription('Give your channel to someone in it').addUserOption((o) => o.setName('member').setDescription('Who').setRequired(true)))
+  .addSubcommand((s) => s.setName('bitrate').setDescription('Change the sound quality').addIntegerOption((o) => o.setName('kbps').setDescription('8–96 (higher with boosts)').setRequired(true).setMinValue(8).setMaxValue(384)))
+  .addSubcommand((s) => s.setName('info').setDescription('Who owns this channel and how it’s set up'))
   .addSubcommand((s) => s.setName('limit').setDescription('Set how many people can join').addIntegerOption((o) => o.setName('people').setDescription('0 = no limit').setRequired(true).setMinValue(0).setMaxValue(99)))
   .addSubcommand((s) => s.setName('rename').setDescription('Rename your channel').addStringOption((o) => o.setName('name').setDescription('New name').setRequired(true).setMaxLength(90)))
   .addSubcommand((s) => s.setName('claim').setDescription('Take over the channel if its owner left'))
@@ -526,11 +672,20 @@ const GIVEAWAY: CommandJSON = new SlashCommandBuilder()
       .addIntegerOption((o) => o.setName('id').setDescription('Giveaway number').setRequired(true).setMinValue(1)),
   )
   .addSubcommand((s) => s.setName('list').setDescription('Show the giveaways that are running'))
+  .addSubcommand((s) =>
+    s
+      .setName('drop')
+      .setDescription('A drop: the first person to click wins straight away')
+      .addStringOption((o) => o.setName('prize').setDescription('What can be won').setRequired(true).setMaxLength(200))
+      .addChannelOption((o) => o.setName('channel').setDescription('Where to post it (default: here)').addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)),
+  )
+  .addSubcommand((s) => s.setName('delete').setDescription('Cancel a giveaway (no winners)').addIntegerOption((o) => o.setName('id').setDescription('Giveaway number').setRequired(true).setMinValue(1)))
   .toJSON();
 
-export function desiredCommands(config: ModuleConfigs): CommandJSON[] {
-  const out: CommandJSON[] = [];
+export function desiredCommands(config: ModuleConfigs): RESTPostAPIApplicationCommandsJSONBody[] {
+  const out: RESTPostAPIApplicationCommandsJSONBody[] = [];
   if (config.moderation.enabled) out.push(...MODERATION);
+  if (config.moderation.enabled && config.moderation.reportChannelId) out.push(REPORT, REPORT_CONTEXT);
   if (config.utility.enabled) {
     for (const [key, enabled] of Object.entries(config.utility.commands)) {
       if (enabled) out.push(UTILITY[key as keyof typeof UTILITY]);
@@ -546,20 +701,25 @@ export function desiredCommands(config: ModuleConfigs): CommandJSON[] {
   if (config.birthdays.enabled) out.push(BIRTHDAY);
   if (config.shop.enabled) out.push(PRICE);
   if (config.shop.enabled && config.shop.vouchChannelId) out.push(VOUCH);
-  if (config.modmail.enabled) out.push(MODMAIL);
+  if (config.modmail.enabled) out.push(modmailCommand(config.modmail.snippets));
+  if (config.confessions.enabled && config.confessions.channelId) out.push(CONFESS, CONFESSIONS);
+  if (config.highlights.enabled) out.push(HIGHLIGHT);
+  if (config.activity.enabled) out.push(...ACTIVITY);
+  if (config.reputation.enabled) out.push(REP);
   if (config.economy.enabled) {
     const e = config.economy;
     for (const [name, def] of Object.entries(ECONOMY)) {
       if (name === 'rob' && !e.rob.enabled) continue;
       if ((name === 'coinflip' || name === 'slots') && !e.gambling.enabled) continue;
       if ((name === 'shopitems' || name === 'buy' || name === 'inventory') && !e.shop.length) continue;
+      if ((name === 'beg' && !e.beg) || (name === 'crime' && !e.crime)) continue;
       out.push(def);
     }
   }
   if (config.games.enabled) {
     if (config.games.counting.channelId) out.push(GAMES.count);
     if (config.games.trivia.enabled) out.push(GAMES.trivia);
-    if (config.games.fun) out.push(GAMES.rps, GAMES.eightball);
+    if (config.games.fun) out.push(GAMES.rps, GAMES.eightball, GAMES.tictactoe, GAMES.wouldyourather, GAMES.truth, GAMES.dare);
   }
   return out;
 }

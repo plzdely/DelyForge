@@ -118,6 +118,7 @@ export function LevelingForm({ c, set, guild }: Props<'leveling'>) {
       <Section title="Level-up message">
         <ToggleRow title="Announce level-ups" checked={c.levelUp.enabled} onChange={(v) => set({ ...c, levelUp: { ...c.levelUp, enabled: v } })} />
         {c.levelUp.enabled ? <ToggleRow title="Send it as a DM instead" description="Keeps busy channels quiet." checked={c.levelUp.dm} onChange={(v) => set({ ...c, levelUp: { ...c.levelUp, dm: v } })} /> : null}
+        {c.levelUp.enabled && !c.levelUp.dm ? <ToggleRow title="Show it as a card" description="With the member’s avatar and their role colour." checked={c.levelUp.embed} onChange={(v) => set({ ...c, levelUp: { ...c.levelUp, embed: v } })} /> : null}
         {c.levelUp.enabled ? (
           <>
             <ChannelSelect
@@ -254,6 +255,41 @@ export function TicketsForm({ c, set, guild }: Props<'tickets'>) {
       <Section title="Ticket log and ratings" description="Staff commands: /ticket add, remove, rename, claim, unclaim, transfer, priority, closerequest, close (with a reason) and stats.">
         <ChannelSelect id="tk-log" label="Ticket log channel" hint="Opened, claimed, transferred and closed tickets, and ratings. Leave empty for none." guild={guild} value={c.logChannelId} onChange={(v) => set({ ...c, logChannelId: v })} />
         <ToggleRow title="Ask for a rating" description="After a ticket closes, the member gets a DM with 1–5 star buttons. Ratings go to the ticket log." checked={c.feedback} onChange={(v) => set({ ...c, feedback: v })} />
+        <ToggleRow title="Web-page transcript too" description="Besides the text file, a .html page that looks like Discord and opens in any browser." checked={c.transcriptHtml} onChange={(v) => set({ ...c, transcriptHtml: v })} />
+        <NumberField id="tk-remind" label="Remind staff after" suffix="hours without a staff reply (0 = never)" min={0} max={72} value={c.staffReminderHours} onChange={(v) => set({ ...c, staffReminderHours: v })} />
+        <NumberField id="tk-total" label="Most open tickets in the server" suffix="(0 = no limit)" hint="When it’s full, new tickets wait until one closes. Staff can also /ticket blacklist someone." min={0} max={500} value={c.maxOpenTotal} onChange={(v) => set({ ...c, maxOpenTotal: v })} />
+      </Section>
+      <Section title="Opening hours" description="Outside these hours the ticket button tells members to come back later.">
+        <ToggleRow title="Only open tickets during set hours" checked={c.openHours.enabled} onChange={(v) => set({ ...c, openHours: { ...c.openHours, enabled: v, timezone: c.openHours.timezone === 'UTC' ? Intl.DateTimeFormat().resolvedOptions().timeZone : c.openHours.timezone } })} />
+        {c.openHours.enabled ? (
+          <>
+            <div className="grid grid-cols-3 gap-3">
+              <Field label="From" htmlFor="tk-oh-from">
+                <Input id="tk-oh-from" type="time" value={c.openHours.from} onChange={(e) => e.target.value && set({ ...c, openHours: { ...c.openHours, from: e.target.value } })} />
+              </Field>
+              <Field label="Until" htmlFor="tk-oh-to">
+                <Input id="tk-oh-to" type="time" value={c.openHours.to} onChange={(e) => e.target.value && set({ ...c, openHours: { ...c.openHours, to: e.target.value } })} />
+              </Field>
+              <Field label="Time zone" htmlFor="tk-oh-tz">
+                <Input id="tk-oh-tz" maxLength={64} value={c.openHours.timezone} onChange={(e) => set({ ...c, openHours: { ...c.openHours, timezone: e.target.value } })} />
+              </Field>
+            </div>
+            <div className="flex flex-wrap gap-1.5" role="group" aria-label="Open on">
+              {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d, day) => {
+                const on = c.openHours.days.includes(day);
+                return (
+                  <button key={d} type="button" aria-pressed={on} onClick={() => set({ ...c, openHours: { ...c.openHours, days: on ? c.openHours.days.filter((x) => x !== day) : [...c.openHours.days, day].sort() } })} className={`rounded-md border px-2 py-1 text-xs ${on ? 'border-primary-border bg-primary-soft text-fg' : 'border-border text-fg-muted hover:text-fg'}`}>
+                    {d}
+                  </button>
+                );
+              })}
+              {c.openHours.days.length ? null : <span className="text-xs text-fg-muted">Every day</span>}
+            </div>
+            <Field label="Message when closed" htmlFor="tk-oh-msg">
+              <Input id="tk-oh-msg" maxLength={300} value={c.openHours.message} onChange={(e) => set({ ...c, openHours: { ...c.openHours, message: e.target.value } })} />
+            </Field>
+          </>
+        ) : null}
       </Section>
     </>
   );
@@ -344,7 +380,8 @@ export function ReactionRolesForm({ c, set, guild }: Props<'reactionRoles'>) {
           ) : null}
           <div className="space-y-2">
             {p.roles.map((r, k) => (
-              <div key={k} className="grid grid-cols-[1fr_1fr_80px_auto] items-end gap-2">
+              <div key={k} className="space-y-2">
+              <div className="grid grid-cols-[1fr_1fr_80px_auto] items-end gap-2">
                 <RoleSelect id={`rr-${p.id}-r${k}`} label="Role" guild={guild} assignableOnly allowNone={false} value={r.roleId} onChange={(v) => v && update(i, { ...p, roles: p.roles.map((x, m) => (m === k ? { ...x, roleId: v } : x)) })} />
                 <Field label="Label" htmlFor={`rr-${p.id}-l${k}`}>
                   <Input id={`rr-${p.id}-l${k}`} value={r.label} maxLength={80} onChange={(e) => update(i, { ...p, roles: p.roles.map((x, m) => (m === k ? { ...x, label: e.target.value } : x)) })} />
@@ -356,9 +393,13 @@ export function ReactionRolesForm({ c, set, guild }: Props<'reactionRoles'>) {
                   <Trash2 />
                 </Button>
               </div>
+              {p.mode === 'menu' ? (
+                <Input aria-label={`Description for ${r.label}`} placeholder="Description under the role in the menu (optional)" maxLength={100} value={r.description} onChange={(e) => update(i, { ...p, roles: p.roles.map((x, m) => (m === k ? { ...x, description: e.target.value } : x)) })} />
+              ) : null}
+              </div>
             ))}
             {p.roles.length < 25 && firstRole ? (
-              <Button size="sm" onClick={() => update(i, { ...p, roles: [...p.roles, { roleId: firstRole.id, label: firstRole.name, emoji: '' }] })}>
+              <Button size="sm" onClick={() => update(i, { ...p, roles: [...p.roles, { roleId: firstRole.id, label: firstRole.name, emoji: '', description: '' }] })}>
                 <Plus /> Add role
               </Button>
             ) : null}
@@ -372,7 +413,7 @@ export function ReactionRolesForm({ c, set, guild }: Props<'reactionRoles'>) {
             firstRole &&
             set({
               ...c,
-              panels: [...c.panels, { id: newPanelId(c.panels), channelId: null, title: 'Pick your roles', description: 'Click a button to add or remove a role.', color: '#7c5cff', mode: 'buttons', multiple: true, oneRoleOnly: false, requiredRoleId: null, maxRoles: 0, roles: [{ roleId: firstRole.id, label: firstRole.name, emoji: '' }] }],
+              panels: [...c.panels, { id: newPanelId(c.panels), channelId: null, title: 'Pick your roles', description: 'Click a button to add or remove a role.', color: '#7c5cff', mode: 'buttons', multiple: true, oneRoleOnly: false, requiredRoleId: null, maxRoles: 0, roles: [{ roleId: firstRole.id, label: firstRole.name, emoji: '', description: '' }] }],
             })
           }
         >

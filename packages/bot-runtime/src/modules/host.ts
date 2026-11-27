@@ -6,13 +6,21 @@ import { commandKey, customCommandJSON, dueScheduledWorkflows, matchingWorkflows
 import { commandHash, desiredCommands } from './commands.js';
 import type { ModuleContext } from './context.js';
 import * as logging from './logging.js';
-import { MODERATION_COMMANDS, automodCheck, dehoistMember, endTempBans, endTempRoles, handleModerationCommand, onAuditCase } from './moderation.js';
+import { MODERATION_COMMANDS, automodCheck, dehoistMember, endTempBans, endTempRoles, handleModerationCommand, onAuditCase, onReportButton, onReportMessage } from './moderation.js';
 import * as modmail from './modmail.js';
 import * as apps from './applications.js';
 import * as economy from './economy.js';
 import * as games from './games.js';
+import { onAutoRespond } from './autoresponder.js';
+import * as confessions from './confessions.js';
+import * as highlights from './highlights.js';
+import { onChannelRuleMessage } from './channeltools.js';
+import * as activity from './activity.js';
+import * as reputation from './reputation.js';
+import * as memberTools from './membertools.js';
+import { REPORT_MESSAGE } from './commands.js';
 import { UTILITY_COMMANDS, deliverReminders, handleUtilityCommand, onAfkMessage, onBumpMessage } from './utility.js';
-import { endDueGiveaways, handleGiveaway, handleSuggest, onGiveawayEnter, onSuggestionButton, onSuggestionDecision } from './community.js';
+import { endDueGiveaways, handleGiveaway, handleSuggest, onDropClaim, onGiveawayEnter, onSuggestionButton, onSuggestionDecision } from './community.js';
 import { LEVELING_COMMANDS, handleLevelingCommand, onMemberLeaveXp, onMessageXp, voiceXp } from './leveling.js';
 import { CID, shopPanelsStale, syncPanels } from './panels.js';
 import * as shop from './shop.js';
@@ -130,11 +138,16 @@ export class ModuleHost {
       }
       await checkBirthdays(this.ctx, guild).catch((e: Error) => this.log('error', `Birthdays: ${e.message}`));
       if (this.minutes % 2 === 0) await voiceXp(this.ctx, guild).catch((e: Error) => this.log('error', `Voice XP: ${e.message}`));
+      if (this.minutes % 2 === 0) activity.activityVoiceTick(this.ctx, guild);
+      await activity.weeklyActivityReport(this.ctx, guild).catch((e: Error) => this.log('error', `Activity report: ${e.message}`));
       if (slowDue) {
         await updateStats(this.ctx, guild).catch((e: Error) => this.log('error', `Server stats: ${e.message}`));
         await pollFeeds(this.ctx, guild).catch((e: Error) => this.log('error', `Social alerts: ${e.message}`));
         await kickUnverified(this.ctx, guild).catch((e: Error) => this.log('error', `Verification: ${e.message}`));
         await autoCloseTickets(this.ctx, guild).catch((e: Error) => this.log('error', `Tickets: ${e.message}`));
+        await modmail.autoCloseModmail(this.ctx, guild).catch((e: Error) => this.log('error', `Modmail: ${e.message}`));
+        await memberTools.giveTenureRoles(this.ctx, guild).catch((e: Error) => this.log('error', `Member tools: ${e.message}`));
+        economy.payInterest(this.ctx, guild.id);
       }
     }
   }
@@ -178,7 +191,8 @@ export class ModuleHost {
     this.syncing.add(guild.id);
     try {
       // Module commands are keyed by name; custom right-click commands by "type:name" (they may share a name).
-      const moduleDefs = desiredCommands(this.config(guild.id)).map((def) => ({ key: def.name, def: def as Parameters<typeof commandHash>[0] }));
+      // Right-click commands are keyed like custom ones ("message:Report message"), so the name check below covers them.
+      const moduleDefs = desiredCommands(this.config(guild.id)).map((def) => ({ key: def.type === 3 ? `message:${def.name}` : def.name, def: def as Parameters<typeof commandHash>[0] }));
       // Module commands added after a custom command was made can share its name (e.g. /daily); the module wins while
       // it's on, and the custom command comes back when the module is turned off. (Its settings are never deleted.)
       const taken = new Set(moduleDefs.map((d) => d.key));
@@ -349,7 +363,9 @@ export class ModuleHost {
         // Raid protection first: someone it removes gets no welcome and isn't counted as an invite.
         const removed = await antiRaid.onMemberJoin(ctx, m);
         const invitedBy = removed ? null : await invites.onMemberJoin(ctx, m);
-        if (!removed) await welcome.onMemberJoin(ctx, m);
+        // A rejoin gets its roles back; with a welcome-back message it skips the normal welcome.
+        const welcomedBack = removed ? false : await memberTools.onMemberRejoin(ctx, m);
+        if (!removed && !welcomedBack) await welcome.onMemberJoin(ctx, m);
         if (!removed) await dehoistMember(ctx, m);
         await logging.onMemberJoinLog(ctx, m, invitedBy);
       }),
@@ -357,6 +373,7 @@ export class ModuleHost {
     c.on(
       Events.GuildMemberRemove,
       safe('Member leave', async (m) => {
+        memberTools.onMemberLeaveSnapshot(ctx, m);
         await welcome.onMemberLeave(ctx, m);
         await invites.onMemberLeave(ctx, m.guild, m.id);
         onMemberLeaveXp(ctx, m.guild.id, m.id);
@@ -430,12 +447,26 @@ export class ModuleHost {
     c.on(Events.MessageCreate, safe('Counting', (m) => games.onCountingMessage(ctx, m)));
     c.on(Events.MessageCreate, safe('AFK', (m) => onAfkMessage(ctx, m)));
     c.on(Events.MessageCreate, safe('Bump reminder', (m) => onBumpMessage(ctx, m)));
+    c.on(Events.MessageCreate, safe('Auto-responder', (m) => onAutoRespond(ctx, m)));
+    c.on(Events.MessageCreate, safe('Highlights', (m) => highlights.onHighlightMessage(ctx, m)));
+    c.on(Events.MessageCreate, safe('Channel automation', (m) => onChannelRuleMessage(ctx, m)));
+    c.on(Events.MessageCreate, safe('Activity', async (m) => activity.onActivityMessage(ctx, m)));
+    c.on(Events.MessageCreate, safe('Reputation', (m) => reputation.onThanksMessage(ctx, m)));
+    c.on(
+      Events.UserUpdate,
+      safe('Profile log', async (before, after) => {
+        if (before.partial) return;
+        const was = { username: before.username, globalName: before.globalName, avatar: before.avatar };
+        for (const g of c.guilds.cache.values()) if (g.members.cache.has(after.id)) await logging.onProfileChange(ctx, g, was, after);
+      }),
+    );
     c.on(Events.GuildAuditLogEntryCreate, safe('Anti-nuke', (entry, guild) => antiRaid.onNukeAudit(ctx, entry, guild)));
     c.on(
       Events.GuildMemberUpdate,
       safe('Members', async (before, after) => {
         if (before.partial) return;
         if (!before.premiumSince && after.premiumSince) await welcome.onBoost(ctx, after);
+        if (!!before.premiumSince !== !!after.premiumSince) await logging.onBoostChange(ctx, after, !!after.premiumSince);
         if (before.displayName !== after.displayName) await dehoistMember(ctx, after);
       }),
     );
@@ -450,6 +481,14 @@ export class ModuleHost {
       if (i.isAutocomplete() && i.commandName === 'buy') return void economy.onBuyAutocomplete(this.ctx, i).catch((e: Error) => this.log('warn', `/buy suggestions: ${e.message}`));
     });
   }
+
+  /** Commands of the modules added in 0.5 (round 2). */
+  private readonly moreCommands: Record<string, (ctx: ModuleContext, i: ChatInputCommandInteraction) => Promise<void>> = {
+    confess: confessions.handleConfessCommand,
+    confessions: confessions.handleConfessCommand,
+    highlight: highlights.handleHighlightCommand,
+    rep: reputation.handleRepCommand,
+  };
 
   private async runCommand(i: ChatInputCommandInteraction): Promise<void> {
     const n = i.commandName;
@@ -483,7 +522,7 @@ export class ModuleHost {
                                 ? economy.handleEconomyCommand
                                 : games.GAME_COMMANDS.has(n)
                                   ? games.handleGameCommand
-                                  : null;
+                                  : (this.moreCommands[n] ?? (activity.ACTIVITY_COMMANDS.has(n) ? activity.handleActivityCommand : null));
     if (!handler) return this.runCustom(i); // custom command, or e.g. /ping (handled elsewhere)
     const started = Date.now();
     try {
@@ -519,6 +558,11 @@ export class ModuleHost {
       else if (kind === 'app' && a === 'open' && b) await apps.onApplyOpen(this.ctx, i, b);
       else if (kind === 'app' && (a === 'accept' || a === 'deny') && b) await apps.onApplyDecision(this.ctx, i, Number(b), a === 'accept');
       else if (kind === 'triv' && a && b) await games.onTriviaAnswer(this.ctx, i, a, Number(b));
+      else if (kind === 'ttt' && a && b) await games.onTicTacToe(i, a, Number(b));
+      else if (kind === 'gw' && a === 'drop' && b) await onDropClaim(this.ctx, i, b);
+      else if (kind === 'conf' && a === 'reply' && b) await confessions.onConfessionReplyButton(this.ctx, i, Number(b));
+      else if (kind === 'conf' && (a === 'ok' || a === 'no') && b) await confessions.onConfessionDecision(this.ctx, i, Number(b), a === 'ok');
+      else if (kind === 'rep' && a) await onReportButton(this.ctx, i, a, b, i.customId.split(':')[4]);
       else if (kind === 'rr' && a && b) await onRoleButton(this.ctx, i, a, b);
       else if (kind === 'sug' && a && b) await onSuggestionButton(this.ctx, i, a, Number(b));
       else if (kind === 'gw' && a === 'enter' && b) await onGiveawayEnter(this.ctx, i, Number(b));
@@ -538,6 +582,7 @@ export class ModuleHost {
       else if (kind === 'ticket' && action === 'reason') await onTicketReason(this.ctx, i, a ?? null);
       else if (kind === 'shop' && action === 'form' && a) await shop.onShopForm(this.ctx, i, a);
       else if (kind === 'app' && action === 'submit' && a) await apps.onApplySubmit(this.ctx, i, a);
+      else if (kind === 'conf' && action === 'form' && a) await confessions.onConfessionReply(this.ctx, i, Number(a));
       else if (kind === 'app' && action === 'reason' && a) await apps.onApplyDenyReason(this.ctx, i, Number(a));
     } catch (e) {
       this.log('error', `Form “${i.customId}” failed: ${(e as Error).message}`);

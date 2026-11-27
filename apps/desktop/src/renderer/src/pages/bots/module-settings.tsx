@@ -28,6 +28,7 @@ import { toast } from 'sonner';
 import { InviteLink } from '@/components/bots/permissions-editor';
 import { LinkButtonsEditor, RoleSelect, Section, TemplateField } from '@/components/modules/fields';
 import { ApplicationsForm, EconomyForm, GamesForm, ModmailForm } from '@/components/modules/forms-v05';
+import { ActivityForm, AutoResponderForm, ChannelToolsForm, ConfessionsForm, HighlightsForm, MemberToolsForm, ReputationForm } from '@/components/modules/forms-v05b';
 import { GiveawaysForm, LevelingForm, ReactionRolesForm, SuggestionsForm, TicketsForm, VerificationForm } from '@/components/modules/forms';
 import { ShopForm } from '@/components/modules/shop-form';
 import { AntiRaidForm, BirthdaysForm, FeedsForm, InvitesForm, ScheduledForm, ServerStatsForm, StarboardForm, StickyForm, TempVoiceForm } from '@/components/modules/forms-more';
@@ -201,6 +202,7 @@ function ModerationForm({ c, set, guild, automodLocked }: { c: ModerationConfig;
           <TemplateField id="mod-appeal" label="Add to ban DMs (optional)" max={500} value={c.appealMessage} onChange={(v) => set({ ...c, appealMessage: v })} variables={[]} />
         ) : null}
         <NumberField id="mod-expiry" label="Warnings expire after" suffix="days (0 = never)" hint="Expired warnings stay on record but no longer count toward the automatic actions below." min={0} max={365} value={c.warnExpiryDays} onChange={(v) => set({ ...c, warnExpiryDays: v })} />
+        <ChannelSelect id="mod-report" label="Reports channel" emptyLabel="Off (no /report)" hint="Members use /report or right-click a message → Apps → Report message; staff get the report here with Time out / Delete / Done buttons." guild={guild} value={c.reportChannelId} onChange={(v) => set({ ...c, reportChannelId: v })} />
         <ToggleRow title="Dehoist nicknames" description="Remove symbols like ! from the start of names when members join or change their name, so nobody sits at the top of the member list. /dehoist fixes everyone at once." checked={c.dehoist} onChange={(v) => set({ ...c, dehoist: v })} />
       </Section>
 
@@ -242,6 +244,21 @@ function ModerationForm({ c, set, guild, automodLocked }: { c: ModerationConfig;
               <ToggleRow title="Server invites" description="Links to other Discord servers." checked={a.invites.enabled} onChange={(v) => setA({ invites: { ...a.invites, enabled: v } })} />
               <ActionSelect id="am-invites" value={a.invites.action} onChange={(v) => setA({ invites: { ...a.invites, action: v } })} />
             </div>
+            {a.invites.enabled ? <ToggleRow title="Allow invites to this server" description="Only invites to other servers are removed." checked={a.invites.allowOwn} onChange={(v) => setA({ invites: { ...a.invites, allowOwn: v } })} /> : null}
+            <div className="flex items-center justify-between gap-4">
+              <ToggleRow title="Dangerous files" description="Programs and scripts that can carry viruses (.exe, .bat, .scr…)." checked={a.files.enabled} onChange={(v) => setA({ files: { ...a.files, enabled: v } })} />
+              <ActionSelect id="am-files" value={a.files.action} onChange={(v) => setA({ files: { ...a.files, action: v } })} />
+            </div>
+            {a.files.enabled ? (
+              <Field label="Blocked file types" htmlFor="am-files-ext" hint="Separated by spaces, without dots.">
+                <Input id="am-files-ext" value={a.files.extensions.join(' ')} onChange={(e) => setA({ files: { ...a.files, extensions: [...new Set(e.target.value.toLowerCase().split(/[\s,.]+/).filter((x) => /^[a-z0-9]{1,10}$/.test(x)))].slice(0, 50) } })} />
+              </Field>
+            ) : null}
+            <div className="flex items-center justify-between gap-4">
+              <ToggleRow title="Too many files" description={`More than ${a.attachments.max} files in one message.`} checked={a.attachments.enabled} onChange={(v) => setA({ attachments: { ...a.attachments, enabled: v } })} />
+              <ActionSelect id="am-att" value={a.attachments.action} onChange={(v) => setA({ attachments: { ...a.attachments, action: v } })} />
+            </div>
+            {a.attachments.enabled ? <NumberField id="am-att-max" label="Most files per message" value={a.attachments.max} min={1} max={10} onChange={(v) => setA({ attachments: { ...a.attachments, max: v } })} /> : null}
             <div className="flex items-center justify-between gap-4">
               <ToggleRow title="Scam links" description="Fake “free Nitro” and look-alike Discord or Steam sites that steal accounts." checked={a.scams.enabled} onChange={(v) => setA({ scams: { ...a.scams, enabled: v } })} />
               <ActionSelect id="am-scams" value={a.scams.action} onChange={(v) => setA({ scams: { ...a.scams, action: v } })} />
@@ -339,11 +356,13 @@ const LOG_LABELS: Record<LogEvent, [string, string]> = {
   server: ['Server settings', 'Name, icon, verification level and other settings, with who changed them'],
   invites: ['Invites', 'Who created or deleted invite links'],
   other: ['Everything else', 'Emojis, stickers, webhooks, events, threads, integrations and AutoMod rules'],
+  profiles: ['Name and avatar changes', 'Members changing their username, display name or avatar'],
+  boosts: ['Boosts', 'Members starting or stopping a server boost'],
 };
 
 const LOG_GROUPS: { title: string; description: string; events: LogEvent[] }[] = [
   { title: 'Messages', description: 'What people wrote and what happened to it.', events: ['messageDelete', 'messageEdit', 'messageActions'] },
-  { title: 'Members', description: 'People coming and going, and what staff did to them.', events: ['memberJoin', 'memberLeave', 'memberRoles', 'members', 'bans', 'voice'] },
+  { title: 'Members', description: 'People coming and going, and what staff did to them.', events: ['memberJoin', 'memberLeave', 'memberRoles', 'members', 'bans', 'voice', 'profiles', 'boosts'] },
   { title: 'Staff & server changes', description: 'Who changed the server itself, and what exactly changed.', events: ['channels', 'roles', 'server', 'invites', 'other'] },
 ];
 
@@ -402,6 +421,15 @@ const UTILITY_LABELS: Record<keyof UtilityConfig['commands'], [string, string]> 
   emoji: ['/emoji', 'Staff add an emoji from another server by pasting it'],
   timestamp: ['/timestamp', 'A time that shows in everyone’s own time zone'],
   banner: ['/banner', 'Show someone’s profile banner'],
+  quickpoll: ['/quickpoll', 'A yes/no question with 👍 👎 🤷 reactions'],
+  color: ['/color', 'Preview a colour from its #hex code'],
+  calc: ['/calc', 'A calculator: + − × ÷ % ^ and brackets'],
+  servericon: ['/servericon', 'The server’s icon in full size'],
+  serverbanner: ['/serverbanner', 'The server’s banner'],
+  firstmessage: ['/firstmessage', 'A link to the very first message in a channel'],
+  inrole: ['/inrole', 'Everyone who has a role'],
+  say: ['/say', 'Staff make the bot post a message (only where they can manage messages)'],
+  reminders: ['/reminders', 'See and cancel your /remind reminders'],
 };
 
 function UtilityForm({ c, set, guild }: { c: UtilityConfig; set: (c: UtilityConfig) => void; guild: GuildInfo }) {
@@ -597,6 +625,13 @@ export function ModuleSettings() {
             {id === 'birthdays' ? <BirthdaysForm c={draft as ModuleConfigs['birthdays']} set={setDraft} guild={guild} /> : null}
             {id === 'feeds' ? <FeedsForm c={draft as ModuleConfigs['feeds']} set={setDraft} guild={guild} /> : null}
             {id === 'scheduled' ? <ScheduledForm c={draft as ModuleConfigs['scheduled']} set={setDraft} guild={guild} /> : null}
+            {id === 'autoResponder' ? <AutoResponderForm c={draft as ModuleConfigs['autoResponder']} set={setDraft} guild={guild} /> : null}
+            {id === 'confessions' ? <ConfessionsForm c={draft as ModuleConfigs['confessions']} set={setDraft} guild={guild} /> : null}
+            {id === 'highlights' ? <HighlightsForm c={draft as ModuleConfigs['highlights']} set={setDraft} guild={guild} /> : null}
+            {id === 'channelTools' ? <ChannelToolsForm c={draft as ModuleConfigs['channelTools']} set={setDraft} guild={guild} /> : null}
+            {id === 'activity' ? <ActivityForm c={draft as ModuleConfigs['activity']} set={setDraft} guild={guild} /> : null}
+            {id === 'reputation' ? <ReputationForm c={draft as ModuleConfigs['reputation']} set={setDraft} guild={guild} /> : null}
+            {id === 'memberTools' ? <MemberToolsForm c={draft as ModuleConfigs['memberTools']} set={setDraft} guild={guild} /> : null}
             {id === 'modmail' ? <ModmailForm c={draft as ModuleConfigs['modmail']} set={setDraft} guild={guild} /> : null}
             {id === 'applications' ? <ApplicationsForm c={draft as ModuleConfigs['applications']} set={setDraft} guild={guild} /> : null}
             {id === 'economy' ? <EconomyForm c={draft as ModuleConfigs['economy']} set={setDraft} guild={guild} /> : null}

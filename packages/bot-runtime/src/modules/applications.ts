@@ -39,7 +39,10 @@ function formOf(ctx: ModuleContext, guildId: string, formId: string): Applicatio
 export async function onApplyOpen(ctx: ModuleContext, i: ButtonInteraction, formId: string): Promise<void> {
   if (!i.inCachedGuild()) return;
   const form = formOf(ctx, i.guildId, formId);
-  if (!form || !form.reviewChannelId) return void (await ephemeral(i, 'This application is closed right now.'));
+  if (!form || !form.reviewChannelId || !form.open) return void (await ephemeral(i, 'This application is closed right now.'));
+  if (form.minAccountAgeDays && Date.now() - i.user.createdTimestamp < form.minAccountAgeDays * 86_400_000) {
+    return void (await ephemeral(i, `Your account must be at least ${form.minAccountAgeDays} day(s) old to apply.`));
+  }
   const blocked = applyBlocked(ctx.store.lastApplication(i.guildId, formId, i.user.id), form.cooldownHours, Date.now());
   if (blocked) return void (await ephemeral(i, blocked));
   await i.showModal({
@@ -56,7 +59,7 @@ export async function onApplyOpen(ctx: ModuleContext, i: ButtonInteraction, form
 export async function onApplySubmit(ctx: ModuleContext, i: ModalSubmitInteraction, formId: string): Promise<void> {
   if (!i.inCachedGuild()) return;
   const form = formOf(ctx, i.guildId, formId);
-  if (!form) return void (await ephemeral(i, 'This application is closed right now.'));
+  if (!form || !form.open) return void (await ephemeral(i, 'This application is closed right now.'));
   const key = `${i.guildId}:${formId}:${i.user.id}`;
   if (submitting.has(key)) return void (await ephemeral(i, 'Your application is being sent — one moment.'));
   submitting.add(key);
@@ -67,8 +70,10 @@ export async function onApplySubmit(ctx: ModuleContext, i: ModalSubmitInteractio
     if (!channel) return void (await ephemeral(i, 'Applications can’t be received right now — please tell staff.'));
     const answers = form.questions.map((q, n) => ({ q: q.label, a: i.fields.getTextInputValue(`q${n}`).trim() || '—' }));
     const id = ctx.store.addApplication({ guildId: i.guildId, formId, userId: i.user.id, answers }, Date.now());
+    const ping = form.pingReviewers ? form.reviewerRoleIds.filter((r) => i.guild.roles.cache.has(r)) : [];
     const msg = await channel
       .send({
+        content: ping.length ? ping.map((r) => `<@&${r}>`).join(' ') : undefined,
         embeds: [
           {
             title: `${form.name} application #${id}`,
@@ -88,7 +93,7 @@ export async function onApplySubmit(ctx: ModuleContext, i: ModalSubmitInteractio
             ],
           },
         ],
-        allowedMentions: { parse: [] },
+        allowedMentions: { parse: [], roles: ping },
       })
       .catch((e: Error) => (ctx.log('warn', `Applications: could not post #${id}: ${e.message}`), null));
     if (msg && form.thread) await msg.startThread({ name: truncate(`${i.user.username} — ${form.name}`, 100) }).catch(() => null);

@@ -19,9 +19,9 @@ export function localParts(now: Date, timeZone: string): { day: number; time: st
   }
 }
 
-/** Which scheduled messages are due at this moment. */
-export function dueMessages(messages: ScheduledConfig['messages'], at: { day: number; time: string }): number[] {
-  return messages.flatMap((m, i) => (m.time === at.time && (!m.days.length || m.days.includes(at.day)) ? [i] : []));
+/** Which scheduled messages are due at this moment (a message with a date is posted once, on that date). */
+export function dueMessages(messages: ScheduledConfig['messages'], at: { day: number; time: string; date?: string }): number[] {
+  return messages.flatMap((m, i) => (m.time === at.time && (m.date ? m.date === at.date : !m.days.length || m.days.includes(at.day)) ? [i] : []));
 }
 
 /** Messages already sent this minute (checked every 30 s, so each minute is seen at least once). */

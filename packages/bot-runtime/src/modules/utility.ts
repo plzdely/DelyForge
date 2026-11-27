@@ -1,9 +1,10 @@
 import { randomInt } from 'node:crypto';
 import { type ChatInputCommandInteraction, ChannelType, type Client, type Message, MessageFlags, PermissionFlagsBits } from 'discord.js';
+import { calculate } from '@delyforge/shared';
 import { parseDuration } from './community.js';
 import { BRAND_COLOR, type ModuleContext, truncate, tryDM } from './context.js';
 
-export const UTILITY_COMMANDS = new Set(['serverinfo', 'userinfo', 'avatar', 'poll', 'remind', 'roll', 'afk', 'roleinfo', 'channelinfo', 'membercount', 'choose', 'emoji', 'timestamp', 'banner']);
+export const UTILITY_COMMANDS = new Set(['serverinfo', 'userinfo', 'avatar', 'poll', 'remind', 'roll', 'afk', 'roleinfo', 'channelinfo', 'membercount', 'choose', 'emoji', 'timestamp', 'banner', 'quickpoll', 'color', 'calc', 'servericon', 'serverbanner', 'firstmessage', 'inrole', 'say', 'reminders']);
 
 /**
  * "<:name:123>" / "<a:name:123>" → the emoji's image on Discord's CDN; or an image link, but only one on Discord's own
@@ -206,6 +207,73 @@ export async function handleUtilityCommand(ctx: ModuleContext, i: ChatInputComma
       const url = user?.bannerURL({ size: 1024 });
       if (!url) return void (await i.reply({ content: user?.hexAccentColor ? `They don’t have a banner — their profile colour is ${user.hexAccentColor}.` : 'They don’t have a banner.', flags: MessageFlags.Ephemeral }));
       await i.reply({ embeds: [{ title: `${user!.username}’s banner`, image: { url }, url, color: BRAND_COLOR }], allowedMentions: { parse: [] } });
+      return;
+    }
+    case 'quickpoll': {
+      const res = await i.reply({ embeds: [{ title: '📊 Quick poll', description: truncate(i.options.getString('question', true), 300), color: BRAND_COLOR, footer: { text: `Asked by ${i.user.username}` } }], withResponse: true });
+      const msg = res.resource?.message;
+      if (msg) for (const e of ['👍', '👎', '🤷']) await msg.react(e).catch(() => null);
+      return;
+    }
+    case 'color': {
+      const hex = i.options.getString('hex', true).trim().replace(/^#?/, '#');
+      if (!/^#[0-9a-f]{6}$/i.test(hex)) return void (await i.reply({ content: 'Use a colour like `#7c5cff`.', flags: MessageFlags.Ephemeral }));
+      const n = Number.parseInt(hex.slice(1), 16);
+      await i.reply({ embeds: [{ title: hex.toUpperCase(), description: `RGB ${n >> 16}, ${(n >> 8) & 255}, ${n & 255}\nThe bar on the left is this colour.`, color: n }] });
+      return;
+    }
+    case 'calc': {
+      const expr = i.options.getString('expression', true);
+      const v = calculate(expr);
+      await i.reply({ content: v === null ? 'I can only do + − × ÷ % ^ and brackets with numbers (and not divide by zero).' : `🧮 \`${truncate(expr, 150)}\` = **${Number.isInteger(v) ? v : Number(v.toPrecision(12))}**`, flags: v === null ? MessageFlags.Ephemeral : undefined, allowedMentions: { parse: [] } });
+      return;
+    }
+    case 'servericon':
+    case 'serverbanner': {
+      const g = i.guild!;
+      const url = name === 'servericon' ? g.iconURL({ size: 1024 }) : g.bannerURL({ size: 1024 });
+      if (!url) return void (await i.reply({ content: name === 'servericon' ? 'This server has no icon.' : 'This server has no banner (it needs boost level 2).', flags: MessageFlags.Ephemeral }));
+      await i.reply({ embeds: [{ title: `${g.name} — ${name === 'servericon' ? 'icon' : 'banner'}`, image: { url }, url, color: BRAND_COLOR }] });
+      return;
+    }
+    case 'firstmessage': {
+      const ch = i.guild?.channels.cache.get(i.options.getChannel('channel')?.id ?? i.channelId);
+      if (!ch?.isTextBased()) return void (await i.reply({ content: 'Pick a text channel.', flags: MessageFlags.Ephemeral }));
+      if (i.inCachedGuild() && !ch.permissionsFor(i.member)?.has([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory])) return void (await i.reply({ content: 'You can’t read that channel.', flags: MessageFlags.Ephemeral }));
+      const first = (await ch.messages.fetch({ after: '0', limit: 1 }).catch(() => null))?.first();
+      await i.reply({ content: first ? `📜 The first message in <#${ch.id}>: ${first.url} (<t:${Math.floor(first.createdTimestamp / 1000)}:R>)` : 'I couldn’t find any messages there.', allowedMentions: { parse: [] } });
+      return;
+    }
+    case 'inrole': {
+      const role = i.guild?.roles.cache.get(i.options.getRole('role', true).id);
+      if (!role) return;
+      const members = [...role.members.values()];
+      await i.reply({
+        embeds: [{ title: `@${role.name} — ${members.length} member(s)`, description: members.slice(0, 50).map((m) => `<@${m.id}>`).join(' ') + (members.length > 50 ? `\n…and ${members.length - 50} more` : '') || 'Nobody has this role.', color: role.color || BRAND_COLOR }],
+        allowedMentions: { parse: [] },
+      });
+      return;
+    }
+    case 'say': {
+      if (!i.inCachedGuild()) return;
+      const target = i.guild.channels.cache.get(i.options.getChannel('channel')?.id ?? i.channelId);
+      if (!target?.isSendable() || !target.permissionsFor(i.member)?.has([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ManageMessages])) {
+        return void (await i.reply({ content: 'You can only make me talk in channels where you can manage messages.', flags: MessageFlags.Ephemeral }));
+      }
+      const sent = await target.send({ content: i.options.getString('message', true), allowedMentions: { parse: ['users'] } }).catch(() => null);
+      ctx.log('info', `/say by ${i.user.tag} in #${'name' in target ? target.name : 'channel'}.`);
+      await i.reply({ content: sent ? 'Sent.' : 'I couldn’t post there.', flags: MessageFlags.Ephemeral });
+      return;
+    }
+    case 'reminders': {
+      if (!i.guildId) return;
+      const list = ctx.store.remindersOf(i.guildId, i.user.id);
+      const cancel = i.options.getInteger('cancel');
+      if (cancel) {
+        const r = list[cancel - 1];
+        return void (await i.reply({ content: r && ctx.store.cancelReminder(r.id, i.user.id) ? `Cancelled: “${truncate(r.text, 100)}”.` : 'There’s no reminder with that number.', flags: MessageFlags.Ephemeral }));
+      }
+      await i.reply({ content: list.length ? list.map((r, n) => `**${n + 1}.** <t:${Math.floor(r.dueAt / 1000)}:R> — ${truncate(r.text, 100)}`).join('\n') + '\n-# Cancel one with /reminders cancel:<number>' : 'You have no reminders here. Set one with /remind.', flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] } });
       return;
     }
     case 'poll': {

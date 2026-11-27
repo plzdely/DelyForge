@@ -74,6 +74,14 @@ export async function handleBirthdayCommand(ctx: ModuleContext, i: ChatInputComm
     return;
   }
   const sub = i.options.getSubcommand();
+  if (sub === 'month') {
+    const month = i.options.getInteger('month') ?? new Date().getUTCMonth() + 1;
+    const list = ctx.store.birthdays(i.guild.id).filter((b) => b.month === month).sort((a, b) => a.day - b.day);
+    return void (await i.reply({
+      embeds: [{ title: `🎂 Birthdays in ${MONTHS[month - 1]}`, description: list.length ? list.map((b) => `**${b.day}** — <@${b.userId}>`).join('\n') : 'No birthdays saved for this month.', color: BRAND_COLOR }],
+      allowedMentions: { parse: [] },
+    }));
+  }
   if (sub === 'set') {
     const month = i.options.getInteger('month', true);
     const day = i.options.getInteger('day', true);

@@ -1,15 +1,17 @@
 import {
+  AttachmentBuilder,
   ChannelType,
   type ChatInputCommandInteraction,
   ComponentType,
   type Guild,
   type Message,
   MessageFlags,
+  SnowflakeUtil,
   type StringSelectMenuInteraction,
   type ThreadChannel,
   type User,
 } from 'discord.js';
-import { COLORS, type ModuleContext, truncate } from './context.js';
+import { COLORS, type ModuleContext, sendableChannel, truncate } from './context.js';
 import { isStaff } from './roles.js';
 
 /**
@@ -152,6 +154,38 @@ export async function onModmailThreadMessage(ctx: ModuleContext, m: Message): Pr
   if (!sent) await m.reply({ content: 'I couldn’t DM them (they left the server or closed their DMs).', allowedMentions: { parse: [] } }).catch(() => null);
 }
 
+/** Posts a text transcript of a closed conversation to the modmail log channel (if one is set). */
+async function saveTranscript(ctx: ModuleContext, guild: Guild, thread: ThreadChannel, userId: string, why: string): Promise<void> {
+  const log = await sendableChannel(ctx, guild, ctx.config(guild.id).modmail.logChannelId, 'Modmail log');
+  if (!log) return;
+  const msgs = [...((await thread.messages.fetch({ limit: 100 }).catch(() => null))?.values() ?? [])].reverse();
+  const lines = msgs.map((m) => `[${m.createdAt.toISOString().slice(0, 19).replace('T', ' ')}] ${m.author.bot ? (m.embeds[0]?.author?.name ?? 'bot') : m.author.tag}: ${m.content || m.embeds[0]?.description || ''}`);
+  await log
+    .send({ content: `📪 Modmail with <@${userId}> ${why}.`, files: [new AttachmentBuilder(Buffer.from(lines.join('\n'), 'utf8'), { name: `modmail-${userId}.txt` })], allowedMentions: { parse: [] } })
+    .catch(() => null);
+}
+
+/** Every 10 minutes: closes conversations nobody wrote in for the configured hours. */
+export async function autoCloseModmail(ctx: ModuleContext, guild: Guild, now = Date.now()): Promise<void> {
+  const c = ctx.config(guild.id).modmail;
+  if (!c.enabled || !c.autoCloseHours) return;
+  for (const mm of ctx.store.openModmails(guild.id)) {
+    const thread = (guild.channels.cache.get(mm.threadId) ?? (await guild.channels.fetch(mm.threadId).catch(() => null))) as ThreadChannel | null;
+    if (!thread?.isThread()) {
+      ctx.store.closeModmail(mm.threadId);
+      continue;
+    }
+    const last = thread.lastMessageId ? Number(SnowflakeUtil.timestampFrom(thread.lastMessageId)) : (thread.createdTimestamp ?? now);
+    if (now - last < c.autoCloseHours * 3_600_000 || !ctx.store.closeModmail(mm.threadId)) continue;
+    const user = await ctx.client.users.fetch(mm.userId).catch(() => null);
+    await user?.send({ embeds: [{ title: `📪 ${guild.name}`, description: `${c.closingMessage}\n\n(Closed automatically after ${c.autoCloseHours} hours without messages.)`, color: COLORS.info }] }).catch(() => null);
+    await thread.send({ content: `🔒 Closed automatically — no messages for ${c.autoCloseHours} hours.`, allowedMentions: { parse: [] } }).catch(() => null);
+    await saveTranscript(ctx, guild, thread, mm.userId, `closed automatically after ${c.autoCloseHours} h`);
+    await thread.setLocked(true).catch(() => null);
+    await thread.setArchived(true).catch(() => null);
+  }
+}
+
 const ephemeral = (i: ChatInputCommandInteraction, content: string) => i.reply({ content, flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] } });
 
 /** /modmail open | close | block | unblock */
@@ -162,6 +196,17 @@ export async function handleModmailCommand(ctx: ModuleContext, i: ChatInputComma
   if (!isStaff(i.member, c.staffRoleIds) && !i.member.permissions.has('ManageMessages')) return void (await ephemeral(i, 'Only modmail staff can do that.'));
   const sub = i.options.getSubcommand();
 
+  if (sub === 'snippet') {
+    const mm = ctx.store.modmailByThread(i.channelId);
+    if (!mm?.open) return void (await ephemeral(i, 'Use this inside an open modmail thread.'));
+    const snip = c.snippets.find((s) => s.name === i.options.getString('name', true));
+    if (!snip) return void (await ephemeral(i, 'That snippet no longer exists.'));
+    const user = await ctx.client.users.fetch(mm.userId).catch(() => null);
+    const author = c.anonymous ? { name: 'Staff Team', icon_url: i.guild.iconURL({ size: 64 }) ?? undefined } : { name: i.member.displayName, icon_url: i.user.displayAvatarURL({ size: 64 }) };
+    const sent = user ? await user.send({ embeds: [{ author, description: snip.text, color: COLORS.success, footer: { text: i.guild.name } }] }).then(() => true, () => false) : false;
+    return void (await i.reply({ content: sent ? `📨 Sent snippet **${snip.name}**:\n>>> ${truncate(snip.text, 1500)}` : 'I couldn’t DM them.', allowedMentions: { parse: [] } }));
+  }
+
   if (sub === 'close') {
     const mm = ctx.store.modmailByThread(i.channelId);
     if (!mm || !i.channel?.isThread()) return void (await ephemeral(i, 'Use this inside a modmail thread.'));
@@ -170,6 +215,7 @@ export async function handleModmailCommand(ctx: ModuleContext, i: ChatInputComma
     const user = await ctx.client.users.fetch(mm.userId).catch(() => null);
     await user?.send({ embeds: [{ title: `📪 ${i.guild.name}`, description: `${c.closingMessage}${reason ? `\n\n**Reason:** ${reason}` : ''}`, color: COLORS.info }] }).catch(() => null);
     await i.reply({ content: `🔒 Closed by <@${i.user.id}>${reason ? `: ${reason}` : ''}.`, allowedMentions: { parse: [] } });
+    await saveTranscript(ctx, i.guild, i.channel, mm.userId, `closed by ${i.user.tag}${reason ? ` — ${reason}` : ''}`);
     await i.channel.setLocked(true).catch(() => null);
     await i.channel.setArchived(true).catch(() => null);
     return;
